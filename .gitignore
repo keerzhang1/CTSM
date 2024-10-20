@@ -101,3 +101,23 @@ core.*
 *.log !run.log
 *.pyc
 Depends
+components/cism
+components/cmeps
+components/mizuRoute
+components/mosart
+components/rtm
+doc/doc-builder
+libraries/mct
+libraries/parallelio
+share
+src/fates
+components/cism
+components/cmeps
+components/mizuRoute
+components/mosart
+components/rtm
+doc/doc-builder
+libraries/mct
+libraries/parallelio
+share
+src/fates
