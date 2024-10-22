@@ -74,7 +74,11 @@ contains
     integer                , intent(in)    :: filter_urbanp(:)   ! urban pft filter
     type(atm2lnd_type)     , intent(in)    :: atm2lnd_inst
     type(waterdiagnosticbulk_type)  , intent(in)    :: waterdiagnosticbulk_inst
-    type(temperature_type) , intent(in)    :: temperature_inst
+    
+!-------------------[kz.8]Ray tracing test------------------------- 
+    type(temperature_type) , intent(inout)    :: temperature_inst
+!-------------------[kz.8]Ray tracing test-------------------------     
+    
     type(urbanparams_type) , intent(in)    :: urbanparams_inst
     type(solarabs_type)    , intent(inout) :: solarabs_inst
     type(surfalb_type)     , intent(in)    :: surfalb_inst
@@ -155,7 +159,122 @@ contains
          eflx_lwrad_net_u   =>    energyflux_inst%eflx_lwrad_net_u_patch     , & ! Output: [real(r8) (:)   ]  urban net infrared (longwave) rad (W/m**2) [+ = to atm]
 
          begl               =>    bounds%begl                                , &
-         endl               =>    bounds%endl                                  &
+         endl               =>    bounds%endl                                , &
+!-------------------[kz.9]Ray tracing test------------------------- 
+         fww1d_u             =>    urbanparams_inst%fww1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         fww1d_t1             =>    temperature_inst%fww1d_out1                , & ! Output:  [real(r8) (:,:)   ]
+         fww1d_t2             =>    temperature_inst%fww1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+         
+         fvv1d_u             =>    urbanparams_inst%fvv1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         fvv1d_t1             =>    temperature_inst%fvv1d_out1                , & ! Output:  [real(r8) (:,:)   ] 
+         fvv1d_t2             =>    temperature_inst%fvv1d_out2                , & ! Output:  [real(r8) (:,:)   ] 
+         
+         fwv1d_u             =>    urbanparams_inst%fwv1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         fwv1d_t1             =>    temperature_inst%fwv1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         fwv1d_t2             =>    temperature_inst%fwv1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+         fvw1d_u             =>    urbanparams_inst%fvw1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         fvw1d_t1             =>    temperature_inst%fvw1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         fvw1d_t2             =>    temperature_inst%fvw1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+         
+         fwr1d_u             =>    urbanparams_inst%fwr1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         fwr1d_t1             =>    temperature_inst%fwr1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         fwr1d_t2             =>    temperature_inst%fwr1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+
+         frw1d_u             =>    urbanparams_inst%frw1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         frw1d_t1             =>    temperature_inst%frw1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         frw1d_t2             =>    temperature_inst%frw1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+
+         fvr1d_u             =>    urbanparams_inst%fvr1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         fvr1d_t1             =>    temperature_inst%fvr1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         fvr1d_t2             =>    temperature_inst%fvr1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+
+         frv1d_u             =>    urbanparams_inst%frv1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         frv1d_t1             =>    temperature_inst%frv1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         frv1d_t2             =>    temperature_inst%frv1d_out2               , & ! Output:  [real(r8) (:,:)   ]  
+
+         fwg1d_u             =>    urbanparams_inst%fwg1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         fwg1d_t             =>    temperature_inst%fwg1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         fgw1d_u             =>    urbanparams_inst%fgw1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         fgw1d_t             =>    temperature_inst%fgw1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         fgv1d_u             =>    urbanparams_inst%fgv1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         fgv1d_t             =>    temperature_inst%fgv1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         fsw1d_u             =>    urbanparams_inst%fsw1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         fsw1d_t             =>    temperature_inst%fsw1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         fvg1d_u             =>    urbanparams_inst%fvg1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         fvg1d_t             =>    temperature_inst%fvg1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         fsr1d_u             =>    urbanparams_inst%fsr1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         fsr1d_t             =>    temperature_inst%fsr1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         fsv1d_u             =>    urbanparams_inst%fsv1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         fsv1d_t             =>    temperature_inst%fsv1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         fws1d_u             =>    urbanparams_inst%fws1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         fws1d_t             =>    temperature_inst%fws1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         fvs1d_u             =>    urbanparams_inst%fvs1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         fvs1d_t             =>    temperature_inst%fvs1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         frs1d_u             =>    urbanparams_inst%frs1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         frs1d_t             =>    temperature_inst%frs1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+
+         fsg1d_u             =>    urbanparams_inst%fsg1d_out                , & ! Input:  [real(r8) (:)   ]  
+         fsg1d_t             =>    temperature_inst%fsg1d_out                , & ! Output:  [real(r8) (:)   ]  
+         fts1d_u             =>    urbanparams_inst%fts1d_out                , & ! Input:  [real(r8) (:)   ]  
+         fts1d_t             =>    temperature_inst%fts1d_out                , & ! Output:  [real(r8) (:)   ]  
+
+         kww1d_u             =>    urbanparams_inst%kww1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         kww1d_t1             =>    temperature_inst%kww1d_out1                , & ! Output:  [real(r8) (:,:)   ]
+         kww1d_t2             =>    temperature_inst%kww1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+         
+         kvv1d_u             =>    urbanparams_inst%kvv1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         kvv1d_t1             =>    temperature_inst%kvv1d_out1                , & ! Output:  [real(r8) (:,:)   ] 
+         kvv1d_t2             =>    temperature_inst%kvv1d_out2                , & ! Output:  [real(r8) (:,:)   ] 
+         
+         kwv1d_u             =>    urbanparams_inst%kwv1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         kwv1d_t1             =>    temperature_inst%kwv1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         kwv1d_t2             =>    temperature_inst%kwv1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+         kvw1d_u             =>    urbanparams_inst%kvw1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         kvw1d_t1             =>    temperature_inst%kvw1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         kvw1d_t2             =>    temperature_inst%kvw1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+         
+         kwr1d_u             =>    urbanparams_inst%kwr1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         kwr1d_t1             =>    temperature_inst%kwr1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         kwr1d_t2             =>    temperature_inst%kwr1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+
+         krw1d_u             =>    urbanparams_inst%krw1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         krw1d_t1             =>    temperature_inst%krw1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         krw1d_t2             =>    temperature_inst%krw1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+
+         kvr1d_u             =>    urbanparams_inst%kvr1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         kvr1d_t1             =>    temperature_inst%kvr1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         kvr1d_t2             =>    temperature_inst%kvr1d_out2                , & ! Output:  [real(r8) (:,:)   ]  
+
+         krv1d_u             =>    urbanparams_inst%krv1d_out                , & ! Input:  [real(r8) (:,:,:)   ]  
+         krv1d_t1             =>    temperature_inst%krv1d_out1                , & ! Output:  [real(r8) (:,:)   ]  
+         krv1d_t2             =>    temperature_inst%krv1d_out2               , & ! Output:  [real(r8) (:,:)   ]  
+ 
+         kwg1d_u             =>    urbanparams_inst%kwg1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         kwg1d_t             =>    temperature_inst%kwg1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         kgw1d_u             =>    urbanparams_inst%kgw1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         kgw1d_t             =>    temperature_inst%kgw1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         kgv1d_u             =>    urbanparams_inst%kgv1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         kgv1d_t             =>    temperature_inst%kgv1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         ksw1d_u             =>    urbanparams_inst%ksw1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         ksw1d_t             =>    temperature_inst%ksw1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         kvg1d_u             =>    urbanparams_inst%kvg1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         kvg1d_t             =>    temperature_inst%kvg1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         ksr1d_u             =>    urbanparams_inst%ksr1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         ksr1d_t             =>    temperature_inst%ksr1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         ksv1d_u             =>    urbanparams_inst%ksv1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         ksv1d_t             =>    temperature_inst%ksv1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         kws1d_u             =>    urbanparams_inst%kws1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         kws1d_t             =>    temperature_inst%kws1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         kvs1d_u             =>    urbanparams_inst%kvs1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         kvs1d_t             =>    temperature_inst%kvs1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+         krs1d_u             =>    urbanparams_inst%krs1d_out                , & ! Input:  [real(r8) (:,:)   ]  
+         krs1d_t             =>    temperature_inst%krs1d_out                , & ! Output:  [real(r8) (:,:)   ]  
+
+         ksg1d_u             =>    urbanparams_inst%ksg1d_out                , & ! Input:  [real(r8) (:)   ]  
+         ksg1d_t             =>    temperature_inst%ksg1d_out                , & ! Output:  [real(r8) (:)   ]  
+         kts1d_u             =>    urbanparams_inst%kts1d_out                , & ! Input:  [real(r8) (:)   ]  
+         kts1d_t             =>    temperature_inst%kts1d_out                 & ! Output:  [real(r8) (:)   ]            
+!-------------------[kz.9]Ray tracing test------------------------- 
          )
 
       ! Define fields that appear on the restart file for non-urban landunits 
@@ -192,7 +311,67 @@ contains
          em_roof_s(l)    = em_roof(l)
          em_improad_s(l) = em_improad(l)
          em_perroad_s(l) = em_perroad(l)
+!-------------------[kz.10]Ray tracing test------------------------- 
+         fww1d_t1(l,:)=fww1d_u(l,:,1)
+         fww1d_t2(l,:)=fww1d_u(l,:,2)
+         fvv1d_t1(l,:)=fvv1d_u(l,:,1)
+         fvv1d_t2(l,:)=fvv1d_u(l,:,2)
+         fwv1d_t1(l,:)=fwv1d_u(l,:,1)
+         fwv1d_t2(l,:)=fwv1d_u(l,:,2)
+         fvw1d_t1(l,:)=fvw1d_u(l,:,1)
+         fvw1d_t2(l,:)=fvw1d_u(l,:,2)
+         fwr1d_t1(l,:)=fwr1d_u(l,:,1)
+         fwr1d_t2(l,:)=fwr1d_u(l,:,2)
+         frw1d_t1(l,:)=frw1d_u(l,:,1)
+         frw1d_t2(l,:)=frw1d_u(l,:,2)
+         fvr1d_t1(l,:)=fvr1d_u(l,:,1)
+         fvr1d_t2(l,:)=fvr1d_u(l,:,2)
+         frv1d_t1(l,:)=frv1d_u(l,:,1)    
+         frv1d_t2(l,:)=frv1d_u(l,:,2)    
+         
+         fwg1d_t(l,:)=fwg1d_u(l,:)           
+         fgw1d_t(l,:)=fgw1d_u(l,:)           
+         fgv1d_t(l,:)=fgv1d_u(l,:)           
+         fsw1d_t(l,:)=fsw1d_u(l,:)           
+         fvg1d_t(l,:)=fvg1d_u(l,:)           
+         fsr1d_t(l,:)=fsr1d_u(l,:)           
+         fsv1d_t(l,:)=fsv1d_u(l,:)           
+         fws1d_t(l,:)=fws1d_u(l,:)           
+         fvs1d_t(l,:)=fvs1d_u(l,:)           
+         frs1d_t(l,:)=frs1d_u(l,:)           
+         fts1d_t(l)=fts1d_u(l)           
+         fsg1d_t(l)=fsg1d_u(l)           
 
+         kww1d_t1(l,:)=kww1d_u(l,:,1)
+         kww1d_t2(l,:)=kww1d_u(l,:,2)
+         kvv1d_t1(l,:)=kvv1d_u(l,:,1)
+         kvv1d_t2(l,:)=kvv1d_u(l,:,2)
+         kwv1d_t1(l,:)=kwv1d_u(l,:,1)
+         kwv1d_t2(l,:)=kwv1d_u(l,:,2)
+         kvw1d_t1(l,:)=kvw1d_u(l,:,1)
+         kvw1d_t2(l,:)=kvw1d_u(l,:,2)
+         kwr1d_t1(l,:)=kwr1d_u(l,:,1)
+         kwr1d_t2(l,:)=kwr1d_u(l,:,2)
+         krw1d_t1(l,:)=krw1d_u(l,:,1)
+         krw1d_t2(l,:)=krw1d_u(l,:,2)
+         kvr1d_t1(l,:)=kvr1d_u(l,:,1)
+         kvr1d_t2(l,:)=kvr1d_u(l,:,2)
+         krv1d_t1(l,:)=krv1d_u(l,:,1)    
+         krv1d_t2(l,:)=krv1d_u(l,:,2)    
+         
+         kwg1d_t(l,:)=kwg1d_u(l,:)           
+         kgw1d_t(l,:)=kgw1d_u(l,:)           
+         kgv1d_t(l,:)=kgv1d_u(l,:)           
+         ksw1d_t(l,:)=ksw1d_u(l,:)           
+         kvg1d_t(l,:)=kvg1d_u(l,:)           
+         ksr1d_t(l,:)=ksr1d_u(l,:)           
+         ksv1d_t(l,:)=ksv1d_u(l,:)           
+         kws1d_t(l,:)=kws1d_u(l,:)           
+         kvs1d_t(l,:)=kvs1d_u(l,:)           
+         krs1d_t(l,:)=krs1d_u(l,:)           
+         kts1d_t(l)=kts1d_u(l)           
+         ksg1d_t(l)=ksg1d_u(l)                   
+!-------------------[kz.10]Ray tracing test------------------------- 
          ! Set urban temperatures and emissivity including snow effects.
          do c = coli(l),colf(l)
             if (ctype(c) == icol_roof       )  then

@@ -113,7 +113,70 @@ module TemperatureType
      ! Emissivities
      real(r8), pointer :: emv_patch                (:)   ! patch vegetation emissivity
      real(r8), pointer :: emg_col                  (:)   ! col ground emissivity
+!-------------------[kz.11]Ray tracing test------------------------- 
+     real(r8), pointer :: fww1d_out1       (:,:) ! view factor from wall to wall for a given canyon
+     real(r8), pointer :: fww1d_out2       (:,:) ! view factor from wall to wall for a given canyon
+     real(r8), pointer :: fvv1d_out1       (:,:) ! view factor from vegetation to vegetation for a given canyon
+     real(r8), pointer :: fvv1d_out2       (:,:) ! view factor from vegetation to vegetation for a given canyon
+     real(r8), pointer :: fwv1d_out1       (:,:) ! view factor from wall to vegetation for a given canyon
+     real(r8), pointer :: fwv1d_out2       (:,:) ! view factor from wall to vegetation for a given canyon
+     real(r8), pointer :: fvw1d_out1       (:,:) ! view factor from vegetation to wall for a given canyon
+     real(r8), pointer :: fvw1d_out2       (:,:) ! view factor from vegetation to wall for a given canyon
+     real(r8), pointer :: fwr1d_out1       (:,:) ! view factor from wall to roof for a given canyon
+     real(r8), pointer :: fwr1d_out2       (:,:) ! view factor from wall to roof for a given canyon
+     real(r8), pointer :: frw1d_out1       (:,:) ! view factor from roof to wall for a given canyon
+     real(r8), pointer :: frw1d_out2       (:,:) ! view factor from roof to wall for a given canyon
+     real(r8), pointer :: fvr1d_out1       (:,:) ! view factor from vegetation to roof for a given canyon
+     real(r8), pointer :: fvr1d_out2       (:,:) ! view factor from vegetation to roof for a given canyon
+     real(r8), pointer :: frv1d_out1       (:,:) ! view factor from roof to vegetation for a given canyon
+     real(r8), pointer :: frv1d_out2       (:,:) ! view factor from roof to vegetation for a given canyon
 
+     real(r8), pointer :: fwg1d_out       (:,:)   ! view factor from wall to ground for a given canyon
+     real(r8), pointer :: fgw1d_out       (:,:)   ! view factor from ground to wall for a given canyon
+     real(r8), pointer :: fgv1d_out       (:,:)   ! view factor from ground to vegetation for a given canyon
+     real(r8), pointer :: fsw1d_out       (:,:)   ! view factor from sky to wall for a given canyon
+     real(r8), pointer :: fvg1d_out       (:,:)   ! view factor from vegetation to ground for a given canyon
+     real(r8), pointer :: fsr1d_out       (:,:)   ! view factor from sky to roof for a given canyon
+     real(r8), pointer :: fsv1d_out       (:,:)   ! view factor from sky to vegetation for a given canyon
+
+     real(r8), pointer :: fsg1d_out       (:)   ! view factor from sky to ground for a given canyon
+     real(r8), pointer :: fws1d_out       (:,:)   ! view factor from wall to sky for a given canyon
+     real(r8), pointer :: fvs1d_out       (:,:)   ! view factor from vegetation to sky for a given canyon
+     real(r8), pointer :: fts1d_out       (:)     ! view factor from ? to sky for a given canyon
+     real(r8), pointer :: frs1d_out       (:,:)   ! view factor from roof to sky for a given canyon
+       
+     real(r8), pointer :: kww1d_out1       (:,:) ! view kactor krom wall to wall kor a given canyon
+     real(r8), pointer :: kww1d_out2       (:,:) ! view kactor krom wall to wall kor a given canyon
+     real(r8), pointer :: kvv1d_out1       (:,:) ! view kactor krom vegetation to vegetation kor a given canyon
+     real(r8), pointer :: kvv1d_out2       (:,:) ! view kactor krom vegetation to vegetation kor a given canyon
+     real(r8), pointer :: kwv1d_out1       (:,:) ! view kactor krom wall to vegetation kor a given canyon
+     real(r8), pointer :: kwv1d_out2       (:,:) ! view kactor krom wall to vegetation kor a given canyon
+     real(r8), pointer :: kvw1d_out1       (:,:) ! view kactor krom vegetation to wall kor a given canyon
+     real(r8), pointer :: kvw1d_out2       (:,:) ! view kactor krom vegetation to wall kor a given canyon
+     real(r8), pointer :: kwr1d_out1       (:,:) ! view kactor krom wall to rook kor a given canyon
+     real(r8), pointer :: kwr1d_out2       (:,:) ! view kactor krom wall to rook kor a given canyon
+     real(r8), pointer :: krw1d_out1       (:,:) ! view kactor krom rook to wall kor a given canyon
+     real(r8), pointer :: krw1d_out2       (:,:) ! view kactor krom rook to wall kor a given canyon
+     real(r8), pointer :: kvr1d_out1       (:,:) ! view kactor krom vegetation to rook kor a given canyon
+     real(r8), pointer :: kvr1d_out2       (:,:) ! view kactor krom vegetation to rook kor a given canyon
+     real(r8), pointer :: krv1d_out1       (:,:) ! view kactor krom rook to vegetation kor a given canyon
+     real(r8), pointer :: krv1d_out2       (:,:) ! view kactor krom rook to vegetation kor a given canyon 
+
+     real(r8), pointer :: kwg1d_out       (:,:)   ! view factor from wall to ground for a given canyon
+     real(r8), pointer :: kgw1d_out       (:,:)   ! view factor from ground to wall for a given canyon
+     real(r8), pointer :: kgv1d_out       (:,:)   ! view factor from ground to vegetation for a given canyon
+     real(r8), pointer :: ksw1d_out       (:,:)   ! view factor from sky to wall for a given canyon
+     real(r8), pointer :: kvg1d_out       (:,:)   ! view factor from vegetation to ground for a given canyon
+     real(r8), pointer :: ksr1d_out       (:,:)   ! view factor from sky to roof for a given canyon
+     real(r8), pointer :: ksv1d_out       (:,:)   ! view factor from sky to vegetation for a given canyon
+
+     real(r8), pointer :: ksg1d_out       (:)   ! view factor from sky to ground for a given canyon
+     real(r8), pointer :: kws1d_out       (:,:)   ! view factor from wall to sky for a given canyon
+     real(r8), pointer :: kvs1d_out       (:,:)   ! view factor from vegetation to sky for a given canyon
+     real(r8), pointer :: kts1d_out       (:)     ! view factor from ? to sky for a given canyon
+     real(r8), pointer :: krs1d_out       (:,:)   ! view factor from roof to sky for a given canyon
+     
+!-------------------[kz.11]Ray tracing test------------------------- 
      ! Misc
      real(r8), pointer    :: xmf_col               (:)   ! total latent heat of phase change of ground water
      real(r8), pointer    :: xmf_h2osfc_col        (:)   ! latent heat of phase change of surface water
@@ -204,6 +267,10 @@ contains
     integer :: begc, endc
     integer :: begl, endl
     integer :: begg, endg
+!-------------------[kz.12]Ray tracing test-------------------------     
+    integer, parameter             :: nzcanm = 2      ! Maximum number of vertical levels at urban resolution
+!-------------------[kz.12]Ray tracing test------------------------- 
+    
     !------------------------------------------------------------------------
 
     begp = bounds%begp; endp= bounds%endp
@@ -295,7 +362,71 @@ contains
     ! emissivities
     allocate(this%emv_patch                (begp:endp))                      ; this%emv_patch                (:)   = nan
     allocate(this%emg_col                  (begc:endc))                      ; this%emg_col                  (:)   = nan
+!-------------------[kz.13]Ray tracing test------------------------- 
+    allocate(this%fww1d_out1          (begl:endl,nzcanm))          ; this%fww1d_out1       (:,:) = nan
+    allocate(this%fvv1d_out1          (begl:endl,nzcanm))          ; this%fvv1d_out1       (:,:) = nan
+    allocate(this%fwv1d_out1          (begl:endl,nzcanm))          ; this%fwv1d_out1       (:,:) = nan
+    allocate(this%fvw1d_out1          (begl:endl,nzcanm))           ; this%fvw1d_out1       (:,:) = nan
+    allocate(this%fwr1d_out1          (begl:endl,nzcanm))          ; this%fwr1d_out1       (:,:) = nan
+    allocate(this%frw1d_out1          (begl:endl,nzcanm))          ; this%frw1d_out1       (:,:) = nan
+    allocate(this%fvr1d_out1          (begl:endl,nzcanm))          ; this%fvr1d_out1       (:,:) = nan
+    allocate(this%frv1d_out1          (begl:endl,nzcanm))          ; this%frv1d_out1       (:,:) = nan
+    
+    allocate(this%fww1d_out2          (begl:endl,nzcanm))          ; this%fww1d_out2       (:,:) = nan
+    allocate(this%fvv1d_out2          (begl:endl,nzcanm))          ; this%fvv1d_out2       (:,:) = nan
+    allocate(this%fwv1d_out2          (begl:endl,nzcanm))          ; this%fwv1d_out2       (:,:) = nan
+    allocate(this%fvw1d_out2          (begl:endl,nzcanm))           ; this%fvw1d_out2       (:,:) = nan
+    allocate(this%fwr1d_out2          (begl:endl,nzcanm))          ; this%fwr1d_out2       (:,:) = nan
+    allocate(this%frw1d_out2          (begl:endl,nzcanm))          ; this%frw1d_out2       (:,:) = nan
+    allocate(this%fvr1d_out2          (begl:endl,nzcanm))          ; this%fvr1d_out2       (:,:) = nan
+    allocate(this%frv1d_out2          (begl:endl,nzcanm))          ; this%frv1d_out2       (:,:) = nan 
 
+    allocate(this%fwg1d_out          (begl:endl,nzcanm))    ; this%fwg1d_out       (:,:) = nan 
+    allocate(this%fgw1d_out          (begl:endl,nzcanm))     ; this%fgw1d_out       (:,:) = nan 
+    allocate(this%fgv1d_out          (begl:endl,nzcanm))     ; this%fgv1d_out       (:,:) = nan 
+    allocate(this%fsw1d_out          (begl:endl,nzcanm))     ; this%fsw1d_out       (:,:) = nan 
+    allocate(this%fvg1d_out          (begl:endl,nzcanm))     ; this%fvg1d_out       (:,:) = nan 
+    allocate(this%fsr1d_out          (begl:endl,nzcanm))     ; this%fsr1d_out       (:,:) = nan 
+    allocate(this%fsv1d_out          (begl:endl,nzcanm))     ; this%fsv1d_out       (:,:) = nan 
+
+    allocate(this%fsg1d_out          (begl:endl))            ; this%fsg1d_out       (:) = nan   
+    allocate(this%fws1d_out          (begl:endl,nzcanm))     ; this%fws1d_out       (:,:) = nan
+    allocate(this%fvs1d_out          (begl:endl,nzcanm))     ; this%fvs1d_out       (:,:) = nan
+    allocate(this%fts1d_out          (begl:endl))            ; this%fts1d_out       (:) = nan
+    allocate(this%frs1d_out          (begl:endl,nzcanm))     ; this%frs1d_out       (:,:) = nan
+        
+    allocate(this%kww1d_out1          (begl:endl,nzcanm))          ; this%kww1d_out1       (:,:) = nan
+    allocate(this%kvv1d_out1          (begl:endl,nzcanm))          ; this%kvv1d_out1       (:,:) = nan
+    allocate(this%kwv1d_out1          (begl:endl,nzcanm))          ; this%kwv1d_out1       (:,:) = nan
+    allocate(this%kvw1d_out1          (begl:endl,nzcanm))           ; this%kvw1d_out1       (:,:) = nan
+    allocate(this%kwr1d_out1          (begl:endl,nzcanm))          ; this%kwr1d_out1       (:,:) = nan
+    allocate(this%krw1d_out1          (begl:endl,nzcanm))          ; this%krw1d_out1       (:,:) = nan
+    allocate(this%kvr1d_out1          (begl:endl,nzcanm))          ; this%kvr1d_out1       (:,:) = nan
+    allocate(this%krv1d_out1          (begl:endl,nzcanm))          ; this%krv1d_out1       (:,:) = nan
+    allocate(this%kww1d_out2          (begl:endl,nzcanm))          ; this%kww1d_out2       (:,:) = nan
+    allocate(this%kvv1d_out2          (begl:endl,nzcanm))          ; this%kvv1d_out2       (:,:) = nan
+    allocate(this%kwv1d_out2          (begl:endl,nzcanm))          ; this%kwv1d_out2       (:,:) = nan
+    allocate(this%kvw1d_out2          (begl:endl,nzcanm))           ; this%kvw1d_out2       (:,:) = nan
+    allocate(this%kwr1d_out2          (begl:endl,nzcanm))          ; this%kwr1d_out2       (:,:) = nan
+    allocate(this%krw1d_out2          (begl:endl,nzcanm))          ; this%krw1d_out2       (:,:) = nan
+    allocate(this%kvr1d_out2          (begl:endl,nzcanm))          ; this%kvr1d_out2       (:,:) = nan
+    allocate(this%krv1d_out2          (begl:endl,nzcanm))          ; this%krv1d_out2       (:,:) = nan   
+
+    allocate(this%kwg1d_out          (begl:endl,nzcanm))     ; this%kwg1d_out       (:,:) = nan 
+    allocate(this%kgw1d_out          (begl:endl,nzcanm))     ; this%kgw1d_out       (:,:) = nan 
+    allocate(this%kgv1d_out          (begl:endl,nzcanm))     ; this%kgv1d_out       (:,:) = nan 
+    allocate(this%ksw1d_out          (begl:endl,nzcanm))     ; this%ksw1d_out       (:,:) = nan 
+    allocate(this%kvg1d_out          (begl:endl,nzcanm))     ; this%kvg1d_out       (:,:) = nan 
+    allocate(this%ksr1d_out          (begl:endl,nzcanm))     ; this%ksr1d_out       (:,:) = nan 
+    allocate(this%ksv1d_out          (begl:endl,nzcanm))     ; this%ksv1d_out       (:,:) = nan 
+
+    allocate(this%ksg1d_out          (begl:endl))            ; this%ksg1d_out       (:) = nan   
+    allocate(this%kws1d_out          (begl:endl,nzcanm))     ; this%kws1d_out       (:,:) = nan
+    allocate(this%kvs1d_out          (begl:endl,nzcanm))     ; this%kvs1d_out       (:,:) = nan
+    allocate(this%kts1d_out          (begl:endl))            ; this%kts1d_out       (:) = nan
+    allocate(this%krs1d_out          (begl:endl,nzcanm))     ; this%krs1d_out       (:,:) = nan
+
+!-------------------[kz.13]Ray tracing test------------------------- 
     allocate(this%xmf_col                  (begc:endc))                      ; this%xmf_col                  (:)   = nan
     allocate(this%xmf_h2osfc_col           (begc:endc))                      ; this%xmf_h2osfc_col           (:)   = nan
     allocate(this%fact_col                 (begc:endc, -nlevsno+1:nlevmaxurbgrnd)) ; this%fact_col                 (:,:) = nan
@@ -664,6 +795,328 @@ contains
             avgflag='A', long_name='10 day running mean of patch night-time vegetation temperature', &
             ptr_patch=this%t_veg10_night_patch, default='inactive')
     endif
+!-------------------[kz.14]Ray tracing test------------------------- 
+    this%fww1d_out1(begl:endl,:) = spval
+    call hist_addfld2d (fname='fww1d_1', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted longwave view factor from wall to wall for a given canyon (:,1)', &
+        ptr_lunit=this%fww1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+    this%fww1d_out2(begl:endl,:) = spval     
+    call hist_addfld2d (fname='fww1d_2', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted longwave view factor from wall to wall for a given canyon (:,2)', &
+        ptr_lunit=this%fww1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+             
+    this%fvv1d_out1(begl:endl,:) = spval
+    call hist_addfld2d (fname='fvv1d_1', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted longwave view factor from vegetation to vegetation for a given canyon (:,1)', &
+        ptr_lunit=this%fvv1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+    this%fvv1d_out2(begl:endl,:) = spval     
+    call hist_addfld2d (fname='fvv1d_2', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted longwave view factor from vegetation to vegetation for a given canyon (:,2)', &
+        ptr_lunit=this%fvv1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+
+    this%fwv1d_out1(begl:endl,:) = spval
+    call hist_addfld2d (fname='fwv1d_1', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted longwave view factor from wall to vegetation for a given canyon (:,1)', &
+       ptr_lunit=this%fwv1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')
+    this%fwv1d_out2(begl:endl,:) = spval
+    call hist_addfld2d (fname='fwv1d_2', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted longwave view factor from wall to vegetation for a given canyon (:,2)', &
+       ptr_lunit=this%fwv1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')
+
+    this%fvw1d_out1(begl:endl,:) = spval
+    call hist_addfld2d (fname='fvw1d_1', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted longwave view factor from vegetation to wall for a given canyon (:,1)', &
+       ptr_lunit=this%fvw1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')
+    this%fvw1d_out2(begl:endl,:) = spval    
+    call hist_addfld2d (fname='fvw1d_2', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted longwave view factor from vegetation to wall for a given canyon (:,2)', &
+       ptr_lunit=this%fvw1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')   
+           
+    this%fwr1d_out1(begl:endl,:) = spval
+    call hist_addfld2d (fname='fwr1d_1', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted longwave view factor from wall to roof for a given canyon (:,1)', &
+        ptr_lunit=this%fwr1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+    this%fwr1d_out2(begl:endl,:) = spval     
+    call hist_addfld2d (fname='fwr1d_2', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted longwave view factor from wall to roof for a given canyon (:,2)', &
+        ptr_lunit=this%fwr1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+
+    this%frw1d_out1(begl:endl,:) = spval
+    call hist_addfld2d (fname='frw1d_1', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted longwave view factor from roof to wall for a given canyon (:,1)', &
+       ptr_lunit=this%frw1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')
+    this%frw1d_out2(begl:endl,:) = spval
+    call hist_addfld2d (fname='frw1d_2', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted longwave view factor from roof to wall for a given canyon (:,2)', &
+       ptr_lunit=this%frw1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')
+
+    this%fvr1d_out1(begl:endl,:) = spval
+    call hist_addfld2d (fname='fvr1d_1', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from vegetation to roof for a given canyon (:,1)', &
+      ptr_lunit=this%fvr1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+    this%fvr1d_out2(begl:endl,:) = spval
+    call hist_addfld2d (fname='fvr1d_2', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from vegetation to roof for a given canyon (:,2)', &
+      ptr_lunit=this%fvr1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%frv1d_out1(begl:endl,:) = spval
+    call hist_addfld2d (fname='frv1d_1', units='unitless', type2d='numrad', &
+     avgflag='A', long_name='Area-weighted longwave view factor from roof to vegetation for a given canyon (:,1)', &
+     ptr_lunit=this%frv1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+     default='inactive')
+    this%frv1d_out2(begl:endl,:) = spval
+    call hist_addfld2d (fname='frv1d_2', units='unitless', type2d='numrad', &
+     avgflag='A', long_name='Area-weighted longwave view factor from roof to vegetation for a given canyon (:,2)', &
+     ptr_lunit=this%frv1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+     default='inactive')    
+ 
+    this%fwg1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='fwg1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from wall to ground for a given canyon', &
+      ptr_lunit=this%fwg1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%fgw1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='fgw1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from ground to wall for a given canyon', &
+      ptr_lunit=this%fgw1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%fgv1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='fgv1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from ground to vegetation  for a given canyon', &
+      ptr_lunit=this%fgv1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%fsw1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='fsw1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from sky to wall for a given canyon', &
+      ptr_lunit=this%fsw1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%fvg1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='fvg1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from vegetation to ground for a given canyon', &
+      ptr_lunit=this%fvg1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%fsr1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='fsr1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from sky to roof  for a given canyon', &
+      ptr_lunit=this%fsr1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%fsv1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='fsv1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from sky to vegetation  for a given canyon', &
+      ptr_lunit=this%fsv1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%fws1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='fws1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from wall to sky for a given canyon', &
+      ptr_lunit=this%fws1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%fvs1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='fvs1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from vegetation to sky for a given canyon', &
+      ptr_lunit=this%fvs1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%frs1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='frs1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted longwave view factor from roof to sky for a given canyon', &
+      ptr_lunit=this%frs1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')      
+
+    this%fsg1d_out(begl:endl) = spval
+    call hist_addfld1d(fname='fsg1d', units='unitless',  &
+         avgflag='A', long_name='Area-weighted longwave view factor from sky to ground for a given canyon', &
+         ptr_lunit=this%fsg1d_out, set_nourb=spval, l2g_scale_type='unity', &
+         default='inactive')      
+         
+    this%fts1d_out(begl:endl) = spval
+    call hist_addfld1d(fname='fts1d', units='unitless',  &
+         avgflag='A', long_name='Area-weighted longwave view factor from ? to sky for a given canyon', &
+         ptr_lunit=this%fts1d_out, set_nourb=spval, l2g_scale_type='unity', &
+         default='inactive')   
+         
+   this%kww1d_out1(begl:endl,:) = spval
+   call hist_addfld2d (fname='kww1d_1', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted shortwave view factor from wall to wall for a given canyon (:,1)', &
+        ptr_lunit=this%kww1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+   this%kww1d_out2(begl:endl,:) = spval     
+   call hist_addfld2d (fname='kww1d_2', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted shortwave view factor from wall to wall for a given canyon (:,2)', &
+        ptr_lunit=this%kww1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+             
+   this%kvv1d_out1(begl:endl,:) = spval
+   call hist_addfld2d (fname='kvv1d_1', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted shortwave view factor from vegetation to vegetation for a given canyon (:,1)', &
+        ptr_lunit=this%kvv1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+   this%kvv1d_out2(begl:endl,:) = spval     
+   call hist_addfld2d (fname='kvv1d_2', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted shortwave view factor from vegetation to vegetation for a given canyon (:,2)', &
+        ptr_lunit=this%kvv1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+
+   this%kwv1d_out1(begl:endl,:) = spval
+   call hist_addfld2d (fname='kwv1d_1', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted shortwave view factor from wall to vegetation for a given canyon (:,1)', &
+       ptr_lunit=this%kwv1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')
+   this%kwv1d_out2(begl:endl,:) = spval
+   call hist_addfld2d (fname='kwv1d_2', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted shortwave view factor from wall to vegetation for a given canyon (:,2)', &
+       ptr_lunit=this%kwv1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')
+
+   this%kvw1d_out1(begl:endl,:) = spval
+   call hist_addfld2d (fname='kvw1d_1', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted shortwave view factor from vegetation to wall for a given canyon (:,1)', &
+       ptr_lunit=this%kvw1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')
+   this%kvw1d_out2(begl:endl,:) = spval    
+   call hist_addfld2d (fname='kvw1d_2', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted shortwave view factor from vegetation to wall for a given canyon (:,2)', &
+       ptr_lunit=this%kvw1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')   
+           
+   this%kwr1d_out1(begl:endl,:) = spval
+   call hist_addfld2d (fname='kwr1d_1', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted shortwave view factor from wall to roof for a given canyon (:,1)', &
+        ptr_lunit=this%kwr1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+   this%kwr1d_out2(begl:endl,:) = spval     
+   call hist_addfld2d (fname='kwr1d_2', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Area-weighted shortwave view factor from wall to roof for a given canyon (:,2)', &
+        ptr_lunit=this%kwr1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+
+   this%krw1d_out1(begl:endl,:) = spval
+   call hist_addfld2d (fname='krw1d_1', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted shortwave view factor from roof to wall for a given canyon (:,1)', &
+       ptr_lunit=this%krw1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')
+   this%krw1d_out2(begl:endl,:) = spval
+   call hist_addfld2d (fname='krw1d_2', units='unitless', type2d='numrad', &
+       avgflag='A', long_name='Area-weighted shortwave view factor from roof to wall for a given canyon (:,2)', &
+       ptr_lunit=this%krw1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+       default='inactive')
+
+   this%kvr1d_out1(begl:endl,:) = spval
+   call hist_addfld2d (fname='kvr1d_1', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from vegetation to roof for a given canyon (:,1)', &
+      ptr_lunit=this%kvr1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+   this%kvr1d_out2(begl:endl,:) = spval
+   call hist_addfld2d (fname='kvr1d_2', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from vegetation to roof for a given canyon (:,2)', &
+      ptr_lunit=this%kvr1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+   this%krv1d_out1(begl:endl,:) = spval
+   call hist_addfld2d (fname='krv1d_1', units='unitless', type2d='numrad', &
+     avgflag='A', long_name='Area-weighted shortwave view factor from roof to vegetation for a given canyon (:,1)', &
+     ptr_lunit=this%krv1d_out1, set_nourb=spval, l2g_scale_type='unity', &
+     default='inactive')
+   this%krv1d_out2(begl:endl,:) = spval
+   call hist_addfld2d (fname='krv1d_2', units='unitless', type2d='numrad', &
+     avgflag='A', long_name='Area-weighted shortwave view factor from roof to vegetation for a given canyon (:,2)', &
+     ptr_lunit=this%krv1d_out2, set_nourb=spval, l2g_scale_type='unity', &
+     default='inactive')  
+
+      
+    this%kwg1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='kwg1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from wall to ground for a given canyon', &
+      ptr_lunit=this%kwg1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%kgw1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='kgw1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from ground to wall for a given canyon', &
+      ptr_lunit=this%kgw1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%kgv1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='kgv1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from ground to vegetation  for a given canyon', &
+      ptr_lunit=this%kgv1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%ksw1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='ksw1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from sky to wall for a given canyon', &
+      ptr_lunit=this%ksw1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%kvg1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='kvg1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from vegetation to ground for a given canyon', &
+      ptr_lunit=this%kvg1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%ksr1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='ksr1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from sky to roof  for a given canyon', &
+      ptr_lunit=this%ksr1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%ksv1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='ksv1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from sky to vegetation  for a given canyon', &
+      ptr_lunit=this%ksv1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%kws1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='kws1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from wall to sky for a given canyon', &
+      ptr_lunit=this%kws1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%kvs1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='kvs1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from vegetation to sky for a given canyon', &
+      ptr_lunit=this%kvs1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')
+
+    this%krs1d_out(begl:endl,:) = spval
+    call hist_addfld2d (fname='krs1d', units='unitless', type2d='numrad', &
+      avgflag='A', long_name='Area-weighted shortwave view factor from roof to sky for a given canyon', &
+      ptr_lunit=this%krs1d_out, set_nourb=spval, l2g_scale_type='unity', &
+      default='inactive')      
+
+    this%ksg1d_out(begl:endl) = spval
+    call hist_addfld1d(fname='ksg1d', units='unitless',  &
+         avgflag='A', long_name='Area-weighted shortwave view factor from sky to ground for a given canyon', &
+         ptr_lunit=this%ksg1d_out, set_nourb=spval, l2g_scale_type='unity', &
+         default='inactive')      
+         
+    this%kts1d_out(begl:endl) = spval
+    call hist_addfld1d(fname='kts1d', units='unitless',  &
+         avgflag='A', long_name='Area-weighted shortwave view factor from ? to sky for a given canyon', &
+         ptr_lunit=this%kts1d_out, set_nourb=spval, l2g_scale_type='unity', &
+         default='inactive')            
+!-------------------[kz.14]Ray tracing test-------------------------          
 
   end subroutine InitHistory
 
