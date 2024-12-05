@@ -268,7 +268,7 @@ contains
     integer :: begl, endl
     integer :: begg, endg
 !-------------------[kz.12]Ray tracing test-------------------------     
-    integer, parameter             :: nzcanm = 2      ! Maximum number of vertical levels at urban resolution
+    integer, parameter             :: nzcanm = 3      ! Maximum number of vertical levels at urban resolution
 !-------------------[kz.12]Ray tracing test------------------------- 
     
     !------------------------------------------------------------------------
