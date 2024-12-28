@@ -268,7 +268,7 @@ contains
     integer :: begl, endl
     integer :: begg, endg
 !-------------------[kz.12]Ray tracing test-------------------------     
-    integer, parameter             :: nzcanm = 3      ! Maximum number of vertical levels at urban resolution
+    integer, parameter             :: maxind = 2      ! Vertical layer index for view factor calculation
 !-------------------[kz.12]Ray tracing test------------------------- 
     
     !------------------------------------------------------------------------
@@ -362,70 +362,69 @@ contains
     ! emissivities
     allocate(this%emv_patch                (begp:endp))                      ; this%emv_patch                (:)   = nan
     allocate(this%emg_col                  (begc:endc))                      ; this%emg_col                  (:)   = nan
-!-------------------[kz.13]Ray tracing test------------------------- 
-    allocate(this%fww1d_out1          (begl:endl,nzcanm))          ; this%fww1d_out1       (:,:) = nan
-    allocate(this%fvv1d_out1          (begl:endl,nzcanm))          ; this%fvv1d_out1       (:,:) = nan
-    allocate(this%fwv1d_out1          (begl:endl,nzcanm))          ; this%fwv1d_out1       (:,:) = nan
-    allocate(this%fvw1d_out1          (begl:endl,nzcanm))           ; this%fvw1d_out1       (:,:) = nan
-    allocate(this%fwr1d_out1          (begl:endl,nzcanm))          ; this%fwr1d_out1       (:,:) = nan
-    allocate(this%frw1d_out1          (begl:endl,nzcanm))          ; this%frw1d_out1       (:,:) = nan
-    allocate(this%fvr1d_out1          (begl:endl,nzcanm))          ; this%fvr1d_out1       (:,:) = nan
-    allocate(this%frv1d_out1          (begl:endl,nzcanm))          ; this%frv1d_out1       (:,:) = nan
+    !-------------------[kz.13]Ray tracing test------------------------- 
+    allocate(this%fww1d_out1          (begl:endl,maxind))          ; this%fww1d_out1       (:,:) = nan
+    allocate(this%fvv1d_out1          (begl:endl,maxind))          ; this%fvv1d_out1       (:,:) = nan
+    allocate(this%fwv1d_out1          (begl:endl,maxind))          ; this%fwv1d_out1       (:,:) = nan
+    allocate(this%fvw1d_out1          (begl:endl,maxind))           ; this%fvw1d_out1       (:,:) = nan
+    allocate(this%fwr1d_out1          (begl:endl,maxind))          ; this%fwr1d_out1       (:,:) = nan
+    allocate(this%frw1d_out1          (begl:endl,maxind))          ; this%frw1d_out1       (:,:) = nan
+    allocate(this%fvr1d_out1          (begl:endl,maxind))          ; this%fvr1d_out1       (:,:) = nan
+    allocate(this%frv1d_out1          (begl:endl,maxind))          ; this%frv1d_out1       (:,:) = nan
     
-    allocate(this%fww1d_out2          (begl:endl,nzcanm))          ; this%fww1d_out2       (:,:) = nan
-    allocate(this%fvv1d_out2          (begl:endl,nzcanm))          ; this%fvv1d_out2       (:,:) = nan
-    allocate(this%fwv1d_out2          (begl:endl,nzcanm))          ; this%fwv1d_out2       (:,:) = nan
-    allocate(this%fvw1d_out2          (begl:endl,nzcanm))           ; this%fvw1d_out2       (:,:) = nan
-    allocate(this%fwr1d_out2          (begl:endl,nzcanm))          ; this%fwr1d_out2       (:,:) = nan
-    allocate(this%frw1d_out2          (begl:endl,nzcanm))          ; this%frw1d_out2       (:,:) = nan
-    allocate(this%fvr1d_out2          (begl:endl,nzcanm))          ; this%fvr1d_out2       (:,:) = nan
-    allocate(this%frv1d_out2          (begl:endl,nzcanm))          ; this%frv1d_out2       (:,:) = nan 
+    allocate(this%fww1d_out2          (begl:endl,maxind))          ; this%fww1d_out2       (:,:) = nan
+    allocate(this%fvv1d_out2          (begl:endl,maxind))          ; this%fvv1d_out2       (:,:) = nan
+    allocate(this%fwv1d_out2          (begl:endl,maxind))          ; this%fwv1d_out2       (:,:) = nan
+    allocate(this%fvw1d_out2          (begl:endl,maxind))           ; this%fvw1d_out2       (:,:) = nan
+    allocate(this%fwr1d_out2          (begl:endl,maxind))          ; this%fwr1d_out2       (:,:) = nan
+    allocate(this%frw1d_out2          (begl:endl,maxind))          ; this%frw1d_out2       (:,:) = nan
+    allocate(this%fvr1d_out2          (begl:endl,maxind))          ; this%fvr1d_out2       (:,:) = nan
+    allocate(this%frv1d_out2          (begl:endl,maxind))          ; this%frv1d_out2       (:,:) = nan 
 
-    allocate(this%fwg1d_out          (begl:endl,nzcanm))    ; this%fwg1d_out       (:,:) = nan 
-    allocate(this%fgw1d_out          (begl:endl,nzcanm))     ; this%fgw1d_out       (:,:) = nan 
-    allocate(this%fgv1d_out          (begl:endl,nzcanm))     ; this%fgv1d_out       (:,:) = nan 
-    allocate(this%fsw1d_out          (begl:endl,nzcanm))     ; this%fsw1d_out       (:,:) = nan 
-    allocate(this%fvg1d_out          (begl:endl,nzcanm))     ; this%fvg1d_out       (:,:) = nan 
-    allocate(this%fsr1d_out          (begl:endl,nzcanm))     ; this%fsr1d_out       (:,:) = nan 
-    allocate(this%fsv1d_out          (begl:endl,nzcanm))     ; this%fsv1d_out       (:,:) = nan 
+    allocate(this%fwg1d_out          (begl:endl,maxind))    ; this%fwg1d_out       (:,:) = nan 
+    allocate(this%fgw1d_out          (begl:endl,maxind))     ; this%fgw1d_out       (:,:) = nan 
+    allocate(this%fgv1d_out          (begl:endl,maxind))     ; this%fgv1d_out       (:,:) = nan 
+    allocate(this%fsw1d_out          (begl:endl,maxind))     ; this%fsw1d_out       (:,:) = nan 
+    allocate(this%fvg1d_out          (begl:endl,maxind))     ; this%fvg1d_out       (:,:) = nan 
+    allocate(this%fsr1d_out          (begl:endl,maxind))     ; this%fsr1d_out       (:,:) = nan 
+    allocate(this%fsv1d_out          (begl:endl,maxind))     ; this%fsv1d_out       (:,:) = nan 
 
     allocate(this%fsg1d_out          (begl:endl))            ; this%fsg1d_out       (:) = nan   
-    allocate(this%fws1d_out          (begl:endl,nzcanm))     ; this%fws1d_out       (:,:) = nan
-    allocate(this%fvs1d_out          (begl:endl,nzcanm))     ; this%fvs1d_out       (:,:) = nan
+    allocate(this%fws1d_out          (begl:endl,maxind))     ; this%fws1d_out       (:,:) = nan
+    allocate(this%fvs1d_out          (begl:endl,maxind))     ; this%fvs1d_out       (:,:) = nan
     allocate(this%fts1d_out          (begl:endl))            ; this%fts1d_out       (:) = nan
-    allocate(this%frs1d_out          (begl:endl,nzcanm))     ; this%frs1d_out       (:,:) = nan
+    allocate(this%frs1d_out          (begl:endl,maxind))     ; this%frs1d_out       (:,:) = nan
         
-    allocate(this%kww1d_out1          (begl:endl,nzcanm))          ; this%kww1d_out1       (:,:) = nan
-    allocate(this%kvv1d_out1          (begl:endl,nzcanm))          ; this%kvv1d_out1       (:,:) = nan
-    allocate(this%kwv1d_out1          (begl:endl,nzcanm))          ; this%kwv1d_out1       (:,:) = nan
-    allocate(this%kvw1d_out1          (begl:endl,nzcanm))           ; this%kvw1d_out1       (:,:) = nan
-    allocate(this%kwr1d_out1          (begl:endl,nzcanm))          ; this%kwr1d_out1       (:,:) = nan
-    allocate(this%krw1d_out1          (begl:endl,nzcanm))          ; this%krw1d_out1       (:,:) = nan
-    allocate(this%kvr1d_out1          (begl:endl,nzcanm))          ; this%kvr1d_out1       (:,:) = nan
-    allocate(this%krv1d_out1          (begl:endl,nzcanm))          ; this%krv1d_out1       (:,:) = nan
-    allocate(this%kww1d_out2          (begl:endl,nzcanm))          ; this%kww1d_out2       (:,:) = nan
-    allocate(this%kvv1d_out2          (begl:endl,nzcanm))          ; this%kvv1d_out2       (:,:) = nan
-    allocate(this%kwv1d_out2          (begl:endl,nzcanm))          ; this%kwv1d_out2       (:,:) = nan
-    allocate(this%kvw1d_out2          (begl:endl,nzcanm))           ; this%kvw1d_out2       (:,:) = nan
-    allocate(this%kwr1d_out2          (begl:endl,nzcanm))          ; this%kwr1d_out2       (:,:) = nan
-    allocate(this%krw1d_out2          (begl:endl,nzcanm))          ; this%krw1d_out2       (:,:) = nan
-    allocate(this%kvr1d_out2          (begl:endl,nzcanm))          ; this%kvr1d_out2       (:,:) = nan
-    allocate(this%krv1d_out2          (begl:endl,nzcanm))          ; this%krv1d_out2       (:,:) = nan   
+    allocate(this%kww1d_out1          (begl:endl,maxind))          ; this%kww1d_out1       (:,:) = nan
+    allocate(this%kvv1d_out1          (begl:endl,maxind))          ; this%kvv1d_out1       (:,:) = nan
+    allocate(this%kwv1d_out1          (begl:endl,maxind))          ; this%kwv1d_out1       (:,:) = nan
+    allocate(this%kvw1d_out1          (begl:endl,maxind))           ; this%kvw1d_out1       (:,:) = nan
+    allocate(this%kwr1d_out1          (begl:endl,maxind))          ; this%kwr1d_out1       (:,:) = nan
+    allocate(this%krw1d_out1          (begl:endl,maxind))          ; this%krw1d_out1       (:,:) = nan
+    allocate(this%kvr1d_out1          (begl:endl,maxind))          ; this%kvr1d_out1       (:,:) = nan
+    allocate(this%krv1d_out1          (begl:endl,maxind))          ; this%krv1d_out1       (:,:) = nan
+    allocate(this%kww1d_out2          (begl:endl,maxind))          ; this%kww1d_out2       (:,:) = nan
+    allocate(this%kvv1d_out2          (begl:endl,maxind))          ; this%kvv1d_out2       (:,:) = nan
+    allocate(this%kwv1d_out2          (begl:endl,maxind))          ; this%kwv1d_out2       (:,:) = nan
+    allocate(this%kvw1d_out2          (begl:endl,maxind))           ; this%kvw1d_out2       (:,:) = nan
+    allocate(this%kwr1d_out2          (begl:endl,maxind))          ; this%kwr1d_out2       (:,:) = nan
+    allocate(this%krw1d_out2          (begl:endl,maxind))          ; this%krw1d_out2       (:,:) = nan
+    allocate(this%kvr1d_out2          (begl:endl,maxind))          ; this%kvr1d_out2       (:,:) = nan
+    allocate(this%krv1d_out2          (begl:endl,maxind))          ; this%krv1d_out2       (:,:) = nan   
 
-    allocate(this%kwg1d_out          (begl:endl,nzcanm))     ; this%kwg1d_out       (:,:) = nan 
-    allocate(this%kgw1d_out          (begl:endl,nzcanm))     ; this%kgw1d_out       (:,:) = nan 
-    allocate(this%kgv1d_out          (begl:endl,nzcanm))     ; this%kgv1d_out       (:,:) = nan 
-    allocate(this%ksw1d_out          (begl:endl,nzcanm))     ; this%ksw1d_out       (:,:) = nan 
-    allocate(this%kvg1d_out          (begl:endl,nzcanm))     ; this%kvg1d_out       (:,:) = nan 
-    allocate(this%ksr1d_out          (begl:endl,nzcanm))     ; this%ksr1d_out       (:,:) = nan 
-    allocate(this%ksv1d_out          (begl:endl,nzcanm))     ; this%ksv1d_out       (:,:) = nan 
+    allocate(this%kwg1d_out          (begl:endl,maxind))     ; this%kwg1d_out       (:,:) = nan 
+    allocate(this%kgw1d_out          (begl:endl,maxind))     ; this%kgw1d_out       (:,:) = nan 
+    allocate(this%kgv1d_out          (begl:endl,maxind))     ; this%kgv1d_out       (:,:) = nan 
+    allocate(this%ksw1d_out          (begl:endl,maxind))     ; this%ksw1d_out       (:,:) = nan 
+    allocate(this%kvg1d_out          (begl:endl,maxind))     ; this%kvg1d_out       (:,:) = nan 
+    allocate(this%ksr1d_out          (begl:endl,maxind))     ; this%ksr1d_out       (:,:) = nan 
+    allocate(this%ksv1d_out          (begl:endl,maxind))     ; this%ksv1d_out       (:,:) = nan 
 
     allocate(this%ksg1d_out          (begl:endl))            ; this%ksg1d_out       (:) = nan   
-    allocate(this%kws1d_out          (begl:endl,nzcanm))     ; this%kws1d_out       (:,:) = nan
-    allocate(this%kvs1d_out          (begl:endl,nzcanm))     ; this%kvs1d_out       (:,:) = nan
+    allocate(this%kws1d_out          (begl:endl,maxind))     ; this%kws1d_out       (:,:) = nan
+    allocate(this%kvs1d_out          (begl:endl,maxind))     ; this%kvs1d_out       (:,:) = nan
     allocate(this%kts1d_out          (begl:endl))            ; this%kts1d_out       (:) = nan
-    allocate(this%krs1d_out          (begl:endl,nzcanm))     ; this%krs1d_out       (:,:) = nan
-
+    allocate(this%krs1d_out          (begl:endl,maxind))     ; this%krs1d_out       (:,:) = nan
 !-------------------[kz.13]Ray tracing test------------------------- 
     allocate(this%xmf_col                  (begc:endc))                      ; this%xmf_col                  (:)   = nan
     allocate(this%xmf_h2osfc_col           (begc:endc))                      ; this%xmf_h2osfc_col           (:)   = nan
