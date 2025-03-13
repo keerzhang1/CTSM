@@ -841,7 +841,7 @@ contains
     real(r8) :: theta                           ! canyon orientation relative to sun (0 <= theta <= pi/2)
     real(r8) :: wbui(bounds%begl:bounds%endl)      ! building width
     real(r8) :: wcan(bounds%begl:bounds%endl)      ! street width
-    real(r8) :: ht_roof2(bounds%begl:bounds%endl)      ! street width
+    !real(r8) :: ht_roof2(bounds%begl:bounds%endl)      ! street width
     real(r8) :: omega(bounds%begl:bounds%endl)      ! omega
     real(r8) :: LAD(bounds%begl:bounds%endl)      ! LAD
     real(r8) :: h1(bounds%begl:bounds%endl)      ! h1
@@ -918,15 +918,7 @@ contains
     ! Gaussian nodes and weights when n = 4
     Gauss_nodes = (/ -0.86113631_r8, -0.33998104_r8,  0.33998104_r8,  0.86113631_r8/)
     Gauss_weights = (/ 0.34785485_r8, 0.65214515_r8, 0.65214515_r8, 0.34785485_r8/)
-    !-------------------------------------------------!
-    
-    do fl = 1,num_urbanl
-       l = filter_urbanl(fl)
-       if (coszen(l) > 0._r8) then
-          theta0(l) = asin(min( (1._r8/((ht_roof2(l)/wcan(l))*tan(max(zen(l),0.000001_r8)))), 1._r8 ))
-       end if
-    end do
-            
+    !-------------------------------------------------!      
     ! Compute theta values to calculate incident solar on wall and road when treetop is above roof
     do fl = 1,num_urbanl
        l = filter_urbanl(fl)
@@ -934,8 +926,8 @@ contains
           tanzen(l) = tan(zen(l))
           sinzen(l)=sin(zen(l))  
           
-          wbui(l)=ht_roof2(l)/(canyon_hwr(l)*(1._r8-wtlunit_roof(l))/wtlunit_roof(l))
-          wcan(l)=ht_roof2(l)/canyon_hwr(l) 
+          wbui(l)=ht_roof(l)/(canyon_hwr(l)*(1._r8-wtlunit_roof(l))/wtlunit_roof(l))
+          wcan(l)=ht_roof(l)/canyon_hwr(l) 
           tanzen_pos= tan(max(zen(l),0.000001_r8))    
 
           call RANDOM_NUMBER(rnum)
@@ -956,52 +948,52 @@ contains
               h2(l)=max(ht_roof(l)*0.6_r8,1.0_r8)
           end if
                     
-          Tree_abr(l)=h1 (l)+ h2(l) - ht_roof2(l)
+          Tree_abr(l)=h1 (l)+ h2(l) - ht_roof(l)
           Tree_at(l)=max(Kbs * Omega(l) * LAD (l),0.0000001_r8)
           
-          if (h2(l)+h1(l) > 2.0_r8*ht_roof2(l)) then
+          if (h2(l)+h1(l) > 2.0_r8*ht_roof(l)) then
              ! should raise an error or adjust the tree height
              ca_order=-1 
-          else if (h2(l)+h1(l) > ht_roof2(l)) then  ! tree above roof
+          else if (h2(l)+h1(l) > ht_roof(l)) then  ! tree above roof
              !Determine ca_order 
-             if (h2(l) > ht_roof2(l)) then
-                 if (ht_roof2(l) < h1(l) + 0.5_r8 * h2(l)) then
+             if (h2(l) > ht_roof(l)) then
+                 if (ht_roof(l) < h1(l) + 0.5_r8 * h2(l)) then
                      ca_order(l) = 1 !zen_ar_wr1<3<2<5<4
                  else  ! H >= h1 + 0.5 * h2
                      ca_order(l) = 2 !zen_ar_wr1<3<2<4<5
                  end if
              else  ! h2 < H
-                 if (ht_roof2(l) < h1(l) + 0.5_r8 * h2(l)) then
+                 if (ht_roof(l) < h1(l) + 0.5_r8 * h2(l)) then
                      ca_order(l) = 3 !zen_ar_wr1<2<3<5<4
                  else  ! H >= h1 + 0.5 * h2
                      ca_order(l) = 4 !zen_ar_wr1<2<3<4<5
                  end if
              end if
-          else if (h2(l)+h1(l) <= ht_roof2(l)) then                 
+          else if (h2(l)+h1(l) <= ht_roof(l)) then                 
                ca_order = 0 ! tree below roof
           end if
           
           if (ca_order(l) == 0) then !tree below roof 
-             theta_br_wr1(l) = asin(min(wcan(l) / ((ht_roof2(l)) * tanzen_pos), 1._r8))  
-             theta_br_wr2(l) = asin(min(wcan(l) / ((ht_roof2(l)-h1(l)) * tanzen_pos), 1._r8))
-             theta_br_wr3(l) = asin(min(wcan(l) / (max((ht_roof2(l)-h1(l)-h2(l)),0.00001_r8) * tanzen_pos), 1._r8))
+             theta_br_wr1(l) = asin(min(wcan(l) / ((ht_roof(l)) * tanzen_pos), 1._r8))  
+             theta_br_wr2(l) = asin(min(wcan(l) / ((ht_roof(l)-h1(l)) * tanzen_pos), 1._r8))
+             theta_br_wr3(l) = asin(min(wcan(l) / (max((ht_roof(l)-h1(l)-h2(l)),0.00001_r8) * tanzen_pos), 1._r8))
             
-             zen_br_wr1(l) = atan(wcan(l) / (max((ht_roof2(l)-h1(l)-h2(l)),0.00001_r8)))
-             zen_br_wr2(l) = atan(wcan(l) / ((ht_roof2(l)-h1(l))))
-             zen_br_wr3(l) = atan(wcan(l) / ((ht_roof2(l))))
+             zen_br_wr1(l) = atan(wcan(l) / (max((ht_roof(l)-h1(l)-h2(l)),0.00001_r8)))
+             zen_br_wr2(l) = atan(wcan(l) / ((ht_roof(l)-h1(l))))
+             zen_br_wr3(l) = atan(wcan(l) / ((ht_roof(l))))
           else              !tree above roof           
              ! Compute critical theta values for wall and road calculations under tree above roof scenario       
              theta_ar_wr5(l) = asin(min(wcan(l) / (Tree_abr(l)* tanzen_pos), 1._r8))
-             theta_ar_wr4(l) = asin(min(wcan(l) / ((ht_roof2(l) - h1(l)) * tanzen_pos), 1._r8))
+             theta_ar_wr4(l) = asin(min(wcan(l) / ((ht_roof(l) - h1(l)) * tanzen_pos), 1._r8))
              theta_ar_wr3(l) = asin(min(wcan(l) / (h2(l) * tanzen_pos), 1.d0))
-             theta_ar_wr2(l) = asin(min(wcan(l) / (ht_roof2(l) * tanzen_pos), 1._r8))
+             theta_ar_wr2(l) = asin(min(wcan(l) / (ht_roof(l) * tanzen_pos), 1._r8))
              theta_ar_wr1(l) = asin(min(wcan(l) / ((h1(l) + h2(l)) * tanzen_pos), 1._r8))     
 
              ! Compute critical zenith values for wall and road calculations
              zen_ar_wr1(l) = atan(wcan(l) / ((h1(l) + h2(l))))
-             zen_ar_wr2(l) = atan(wcan(l) / (ht_roof2(l)))
+             zen_ar_wr2(l) = atan(wcan(l) / (ht_roof(l)))
              zen_ar_wr3(l) = atan(wcan(l) / (h2(l)))
-             zen_ar_wr4(l) = atan(wcan(l) / ((ht_roof2(l) - h1(l))))
+             zen_ar_wr4(l) = atan(wcan(l) / ((ht_roof(l) - h1(l))))
              zen_ar_wr5(l) = atan(wcan(l) / (Tree_abr(l)))
           
              ! Compute critical theta values for roof calculations
@@ -1017,7 +1009,13 @@ contains
       end if
     end do   
     
-
+    do fl = 1,num_urbanl
+       l = filter_urbanl(fl)
+       if (coszen(l) > 0._r8) then
+          theta0(l) = asin(min( (1._r8/((ht_roof(l)/wcan(l))*tan(max(zen(l),0.000001_r8)))), 1._r8 ))
+       end if
+    end do
+        
     do ib = 1,numrad
        do fl = 1,num_urbanl
           l = filter_urbanl(fl)
@@ -1031,7 +1029,7 @@ contains
              !write (6,*) 'zen(l) ',zen(l) 
              !write (6,*) 'ca_order(l) ',ca_order(l) 
              !write (6,*) 'wbui(l),h1(l),h2(l)',wbui(l),h1(l),h2(l)
-             !write (6,*) 'wcan(l),ht_roof2(l)',wcan(l),ht_roof2(l)
+             !write (6,*) 'wcan(l),ht_roof(l)',wcan(l),ht_roof(l)
              !write (6,*) ' sinzen_min, coszen_min', sinzen_min,coszen_min
              
              !write (6,*) 'theta_ar_wr1(l): ',theta_ar_wr1(l) 
@@ -1056,7 +1054,7 @@ contains
                      sdir_sunwall_t(l,ib)=(integration_br_wr_01(theta_br_wr1(l),l)+integration_br_wr_12(theta_br_wr1(l), theta_br_wr2(l),l)+\
                             integration_br_wr_23(theta_br_wr2(l), theta_br_wr3(l),l)+\
                             gaussian_quadrature(integrand_br_wr_23, theta_br_wr2(l), theta_br_wr3(l), Gauss_nodes, Gauss_weights,l)+\
-                            (theta_max- theta_br_wr3(l)) * (wcan(l) / ht_roof2(l)))/theta_max
+                            (theta_max- theta_br_wr3(l)) * (wcan(l) / ht_roof(l)))/theta_max
                      sdir_road_t(l,ib)=integration_br_road(theta_br_wr1(l),l)/theta_max
                  else if (zen(l)>zen_br_wr2(l)) then
                      sdir_sunwall_t(l,ib)=(integration_br_wr_01(theta_br_wr1(l),l)+integration_br_wr_12(theta_br_wr1(l), theta_br_wr2(l),l)+\
@@ -1284,8 +1282,8 @@ contains
 
             ! incident solar radiation on wall and road integrated over all canyon orientations (0 <= theta <= pi/2)
             sdir_road_o(l,ib) = 1.0_r8 *                                    &
-                 (2._r8*theta0(l)/rpi - 2./rpi*(ht_roof2(l)/wcan(l))*tanzen(l)*(1._r8-cos(theta0(l))))              
-            sdir_sunwall_o(l,ib) = 2._r8 * 1.0_r8  * ((1._r8/(ht_roof2(l)/wcan(l)))* &
+                 (2._r8*theta0(l)/rpi - 2./rpi*(ht_roof(l)/wcan(l))*tanzen(l)*(1._r8-cos(theta0(l))))              
+            sdir_sunwall_o(l,ib) = 2._r8 * 1.0_r8  * ((1._r8/(ht_roof(l)/wcan(l)))* &
                  (0.5_r8-theta0(l)/rpi) + (1._r8/rpi)*tanzen(l)*(1._r8-cos(theta0(l))))
          else
             sdir_road_o(l,ib) = 0._r8
@@ -1324,10 +1322,10 @@ contains
       exp_m_h2 = exp(-Tree_at(l) * (h2(l) / coszen_min))
       term1 = h1(l) * tanzen(l) * exp_m_h2
       term2 = (sinzen(l)/Tree_at(l)) * (1.0_r8 - exp_m_h2)
-      term3 = (ht_roof2(l) - h1(l) - h2(l)) * tanzen(l)
+      term3 = (ht_roof(l) - h1(l) - h2(l)) * tanzen(l)
 
       ! Final result
-      value = (1.0_r8 / ht_roof2(l)) * (term1 + term2 + term3) * (1.0_r8 - cos(theta_in1))
+      value = (1.0_r8 / ht_roof(l)) * (term1 + term2 + term3) * (1.0_r8 - cos(theta_in1))
     end function integration_br_wr_01
 
     function integration_br_wr_12(theta_in1, theta_in2, l) result(value)
@@ -1341,11 +1339,11 @@ contains
 
         term1 = exp_m_h2 * wcan(l) * (theta_in2 - theta_in1)
         term2 = sinzen(l)/Tree_at(l)  * (1.0_r8 - exp_m_h2) &
-              - exp_m_h2 * (ht_roof2(l) - h1(l)) * tanzen(l) &
+              - exp_m_h2 * (ht_roof(l) - h1(l)) * tanzen(l) &
               - Tree_abr(l) * tanzen(l)
         term3 = cos(theta_in1) - cos(theta_in2)
 
-        value = (1.0_r8 / ht_roof2(l)) * (term1 + term2 * term3)
+        value = (1.0_r8 / ht_roof(l)) * (term1 + term2 * term3)
     end function integration_br_wr_12
 
     function integrand_br_wr_23(theta, l) result(value)
@@ -1359,7 +1357,7 @@ contains
 
         ! Compute exponential term
         exp_m_W_h1_h2_H = exp(-Tree_at(l) * ((wcan(l) / (max(sin(theta),0.00001_r8) * sinzen_min)) + (Tree_abr(l) / coszen_min)))
-        value = ((sin_theta * sinzen(l)) / (ht_roof2(l) * Tree_at(l))) * (1.0_r8 - exp_m_W_h1_h2_H)
+        value = ((sin_theta * sinzen(l)) / (ht_roof(l) * Tree_at(l))) * (1.0_r8 - exp_m_W_h1_h2_H)
     end function integrand_br_wr_23
 
     function integration_br_wr_23(theta_in2, theta_in3, l) result(value)
@@ -1368,7 +1366,7 @@ contains
         real(8), intent(in) :: theta_in2, theta_in3
         real(8)            :: value
 
-        value = (-Tree_abr(l) * tanzen(l) * (cos(theta_in2) - cos(theta_in3))) / ht_roof2(l)
+        value = (-Tree_abr(l) * tanzen(l) * (cos(theta_in2) - cos(theta_in3))) / ht_roof(l)
     end function integration_br_wr_23
 
     function integration_br_road(theta_in1,l) result(value)
@@ -1378,7 +1376,7 @@ contains
        real(8) :: value, exp_m_h2
 
        exp_m_h2 = exp(-Tree_at(l) * h2(l) / coszen_min)
-       value = (1.0_r8 / wcan(l)) * (wcan(l) * theta_in1 - ht_roof2(l) * tanzen(l) * (1.0_r8 - cos(theta_in1))) * exp_m_h2
+       value = (1.0_r8 / wcan(l)) * (wcan(l) * theta_in1 - ht_roof(l) * tanzen(l) * (1.0_r8 - cos(theta_in1))) * exp_m_h2
     end function integration_br_road
     
     !------------------------wall---------------------------
@@ -1393,7 +1391,7 @@ contains
        exp_H_h1_h2 = exp(Tree_at(l) * ((-Tree_abr(l)) / coszen_min))
        term1 = h1(l) * max(tanzen(l),0.0001_r8) * exp_m_h2
        term2 = max(sinzen(l),0.0001_r8) / Tree_at(l) * (exp_H_h1_h2 - exp_m_h2)
-       value = 1 / ht_roof2(l) * (term1 + term2) * (1-cos(max(theta_in1,0.0001)))       
+       value = 1 / ht_roof(l) * (term1 + term2) * (1-cos(max(theta_in1,0.0001)))       
     end function integration_ar_wr_01_ca4321
     
     function integrand_ar_wr_12_13_ca4321(theta,l) result(value) !checked
@@ -1404,7 +1402,7 @@ contains
        real(8)            :: exp_m_W_h1
 
        exp_m_W_h1 = exp(-Tree_at(l) * ((wcan(l) / (max(sin(theta),0.00001_r8) * sinzen_min)) - (h1(l) / coszen_min)))
-       value = (sin(theta) / ht_roof2(l))*sinzen(l)/Tree_at(l)* exp_m_W_h1 
+       value = (sin(theta) / ht_roof(l))*sinzen(l)/Tree_at(l)* exp_m_W_h1 
     end function integrand_ar_wr_12_13_ca4321
 
     function integration_ar_wr_12_13_part2_ca4321(theta_in_s, theta_in_l,l) result(value) !checked
@@ -1419,7 +1417,7 @@ contains
        term1 = wcan(l) * exp_m_h2 * (theta_in_l-theta_in_s)
        term2 = (h2(l) * tanzen(l)  + 2.0_r8 * (sinzen(l)  / Tree_at(l))) * exp_m_h2 * (cos(theta_in_s) - cos(theta_in_l))
        term3 = (sinzen(l)  / Tree_at(l)) * exp_H_h1_h2 * (cos(theta_in_s) - cos(theta_in_l))
-       value =(1.0_r8 / ht_roof2(l)) * (term1 - term2 + term3)
+       value =(1.0_r8 / ht_roof(l)) * (term1 - term2 + term3)
     end function integration_ar_wr_12_13_part2_ca4321
 
     function integration_ar_wr_32_ca21(theta_in_s, theta_in_l,l) result(value) !checked
@@ -1430,7 +1428,7 @@ contains
        real(8)             :: exp_H_h1_h2
        
        exp_H_h1_h2 = exp(Tree_at(l) * ((-Tree_abr(l)) / coszen_min ))
-       value = (sinzen(l)/ht_roof2(l)  / Tree_at(l)) * exp_H_h1_h2 * (cos(theta_in_s) - cos(theta_in_l))
+       value = (sinzen(l)/ht_roof(l)  / Tree_at(l)) * exp_H_h1_h2 * (cos(theta_in_s) - cos(theta_in_l))
     end function integration_ar_wr_32_ca21
 
     function integrand_ar_wr_32_ca21(theta,l) result(value) !checked
@@ -1443,7 +1441,7 @@ contains
       exp_m_W = exp(-Tree_at(l)* (wcan(l) / (sinzen_min   * sin_theta)))
       exp_m_W_h1 = exp(-Tree_at(l) * ((wcan(l) / (sin_theta * sinzen_min )) - (h1(l) /coszen_min)))
       term1=(h2(l)*tanzen(l)-wcan(l)/sin_theta-2*sinzen_min/Tree_at(l))
-      value = (sin_theta / ht_roof2(l)) * (term1*exp_m_W+sinzen(l)/Tree_at(l)*exp_m_W_h1)
+      value = (sin_theta / ht_roof(l)) * (term1*exp_m_W+sinzen(l)/Tree_at(l)*exp_m_W_h1)
     end function integrand_ar_wr_32_ca21
     
     function integration_ar_wr_23_ca43(theta_in2, theta_in3,l) result(value)
@@ -1452,12 +1450,12 @@ contains
       real(8), intent(in) :: theta_in2, theta_in3
       real(8) :: value, exp_m_H_h1, exp_H_h1_h2, exp_m_h2, exp_m_2h2, term1, term2
       
-      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof2(l) - h1(l)) / coszen_min)
+      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_min)
       exp_H_h1_h2 = exp(Tree_at(l) * (-Tree_abr(l)) /coszen_min)
       exp_m_h2 = exp(-Tree_at(l) * (h2(l) / coszen_min ))
       term1 = (sinzen(l)  / (Tree_at(l))) * (exp_m_H_h1 + exp_H_h1_h2 - 2 * exp_m_h2)-h2(l) * tanzen(l)  * exp_m_h2
       term2 = wcan(l) * exp_m_h2  * (theta_in3- theta_in2)
-      value = (1 / ht_roof2(l)) * (term1 * (cos(theta_in2) - cos(theta_in3)) + term2)
+      value = (1 / ht_roof(l)) * (term1 * (cos(theta_in2) - cos(theta_in3)) + term2)
     end function integration_ar_wr_23_ca43
 
     function integrand_ar_wr_34_35_24_25_ca4321(theta,l) result(value) !checked
@@ -1468,7 +1466,7 @@ contains
       
       sin_theta = max(sin(theta),0.00001_r8)
       exp_m_W = exp(-Tree_at(l)* (wcan(l) / (sinzen_min   * sin_theta)))
-      value = (1_r8 / ht_roof2(l)) * (h2(l) * tanzen(l)  - wcan(l) / sin_theta - 2 * sinzen (l) / (Tree_at(l))) * exp_m_W * sin_theta
+      value = (1_r8 / ht_roof(l)) * (h2(l) * tanzen(l)  - wcan(l) / sin_theta - 2 * sinzen (l) / (Tree_at(l))) * exp_m_W * sin_theta
     end function integrand_ar_wr_34_35_24_25_ca4321
 
     function integration_ar_wr_34_35_24_25_part2_ca4321(theta_in_s, theta_in_l,l) result(value) !checked
@@ -1478,8 +1476,8 @@ contains
       real(8) :: value, exp_m_h2_h1_H, exp_m_H_h1
       
       exp_m_h2_h1_H = exp(-Tree_at(l) * Tree_abr(l) / coszen_min)
-      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof2(l) - h1(l)) / coszen_min)
-      value = (1_r8 / ht_roof2(l)) * (sinzen_min  / Tree_at(l)) * (exp_m_h2_h1_H + exp_m_H_h1) * &
+      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_min)
+      value = (1_r8 / ht_roof(l)) * (sinzen_min  / Tree_at(l)) * (exp_m_h2_h1_H + exp_m_H_h1) * &
               (cos(theta_in_s) - cos(theta_in_l))
     end function integration_ar_wr_34_35_24_25_part2_ca4321
 
@@ -1491,7 +1489,7 @@ contains
       
       sin_theta = max(sin(theta),0.00001_r8)
       exp_m_W = exp(-Tree_at(l) * (wcan(l) / (sin_theta * sinzen_min )))
-      value = (1.0_r8 / ht_roof2(l)) * (Tree_abr(l) * tanzen(l) * exp_m_W - (sinzen(l) / (Tree_at(l))) * exp_m_W) * sin_theta
+      value = (1.0_r8 / ht_roof(l)) * (Tree_abr(l) * tanzen(l) * exp_m_W - (sinzen(l) / (Tree_at(l))) * exp_m_W) * sin_theta
     end function integrand_ar_wr_45_ca42
 
     function integration_ar_wr_45_part2_ca42(theta_in4, theta_in5,l) result(value)
@@ -1501,7 +1499,7 @@ contains
       real(8) :: value, exp_m_h2_h1_H
       
       exp_m_h2_h1_H = exp(-Tree_at(l) * (Tree_abr(l)) / coszen_min)
-      value = (1_r8 / ht_roof2(l)) * (sinzen(l) / (Tree_at(l))) * exp_m_h2_h1_H * (cos(theta_in4) - cos(theta_in5))
+      value = (1_r8 / ht_roof(l)) * (sinzen(l) / (Tree_at(l))) * exp_m_h2_h1_H * (cos(theta_in4) - cos(theta_in5))
     end function integration_ar_wr_45_part2_ca42
 
     function integrand_ar_wr_54_ca31(theta,l) result(value) !checked
@@ -1512,7 +1510,7 @@ contains
       
       sin_theta = max(sin(theta),0.0001_r8)
       exp_m_W = exp(-Tree_at(l) * (wcan(l) / (sin_theta *sinzen_min )))
-      value = sin_theta / ht_roof2(l) * exp_m_W *((ht_roof2(l)-h1(l))*tanzen(l)-sinzen(l)/Tree_at(l))
+      value = sin_theta / ht_roof(l) * exp_m_W *((ht_roof(l)-h1(l))*tanzen(l)-sinzen(l)/Tree_at(l))
     end function integrand_ar_wr_54_ca31
  
     function integration_ar_wr_54_part2_ca31(theta_in5, theta_in4,l) result(value) !checked
@@ -1521,8 +1519,8 @@ contains
       real(8), intent(in) :: theta_in4, theta_in5
       real(8) :: value, exp_m_H_h1
       
-      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof2(l) - h1(l)) / coszen_min)
-      value =  sinzen(l)/ht_roof2(l)/Tree_at(l)* exp_m_H_h1* (cos(theta_in5) - cos(theta_in4))
+      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_min)
+      value =  sinzen(l)/ht_roof(l)/Tree_at(l)* exp_m_H_h1* (cos(theta_in5) - cos(theta_in4))
     end function integration_ar_wr_54_part2_ca31
     
     function integrand_ar_wr_45pi_ca1234(theta,l) result(value) !checked
@@ -1531,7 +1529,7 @@ contains
       real(8), intent(in) :: theta
       real(8) :: value, exp_m_W
       exp_m_W = exp(-Tree_at(l) * wcan(l) / (sinzen_min *max(sin(theta),0.0001_r8)))
-      value = (wcan(l)/ ht_roof2(l)) * exp_m_W
+      value = (wcan(l)/ ht_roof(l)) * exp_m_W
     end function integrand_ar_wr_45pi_ca1234
     
     !------------------------road---------------------------  
@@ -1541,7 +1539,7 @@ contains
        real(8), intent(in) :: theta_in1
        real(8) :: value, exp_m_H_h1, exp_m_h1_h2_H, exp_m_h2, term1, term2
        
-       exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof2(l) - h1(l)) / coszen_min)
+       exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_min)
        exp_m_h1_h2_H = exp(-Tree_at(l) * (Tree_abr(l)) / coszen_min)
        exp_m_h2 = exp(-Tree_at(l) * (h2(l) / coszen_min))
        term1 = exp_m_H_h1 * ((sinzen(l) / Tree_at(l)) * (1.0_r8 - exp_m_h1_h2_H)) * (1.0_r8 - cos(theta_in1))
@@ -1566,7 +1564,7 @@ contains
        real(8), intent(in) :: theta_in1, theta_in2
        real(8) :: value, exp_m_H_h1
 
-       exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof2(l) - h1(l)) / coszen_min)
+       exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_min)
        value = (1/ wcan(l))*(sinzen(l)  / Tree_at(l)) * exp_m_H_h1 * (cos(theta_in1) - cos(theta_in2))
     end function integration_ar_wr_12_road_part_ca4321
 
@@ -1680,6 +1678,8 @@ contains
     end function integrand_ar_WB_BW_3pi
          
   end subroutine incident_direct_tree
+
+
 
 
      
