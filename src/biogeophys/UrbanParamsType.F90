@@ -218,7 +218,8 @@ contains
     integer             :: maxbhind          ! Maximum vertical layer for highest building or tree
     ! confirm: is this a correct definition for maxind?
     ! Can we combine maxind and maxbhind as one vertical layer index? (keep maxind)
-    integer             :: maxind            ! Vertical layer index for sky?
+    ! Yes 
+    integer             :: maxind            ! Index of the highest level with roofs or the highest layer with tree foliage, whichever is highe
     real(r8)            :: lad(nzcanm)       ! Leaf area density in the canyon column [m-1]
     real(r8)            :: lads(nzcanm)      ! Leaf area density in the canyon column [m-1] for shortwave calcs
     real(r8)            :: ladl(nzcanm)      ! Leaf area density in the canyon column [m-1] for longwave calcs
@@ -233,7 +234,7 @@ contains
     real(r8)            :: hsky              ! A height scaling factor for sky ray calculations
     integer             :: nrays             ! Number of rays from foliage layer (Number from surfaces will be half)
     ! confirm: what is the correct definition of nsky?
-    integer             :: nsky              ! Add additional loops in sky calculation if nsky > 1
+    integer             :: nsky              ! Controls the number of rays starting from the sky for view factor ray tracing. Default is 1
 
     !Output of view factor calculation
     !------
@@ -1272,7 +1273,7 @@ contains
     real(r8)            :: rayy                          ! Ray y-coordinate
     real(r8)            :: rayx                          ! Ray x-coordinate 
     ! confirm: is this defition of xfr correct?  
-    real(r8)            :: xfr                           ! A fraction position for ray x-coordinate
+    real(r8)            :: xfr                           ! Horizontal ray position within the current canyon-building iteration, normalized by combined canyon-building width
     integer             :: kk,nk,ii                      ! Indices
     real(r8)            :: phi, phi1                     ! Azimuthal angle
     real(r8)            :: h                             ! The height of the evenly-spaced points on the sphere
@@ -1372,7 +1373,7 @@ contains
     
     call init_random_seed(1234)
     call RANDOM_NUMBER(rnum)
-
+    ! discuss: reply scotts's comment
     ! Generate evenly-spaced points on a sphere of radius 1.
     !----------------------------------------------------------------------------
     ! (This code is originally written by Joseph O'Rourke and Min Xu, June 1997,
@@ -1551,6 +1552,7 @@ contains
              call RANDOM_NUMBER(rnum)
              ! Starting at a location at hsky times the highest tree/building, spread out evenly in the x-direction 
              ! confirm: not sure why nsrays (=2?) is used here.
+             ! To make sure rayx is between 0 and 1
              rayx=(real((izcan-1)*nsky+ii,r8)-rnum)/real(nsrays,r8)*xdom
              if (hsky < 1._r8) then
                 write(6,*)'hsky (ray start height for sky diffuse view &
@@ -2321,9 +2323,9 @@ contains
        rfact=blde*raystr*pbinc/max(1.e-6_r8,pbinc)*sseff(rayyint+1)
        
        ! confirm: this code below is commented out. I wonder if we should include this line. 
-       ! Currently, the view factor from sky to roof could be > 0. Maybe including this line can solve it?
+       ! Currently, the view factor from sky to roof could be > 1. Maybe including this line can solve it?
        ! important, otherwise could end up with negative ray strength!
-       !          rfact=min(rfact,raystr)        
+       rfact=min(rfact,raystr)        
                           
        vfr(rayyint+1)=vfr(rayyint+1)+rfact                 
        raystr=raystr-rfact
