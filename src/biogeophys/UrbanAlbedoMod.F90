@@ -22,7 +22,9 @@ module UrbanAlbedoMod
   use SurfaceAlbedoType , only : surfalb_type
   use LandunitType      , only : lun                
   use ColumnType        , only : col                
-  use PatchType         , only : patch                
+  use PatchType         , only : patch  
+  use GridcellType      , only : grc    
+  use atm2lndType       , only : atm2lnd_type          
   !
   ! !PUBLIC TYPES:
   implicit none
@@ -48,7 +50,7 @@ contains
   !-----------------------------------------------------------------------
   subroutine UrbanAlbedo (bounds, num_urbanl, filter_urbanl, &
        num_urbanc, filter_urbanc, num_urbanp, filter_urbanp, &
-       waterstatebulk_inst, waterdiagnosticbulk_inst, urbanparams_inst, solarabs_inst, surfalb_inst) 
+       waterstatebulk_inst, waterdiagnosticbulk_inst, urbanparams_inst, solarabs_inst, surfalb_inst,atm2lnd_inst) 
     !
     ! !DESCRIPTION: 
     ! Determine urban landunit component albedos
@@ -77,6 +79,8 @@ contains
     type(urbanparams_type) , intent(inout) :: urbanparams_inst
     type(solarabs_type)    , intent(inout) :: solarabs_inst
     type(surfalb_type)     , intent(inout) :: surfalb_inst
+    type(atm2lnd_type), intent(in)        :: atm2lnd_inst
+    
     !
     ! !LOCAL VARIABLES:
     integer  :: fl,fp,fc,g,l,p,c,ib                                  ! indices
@@ -121,7 +125,8 @@ contains
     real(r8) :: sdir_sunwall_t       (bounds%begl:bounds%endl, numrad) ! direct beam solar radiation (per unit wall area) incident on sunlit wall per unit incident flux
     real(r8) :: sdir_shadewall_t     (bounds%begl:bounds%endl, numrad) ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux
     real(r8) :: sdir_roof_t     (bounds%begl:bounds%endl, numrad) ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux
-    
+    real(r8) :: sdir_force     (bounds%begl:bounds%endl, numrad) ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux
+    real(r8) :: forc_solad             (bounds%begl:bounds%endl, numrad)         ! forced solar
     integer              :: start_time, end_time, clock_rate    ! Timekeeping variables
     real(r8)            :: elapsed_time                        ! Elapsed time     
     !-----------------------------------------------------------------------
@@ -158,6 +163,7 @@ contains
          sdir_road_t               => solarabs_inst%sdir_road_t_lun              , & ! Output:  [real(r8) (:,:) ]  flux absorbed by canopy per unit direct flux
          sdir_sunwall_t               => solarabs_inst%sdir_sunwall_t_lun            , & ! Output:  [real(r8) (:,:) ]  flux absorbed by canopy per unit direct flux
          sdir_roof_t                => solarabs_inst%sdir_roof_t_lun               , & ! Output:  [real(r8) (:,:) ]  flux absorbed by canopy per unit direct flux
+         sdir_force                => solarabs_inst%sdir_force_lun               , & ! Output:  [real(r8) (:,:) ]  flux absorbed by canopy per unit direct flux
 
          sdir_road               => solarabs_inst%sdir_road_lun              , & ! Output:  [real(r8) (:,:) ]  flux absorbed by canopy per unit direct flux
          sdir_sunwall               => solarabs_inst%sdir_sunwall_lun            , & ! Output:  [real(r8) (:,:) ]  flux absorbed by canopy per unit direct flux
@@ -181,6 +187,9 @@ contains
          albgrd_hst         => surfalb_inst%albgrd_hst_col          , & ! Output:  [real(r8) (:,:) ]  ground albedo (direct) for history files              
          albgri_hst         => surfalb_inst%albgri_hst_col          , & ! Output:  [real(r8) (:,:) ]  ground albedo (diffuse) for history files
 ! end add new snicar
+         begc               => bounds%begc                          , &
+         endc               => bounds%endc                          , &
+         
          begl               => bounds%begl                          , &
          vf_sr              => urbanparams_inst%vf_sr               , & ! Input:  [real(r8) (:) ]  view factor of sky for road
          vf_sw              => urbanparams_inst%vf_sw               , & ! Input:  [real(r8) (:) ]  view factor of sky for one wall
@@ -200,6 +209,9 @@ contains
          l = filter_urbanl(fl)
          g = lun%gridcell(l)
          coszen(l) = surfalb_inst%coszen_col(coli(l))  ! Assumes coszen for each column are the same
+         do ib = 1, numrad
+            forc_solad(l,ib) = atm2lnd_inst%forc_solad_downscaled_col(coli(l),ib)  ! Assumes forced solar for each column are the same
+         end do
          zen(l)    = acos(coszen(l))
       end do
 
@@ -292,7 +304,7 @@ contains
             sdir_roof_t(l,:)   = 0._r8
             sdir_sunwall(l,:)      = 0._r8
             sdir_road(l,:)      = 0._r8
-            
+            sdir_force(l,:)   = 0._r8
          end do
       end do
 
@@ -324,10 +336,12 @@ contains
                 coszen(begl:endl), &
                 zen(begl:endl), &
                 sdir(begl:endl, :), &
+                forc_solad(begl:endl, :), &
                 sdir_road_t(begl:endl, :), &
                 sdir_sunwall_t(begl:endl, :), &
                 sdir_shadewall_t(begl:endl, :), &
-                sdir_roof_t(begl:endl, :))   
+                sdir_roof_t(begl:endl, :),&
+                sdir_force(begl:endl, :))   
                        
             call incident_direct (bounds, &
                  num_urbanl, filter_urbanl, &
@@ -769,42 +783,37 @@ contains
     integral = 0.5_8 * (b - a) * sum
   end function gaussian_quadrature
   
-!-----------------------------------------------------------------------
+
+!---------------------------------------------------------------------------------
   subroutine incident_direct_tree (bounds,num_urbanl, filter_urbanl, &
-       canyon_hwr, wtlunit_roof,ht_roof,coszen, zen,sdir, sdir_road_t, sdir_sunwall_t, sdir_shadewall_t, sdir_roof_t)
+       canyon_hwr, wtlunit_roof,ht_roof,coszen, zen,sdir, forc_solad,sdir_road_t, sdir_sunwall_t,&
+        sdir_shadewall_t, sdir_roof_t,sdir_force)
+
     !
-    ! !DESCRIPTION: 
-    ! Direct beam solar radiation incident on walls and road in urban canyon
+    ! !DESCRIPTION:
+    ! Direct beam solar radiation incident on urban canyon surfaces (road, walls, roof),
+    ! accounting for the presence of trees.
     !
     !                           Sun
-    !                            /
-    !             roof          /
-    !            ------        /---            -
-    !                 |       / |              |
-    !    sunlit wall  |      /  | shaded wall  h
+    !                  ........  /
+    !             roof ........ /
+    !            ------..tree. /---            -
+    !                 |...... /.|              |
+    !    sunlit wall  |..... /..| shaded wall  h
     !                 |     /   |              |
-    !                 -----/-----              -
+    !                 |    /    |              |
+    !                 ----------               -
     !                    road
     !                 <--- w --->
-    !
-    ! Method:
-    ! Road          = Horizontal surface. Account for shading by wall. Integrate over all canyon orientations
-    ! Wall (sunlit) = Adjust horizontal radiation for 90 degree surface. Account for shading by opposing wall.
-    !                 Integrate over all canyon orientations
-    ! Wall (shaded) = 0
-    !
-    ! Conservation check: Total incoming direct beam (sdir) = sdir_road + (sdir_shadewall + sdir_sunwall)*canyon_hwr
-    ! Multiplication by canyon_hwr scales wall fluxes (per unit wall area) to per unit ground area
     !
     ! Source: Masson, V. (2000) A physically-based scheme for the urban energy budget in 
     ! atmospheric models. Boundary-Layer Meteorology 94:357-397
     !
-    ! This analytical solution from Masson (2000) agrees with the numerical solution to
-    ! within 0.6 W/m**2 for sdir = 1000 W/m**2 and for all H/W from 0.1 to 10 by 0.1
-    ! and all solar zenith angles from 1 to 90 deg by 1
-    !
+    ! When tree is absent, this solution reduces to classical analytical solution from Masson (2000)
+    ! 
     ! !USES:
     use clm_varcon, only : rpi
+
     !
     ! !ARGUMENTS:
     type(bounds_type), intent(in) :: bounds                      
@@ -815,76 +824,79 @@ contains
     real(r8), intent(in)  :: ht_roof( bounds%begl: )             ! height of urban roof (m)
     real(r8), intent(in)  :: coszen( bounds%begl: )              ! cosine solar zenith angle [landunit]
     real(r8), intent(in)  :: zen( bounds%begl: )                 ! solar zenith angle (radians) [landunit]
-    real(r8), intent(in)  :: sdir( bounds%begl: , 1: )           ! direct beam solar radiation incident on horizontal surface [landunit, numrad]
-    real(r8), intent(out) :: sdir_road_t( bounds%begl: , 1: )      ! direct beam solar radiation incident on road per unit incident flux [landunit, numrad]
-    real(r8), intent(out) :: sdir_sunwall_t( bounds%begl: , 1: )   ! direct beam solar radiation (per unit wall area) incident on sunlit wall per unit incident flux [landunit, numrad]
-    real(r8), intent(out) :: sdir_shadewall_t( bounds%begl: , 1: ) ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux [landunit, numrad]
-    real(r8), intent(out) :: sdir_roof_t( bounds%begl: , 1: ) ! direct beam solar radiation (per unit wall area) incident on roof per unit incident flux [landunit, numrad]      
-    
+    real(r8), intent(in)  :: sdir( bounds%begl: , 1: )             ! direct beam solar radiation incident on horizontal surface [landunit, numrad]
+    real(r8), intent(out) :: sdir_road_t( bounds%begl: , 1: )      ! direct beam solar radiation incident on road per unit incident flux with tree attenuation [landunit, numrad]
+    real(r8), intent(out) :: sdir_sunwall_t( bounds%begl: , 1: )   ! direct beam solar radiation (per unit wall area) incident on sunlit wall per unit incident flux with tree attenuation [landunit, numrad]
+    real(r8), intent(out) :: sdir_shadewall_t( bounds%begl: , 1: ) ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux with tree attenuation [landunit, numrad]
+    real(r8), intent(out) :: sdir_roof_t( bounds%begl: , 1: )      ! direct beam solar radiation (per unit wall area) incident on roof per unit incident flux with tree attenuation [landunit, numrad] 
+       
+    real(r8), intent(out) :: sdir_force( bounds%begl: , 1: )       ! direct beam radiation  (vis=forc_sols , nir=forc_soll ) for diagnosis   
+    real(r8), intent(in) :: forc_solad(bounds%begl:, :)            ! direct beam radiation  (vis=forc_sols , nir=forc_soll ) for diagnosis     
     ! otherwise, write a subroutine legendre_gauss_nodes(n, x, w) to calculate the nodes and weights
     !
     ! !LOCAL VARIABLES:
-    integer  :: fl,l,i,ib                       ! indices
+    integer  :: fl,l,g,i,ib                       ! indices
     logical  :: numchk = .false.                ! true => perform numerical check of analytical solution
     real(r8) :: tanzen(bounds%begl:bounds%endl) ! tan(zenith angle)
-    real(r8) :: tanzen_pos                      ! tan(zenith angle)
-    real(r8) :: coszen_min                      ! tan(zenith angle)
-    real(r8) :: sinzen_min                      ! tan(zenith angle)
-    real(r8) :: sinzen(bounds%begl:bounds%endl) ! sin(zenith angle)
-    real(r8) :: swall_projected                 ! direct beam solar radiation (per unit ground area) incident on wall
+    real(r8) :: sinzen(bounds%begl:bounds%endl) ! sin(zenith angle)    
+    real(r8) :: latdeg                          ! latdeg
+    real(r8) :: londeg                          ! londeg
+    real(r8) :: tanzen_min                      ! minimum tan(zenith angle) (>0)
+    real(r8) :: coszen_min                      ! minimum cos(zenith angle) (>0)
+    real(r8) :: sinzen_min                      ! minimum sin(zenith angle) (>0)
+    ! I haven't add conservation check yet
+    real(r8) :: swall_projected_t               ! direct beam solar radiation (per unit ground area) incident on wall
     real(r8) :: err1(bounds%begl:bounds%endl)   ! energy conservation error
-    real(r8) :: err2(bounds%begl:bounds%endl)   ! energy conservation error
-    real(r8) :: err3(bounds%begl:bounds%endl)   ! energy conservation error
     real(r8) :: sumr                            ! sum of sroad for each orientation (0 <= theta <= pi/2)
     real(r8) :: sumw                            ! sum of swall for each orientation (0 <= theta <= pi/2)
     real(r8) :: num                             ! number of orientations
     real(r8) :: theta                           ! canyon orientation relative to sun (0 <= theta <= pi/2)
-    real(r8) :: wbui(bounds%begl:bounds%endl)      ! building width
-    real(r8) :: wcan(bounds%begl:bounds%endl)      ! street width
-    !real(r8) :: ht_roof2(bounds%begl:bounds%endl)      ! street width
-    real(r8) :: omega(bounds%begl:bounds%endl)      ! omega
-    real(r8) :: LAD(bounds%begl:bounds%endl)      ! LAD
-    real(r8) :: h1(bounds%begl:bounds%endl)      ! h1
-    real(r8) :: h2(bounds%begl:bounds%endl)      ! h2
-    real(r8) :: Tree_at(bounds%begl:bounds%endl)      ! tree attenuation term
+    real(r8) :: wbui(bounds%begl:bounds%endl)   ! building width
+    real(r8) :: wcan(bounds%begl:bounds%endl)   ! street width
+    real(r8) :: omega(bounds%begl:bounds%endl)  ! omega
+    real(r8) :: LAD(bounds%begl:bounds%endl)    ! LAD
+    real(r8) :: h1(bounds%begl:bounds%endl)     ! bottom of tree crown (<roof height)
+    real(r8) :: h2(bounds%begl:bounds%endl)     ! top of tree crown (<2*roof height)
+    real(r8) :: Tree_at(bounds%begl:bounds%endl)       ! tree attenuation term (Kbs * Omega * LAD)
     real(r8) :: Tree_abr(bounds%begl:bounds%endl)      ! tree height above roof
-    integer  :: ca_order(bounds%begl:bounds%endl)      ! order of critical zenith angles
-    real(r8) :: sdir_roof_t_shaded(bounds%begl:bounds%endl)! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side 
+    integer  :: ca_order(bounds%begl:bounds%endl)      ! order of critical zenith angles (types 0,1,2,3,4)
+    real(r8) ::  sdir_roof_t_shaded(bounds%begl:bounds%endl)! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side 
     
-    real(8)  :: Kbs                           ! Kbs
-    real(8)  :: Gauss_nodes(4), Gauss_weights(4)   ! temporary; they will be inputs later
-    real(8)  ::  pi
-    real(8)  ::  theta_max
-    real(r8) :: theta_ar_wr5(bounds%begl:bounds%endl)
-    real(r8) :: theta_ar_wr4(bounds%begl:bounds%endl)
-    real(r8) :: theta_ar_wr3(bounds%begl:bounds%endl)
-    real(r8) :: theta_ar_wr2(bounds%begl:bounds%endl)
-    real(r8) :: theta_ar_wr1(bounds%begl:bounds%endl)
-    real(r8) :: zen_ar_wr5(bounds%begl:bounds%endl)
-    real(r8) :: zen_ar_wr4(bounds%begl:bounds%endl)
-    real(r8) :: zen_ar_wr3(bounds%begl:bounds%endl)
-    real(r8) :: zen_ar_wr2(bounds%begl:bounds%endl)
-    real(r8) :: zen_ar_wr1(bounds%begl:bounds%endl)
+    real(8)  :: Kbs                             ! Foliage extinction coefficient
+    real(8)  :: Gauss_nodes(4), Gauss_weights(4)      ! Nodes and weights used in gaussian quadrature integration
+    real(8)  ::  theta_max                            ! pi/2
+    ! theta : angle between the sun direction and the along-canyon axis
+    real(r8) :: theta_ar_wr5(bounds%begl:bounds%endl) ! The 5th critical theta angle for calculating wall & road fluxes in tree-above-roof scenario
+    real(r8) :: theta_ar_wr4(bounds%begl:bounds%endl) ! The 4th critical theta angle for calculating wall & road fluxes in tree-above-roof scenario
+    real(r8) :: theta_ar_wr3(bounds%begl:bounds%endl) ! The 3th critical theta angle for calculating wall & road fluxes in tree-above-roof scenario
+    real(r8) :: theta_ar_wr2(bounds%begl:bounds%endl) ! The 2nd critical theta angle for calculating wall & road fluxes in tree-above-roof scenario
+    real(r8) :: theta_ar_wr1(bounds%begl:bounds%endl) ! The 1st critical theta angle for calculating wall & road fluxes in tree-above-roof scenario
+    real(r8) :: zen_ar_wr5(bounds%begl:bounds%endl)   ! The 5th critical zenith angle for calculating wall & road fluxes in tree-above-roof scenario
+    real(r8) :: zen_ar_wr4(bounds%begl:bounds%endl)   ! The 4th critical zenith angle for calculating wall & road fluxes in tree-above-roof scenario
+    real(r8) :: zen_ar_wr3(bounds%begl:bounds%endl)   ! The 3th critical zenith angle for calculating wall & road fluxes in tree-above-roof scenario
+    real(r8) :: zen_ar_wr2(bounds%begl:bounds%endl)   ! The 2nd critical zenith angle for calculating wall & road fluxes in tree-above-roof scenario
+    real(r8) :: zen_ar_wr1(bounds%begl:bounds%endl)   ! The 1st critical zenith angle for calculating wall & road fluxes in tree-above-roof scenario
     
-    real(r8) :: theta_br_wr3(bounds%begl:bounds%endl)
-    real(r8) :: theta_br_wr2(bounds%begl:bounds%endl)
-    real(r8) :: theta_br_wr1(bounds%begl:bounds%endl)
-    real(r8) :: zen_br_wr1(bounds%begl:bounds%endl)
-    real(r8) :: zen_br_wr2(bounds%begl:bounds%endl)
-    real(r8) :: zen_br_wr3(bounds%begl:bounds%endl)
+    real(r8) :: theta_br_wr3(bounds%begl:bounds%endl) ! The 3th critical theta angle for calculating wall & road fluxes in tree-below-roof scenario
+    real(r8) :: theta_br_wr2(bounds%begl:bounds%endl) ! The 2nd critical theta angle for calculating wall & road fluxes in tree-below-roof scenario
+    real(r8) :: theta_br_wr1(bounds%begl:bounds%endl) ! The 1st critical theta angle for calculating wall & road fluxes in tree-below-roof scenario
+    real(r8) :: zen_br_wr1(bounds%begl:bounds%endl)   ! The 3th critical zenith angle for calculating wall & road fluxes in tree-below-roof scenario
+    real(r8) :: zen_br_wr2(bounds%begl:bounds%endl)   ! The 2nd critical zenith angle for calculating wall & road fluxes in tree-below-roof scenario
+    real(r8) :: zen_br_wr3(bounds%begl:bounds%endl)   ! The 1st critical zenith angle for calculating wall & road fluxes in tree-below-roof scenario
         
-    real(r8) :: theta_ar_roof3(bounds%begl:bounds%endl)
-    real(r8) :: theta_ar_roof2(bounds%begl:bounds%endl)
-    real(r8) :: theta_ar_roof1(bounds%begl:bounds%endl)
-    real(r8) :: zen_ar_roof1(bounds%begl:bounds%endl)
-    real(r8) :: zen_ar_roof2(bounds%begl:bounds%endl)
-    real(r8) :: zen_ar_roof3(bounds%begl:bounds%endl)
-    real(r8) :: rnum                          ! A random number
-    
-    real(r8) :: theta0(bounds%begl:bounds%endl) ! critical canyon orientation for which road is no longer illuminated
-    real(r8) :: sdir_road_o(bounds%begl:bounds%endl , 2)! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side 
-    real(r8) :: sdir_sunwall_o(bounds%begl:bounds%endl , 2)! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side 
-    real(r8) :: sdir_shadewall_o(bounds%begl:bounds%endl , 2)! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side 
+    real(r8) :: theta_ar_roof3(bounds%begl:bounds%endl) ! The 3th critical theta angle for calculating roof fluxes in tree-above-roof scenario
+    real(r8) :: theta_ar_roof2(bounds%begl:bounds%endl) ! The 2nd critical theta angle for calculating roof fluxes in tree-above-roof scenario
+    real(r8) :: theta_ar_roof1(bounds%begl:bounds%endl) ! The 1st critical theta angle for calculating roof fluxes in tree-above-roof scenario
+    real(r8) :: zen_ar_roof1(bounds%begl:bounds%endl)   ! The 3th critical zenith angle for calculating roof fluxes in tree-above-roof scenario
+    real(r8) :: zen_ar_roof2(bounds%begl:bounds%endl)   ! The 2nd critical zenith angle for calculating roof fluxes in tree-above-roof scenario
+    real(r8) :: zen_ar_roof3(bounds%begl:bounds%endl)   ! The 1st critical zenith angle for calculating roof fluxes in tree-above-roof scenario
+    real(r8) :: rnum                                   ! A random number
+    real(r8) :: min_zen                                ! minimum threshold for tan(zen),cos(zen), and sin(zen)
+    ! these variables are used to calculate Masson2000 solution withoyt tree
+    real(r8) :: theta0(bounds%begl:bounds%endl)             ! critical canyon orientation for which road is no longer illuminated
+    real(r8) :: sdir_road_o(bounds%begl:bounds%endl , 2)     ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side 
+    real(r8) :: sdir_sunwall_o(bounds%begl:bounds%endl , 2)  ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side 
+    real(r8) :: sdir_shadewall_o(bounds%begl:bounds%endl , 2) ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side 
     
     !-----------------------------------------------------------------------
 
@@ -897,10 +909,10 @@ contains
     SHR_ASSERT_ALL_FL((ubound(sdir_sunwall_t)   == (/bounds%endl, numrad/)), sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(sdir_shadewall_t) == (/bounds%endl, numrad/)), sourcefile, __LINE__)
     
-    pi = 3.141592653589793_r8
-    theta_max = pi / 2.0_r8
+    theta_max = rpi / 2.0_r8
 
-    !--------------hard coded values--------------!   
+    !--------------hard coded values--------------!  
+     
     !ca_order=4
     ! B<W
     !wbui=7.0_r8
@@ -911,25 +923,38 @@ contains
 	  !ca_order=4
 
     Omega=0.6_r8
-    !LAD=0.5_r8    
-    LAD=0.00001_r8 
+    LAD=0.5_r8    
+    !LAD=0.00001_r8 
     Kbs=0.5_r8
+    min_zen = 0.000001_r8
+    write (6,'(A,2F10.3)') 'LAD ',LAD
     
     ! Gaussian nodes and weights when n = 4
     Gauss_nodes = (/ -0.86113631_r8, -0.33998104_r8,  0.33998104_r8,  0.86113631_r8/)
     Gauss_weights = (/ 0.34785485_r8, 0.65214515_r8, 0.65214515_r8, 0.34785485_r8/)
     !-------------------------------------------------!      
-    ! Compute theta values to calculate incident solar on wall and road when treetop is above roof
     do fl = 1,num_urbanl
        l = filter_urbanl(fl)
+       
        if (coszen(l) > 0._r8) then
           tanzen(l) = tan(zen(l))
-          sinzen(l)=sin(zen(l))  
+          sinzen(l) = sin(zen(l))  
+          ! Create a new variable solarabs_inst%sdir_force_lun. Easier to output
+          do ib = 1,numrad
+              sdir_force(l,ib)=forc_solad(l,ib)
+          end do
           
           wbui(l)=ht_roof(l)/(canyon_hwr(l)*(1._r8-wtlunit_roof(l))/wtlunit_roof(l))
           wcan(l)=ht_roof(l)/canyon_hwr(l) 
-          tanzen_pos= tan(max(zen(l),0.000001_r8))    
-
+          
+          tanzen_min= tan(max(zen(l),min_zen))   
+          coszen_min=max(coszen(l),min_zen)
+          sinzen_min=max(sinzen(l),min_zen)
+                    
+          write (6,'(A,2F10.3)') 'wbui(l)',wbui(l)            
+          write (6,'(A,2F10.3)') 'tanzen_min',tanzen_min
+          
+          ! Specify various h1 and h2 combincations for test
           call RANDOM_NUMBER(rnum)
           if (rnum > 0.8_r8) then 
               h1(l)=min(ht_roof(l)*0.6_r8,10.0_r8) ! ca=1
@@ -947,47 +972,54 @@ contains
               h1(l)=max(ht_roof(l)*0.2_r8,1.0_r8)
               h2(l)=max(ht_roof(l)*0.6_r8,1.0_r8)
           end if
-                    
-          Tree_abr(l)=h1 (l)+ h2(l) - ht_roof(l)
-          Tree_at(l)=max(Kbs * Omega(l) * LAD (l),0.0000001_r8)
           
+          write (6,'(A,2F10.3)') 'h1(l),h2(l)',h1(l),h2(l)
+                   
+          Tree_abr(l)=h1 (l)+ h2(l) - ht_roof(l)
+          Tree_at(l)=max(Kbs * Omega(l) * LAD (l),min_zen)
+          
+          write (6,'(A,2F10.3)') 'Tree_abr(l), Tree_at(l)',Tree_abr(l), Tree_at(l)
+          
+          ! Determin the ca_order, which influences the flux expressions
           if (h2(l)+h1(l) > 2.0_r8*ht_roof(l)) then
-             ! should raise an error or adjust the tree height
-             ca_order=-1 
+             ! Should raise an error or adjust the tree height if this occurs 
+             ca_order(l)=-1 
           else if (h2(l)+h1(l) > ht_roof(l)) then  ! tree above roof
-             !Determine ca_order 
              if (h2(l) > ht_roof(l)) then
                  if (ht_roof(l) < h1(l) + 0.5_r8 * h2(l)) then
-                     ca_order(l) = 1 !zen_ar_wr1<3<2<5<4
+                     ca_order(l) = 1 !tree above roof; zen_ar_wr1<3<2<5<4
                  else  ! H >= h1 + 0.5 * h2
-                     ca_order(l) = 2 !zen_ar_wr1<3<2<4<5
+                     ca_order(l) = 2 !tree above roof; zen_ar_wr1<3<2<4<5
                  end if
              else  ! h2 < H
                  if (ht_roof(l) < h1(l) + 0.5_r8 * h2(l)) then
-                     ca_order(l) = 3 !zen_ar_wr1<2<3<5<4
+                     ca_order(l) = 3 !tree above roof; zen_ar_wr1<2<3<5<4
                  else  ! H >= h1 + 0.5 * h2
-                     ca_order(l) = 4 !zen_ar_wr1<2<3<4<5
+                     ca_order(l) = 4 !tree above roof; zen_ar_wr1<2<3<4<5
                  end if
              end if
           else if (h2(l)+h1(l) <= ht_roof(l)) then                 
-               ca_order = 0 ! tree below roof
+               ca_order(l) = 0 ! tree below roof
           end if
           
+          write (6,'(A,2I10.3)') 'ca_order(l) ',ca_order(l)
+          
           if (ca_order(l) == 0) then !tree below roof 
-             theta_br_wr1(l) = asin(min(wcan(l) / ((ht_roof(l)) * tanzen_pos), 1._r8))  
-             theta_br_wr2(l) = asin(min(wcan(l) / ((ht_roof(l)-h1(l)) * tanzen_pos), 1._r8))
-             theta_br_wr3(l) = asin(min(wcan(l) / (max((ht_roof(l)-h1(l)-h2(l)),0.00001_r8) * tanzen_pos), 1._r8))
+             theta_br_wr1(l) = asin(min(wcan(l) / ((ht_roof(l)) * tanzen_min), 1._r8))  
+             theta_br_wr2(l) = asin(min(wcan(l) / ((ht_roof(l)-h1(l)) * tanzen_min), 1._r8))
+             theta_br_wr3(l) = asin(min(wcan(l) / (max((ht_roof(l)-h1(l)-h2(l)),min_zen) * tanzen_min), 1._r8))
             
-             zen_br_wr1(l) = atan(wcan(l) / (max((ht_roof(l)-h1(l)-h2(l)),0.00001_r8)))
+             zen_br_wr1(l) = atan(wcan(l) / (max((ht_roof(l)-h1(l)-h2(l)),min_zen)))
              zen_br_wr2(l) = atan(wcan(l) / ((ht_roof(l)-h1(l))))
              zen_br_wr3(l) = atan(wcan(l) / ((ht_roof(l))))
+             !write (6,'(A,2F10.3)') 'zen_br_wr3(l)  ',zen_br_wr3(l) 
           else              !tree above roof           
              ! Compute critical theta values for wall and road calculations under tree above roof scenario       
-             theta_ar_wr5(l) = asin(min(wcan(l) / (Tree_abr(l)* tanzen_pos), 1._r8))
-             theta_ar_wr4(l) = asin(min(wcan(l) / ((ht_roof(l) - h1(l)) * tanzen_pos), 1._r8))
-             theta_ar_wr3(l) = asin(min(wcan(l) / (h2(l) * tanzen_pos), 1.d0))
-             theta_ar_wr2(l) = asin(min(wcan(l) / (ht_roof(l) * tanzen_pos), 1._r8))
-             theta_ar_wr1(l) = asin(min(wcan(l) / ((h1(l) + h2(l)) * tanzen_pos), 1._r8))     
+             theta_ar_wr5(l) = asin(min(wcan(l) / (Tree_abr(l)* tanzen_min), 1._r8))
+             theta_ar_wr4(l) = asin(min(wcan(l) / ((ht_roof(l) - h1(l)) * tanzen_min), 1._r8))
+             theta_ar_wr3(l) = asin(min(wcan(l) / (h2(l) * tanzen_min), 1.d0))
+             theta_ar_wr2(l) = asin(min(wcan(l) / (ht_roof(l) * tanzen_min), 1._r8))
+             theta_ar_wr1(l) = asin(min(wcan(l) / ((h1(l) + h2(l)) * tanzen_min), 1._r8))     
 
              ! Compute critical zenith values for wall and road calculations
              zen_ar_wr1(l) = atan(wcan(l) / ((h1(l) + h2(l))))
@@ -997,18 +1029,20 @@ contains
              zen_ar_wr5(l) = atan(wcan(l) / (Tree_abr(l)))
           
              ! Compute critical theta values for roof calculations
-             theta_ar_roof3(l) = asin(min((wbui(l) + wcan(l)) / (Tree_abr(l) * tanzen_pos), 1._r8))
-             theta_ar_roof2(l) = asin(min(wbui(l) / (Tree_abr(l) * tanzen_pos), 1._r8))
-             theta_ar_roof1(l) = asin(min(wcan(l) / (Tree_abr(l) * tanzen_pos), 1._r8))
+             theta_ar_roof3(l) = asin(min((wbui(l) + wcan(l)) / (Tree_abr(l) * tanzen_min), 1._r8))
+             theta_ar_roof2(l) = asin(min(wbui(l) / (Tree_abr(l) * tanzen_min), 1._r8))
+             theta_ar_roof1(l) = asin(min(wcan(l) / (Tree_abr(l) * tanzen_min), 1._r8))
                       
              ! Compute critical zenith values for roof calculations
              zen_ar_roof1(l) = atan(wcan(l) / (Tree_abr(l) ))
              zen_ar_roof2(l) = atan(wbui(l) / (Tree_abr(l) ))
              zen_ar_roof3(l) = atan((wbui(l) + wcan(l)) / (Tree_abr(l)))   
+             !write (6,'(A,2I10.3)') 'zen_ar_roof3(l)  ',zen_ar_roof3(l)
           end if
       end if
     end do   
     
+    ! Part of the Masson 2000 calculation
     do fl = 1,num_urbanl
        l = filter_urbanl(fl)
        if (coszen(l) > 0._r8) then
@@ -1019,36 +1053,47 @@ contains
     do ib = 1,numrad
        do fl = 1,num_urbanl
           l = filter_urbanl(fl)
-          if (coszen(l) > 0._r8) then   
-             coszen_min=max(coszen(l),0.00001_r8)
-             sinzen_min=max(sinzen(l),0.00001_r8)
+          g = lun%gridcell(l)
+          ! (zen(l)-theta_max)>0.001_r8) seems important because some numerical errors occur when zen is too close to pi/2
+          if ((coszen(l) > 0._r8) .and. ((zen(l)-theta_max)>0.001_r8)) then   
+             latdeg=grc%latdeg(g)
+             londeg=grc%londeg(g)
+             ! Initialization
              sdir_shadewall_t(l,ib) = 0._r8  
              sdir_road_t(l,ib) = 0_r8  
              sdir_roof_t_shaded(l) = 1.0_r8
              
-             !write (6,*) 'zen(l) ',zen(l) 
-             !write (6,*) 'ca_order(l) ',ca_order(l) 
-             !write (6,*) 'wbui(l),h1(l),h2(l)',wbui(l),h1(l),h2(l)
-             !write (6,*) 'wcan(l),ht_roof(l)',wcan(l),ht_roof(l)
-             !write (6,*) ' sinzen_min, coszen_min', sinzen_min,coszen_min
-             
-             !write (6,*) 'theta_ar_wr1(l): ',theta_ar_wr1(l) 
-             !write (6,*) 'theta_ar_wr2(l): ',theta_ar_wr2(l) 
-             !write (6,*) 'theta_ar_wr3(l): ',theta_ar_wr3(l) 
-             !write (6,*) 'theta_ar_wr4(l): ',theta_ar_wr4(l) 
-             !write (6,*) 'theta_ar_wr5(l): ',theta_ar_wr5(l)  
-             
-             !write (6,*) 'theta_ar_roof1(l): ',theta_ar_roof1(l)
-             !write (6,*) 'theta_ar_roof2(l): ',theta_ar_roof2(l)
-             !write (6,*) 'theta_ar_roof3(l): ',theta_ar_roof3(l)
-             
-             !write (6,*) 'theta_br_wr1(l): ',theta_br_wr1(l)
-             !write (6,*) 'theta_br_wr2(l): ',theta_br_wr2(l)
-             !write (6,*) 'theta_br_wr3(l): ',theta_br_wr3(l)
-             
+             ! printputs for diagnosis
+             write (6,'(A,2F10.3)') '-------------------(l)------------------- ',l 
+             write (6,'(A,2F10.3)') 'zen(l) ',zen(l) 
+             write (6,'(A,2F10.3)') 'latdeg,londeg ',latdeg,londeg
+             write (6,'(A,2I10.3)') 'ca_order(l) ',ca_order(l) 
+             write (6,'(A,2F10.3)') 'wbui(l)',wbui(l)
+             write (6,'(A,2F10.3)') 'wcan(l),ht_roof(l)',wcan(l),ht_roof(l)
+             write (6,'(A,2F10.3)') 'h1(l),h2(l)',h1(l),h2(l)
+             write (6,'(A,2F10.3)') ' sinzen_min, coszen_min', sinzen_min,coszen_min
+             if (ca_order(l)==0) then
+                write (6,'(A,2F10.3)') 'theta_br_wr1(l): ',theta_br_wr1(l)
+                write (6,'(A,2F10.3)') 'theta_br_wr2(l): ',theta_br_wr2(l)
+                write (6,'(A,2F10.3)') 'theta_br_wr3(l): ',theta_br_wr3(l)
+                
+                write (6,'(A,2F10.3)') 'zen_br_wr1(l): ',zen_br_wr1(l)
+                write (6,'(A,2F10.3)') 'zen_br_wr2(l): ',zen_br_wr2(l)
+                write (6,'(A,2F10.3)') 'zen_br_wr3(l): ',zen_br_wr3(l)  
+             else
+                write (6,'(A,2F10.3)') 'theta_ar_wr1(l): ',theta_ar_wr1(l) 
+                write (6,'(A,2F10.3)') 'theta_ar_wr2(l): ',theta_ar_wr2(l) 
+                write (6,'(A,2F10.3)') 'theta_ar_wr3(l): ',theta_ar_wr3(l) 
+                write (6,'(A,2F10.3)') 'theta_ar_wr4(l): ',theta_ar_wr4(l) 
+                write (6,'(A,2F10.3)') 'theta_ar_wr5(l): ',theta_ar_wr5(l)  
+               
+                write (6,'(A,2F10.3)') 'theta_ar_roof1(l): ',theta_ar_roof1(l)
+                write (6,'(A,2F10.3)') 'theta_ar_roof2(l): ',theta_ar_roof2(l)
+                write (6,'(A,2F10.3)') 'theta_ar_roof3(l): ',theta_ar_roof3(l)
+             end if
+                
              if (ca_order(l)==0) then !tree below roof
                  sdir_roof_t_shaded(l)=1.0_r8
-                 
                  if (zen(l) > zen_br_wr3(l)) then
                      ! calculate sdir_sunwall_t(l,ib) and sdir_road_t(l,ib)
                      sdir_sunwall_t(l,ib)=(integration_br_wr_01(theta_br_wr1(l),l)+integration_br_wr_12(theta_br_wr1(l), theta_br_wr2(l),l)+\
@@ -1083,17 +1128,16 @@ contains
                     else
                      sdir_roof_t_shaded(l)=(integration_ar_WB_02_01(theta_max,l))/theta_max
                     end if 
-                else   !zen_ar_roof2<1<3
+                else   !wbui < wcan and zen_ar_roof2<1<3
                     if (zen(l)>zen_ar_roof3(l)) then
                        sdir_roof_t_shaded(l)=(integration_ar_WB_02_01(theta_ar_roof2(l),l)+gaussian_quadrature(integrand_ar_WB_12, theta_ar_roof2(l), theta_ar_roof1(l),Gauss_nodes, Gauss_weights, l)+&
-                                   integration_ar_WB_12(theta_ar_roof2(l), theta_ar_roof1(l),l)+gaussian_quadrature(integrand_ar_WB_13_23, theta_ar_roof1(l), theta_ar_roof3(l), Gauss_nodes, Gauss_weights,l)+&
+                                   +gaussian_quadrature(integrand_ar_WB_13_23, theta_ar_roof1(l), theta_ar_roof3(l), Gauss_nodes, Gauss_weights,l)+&
                                    gaussian_quadrature(integrand_ar_WB_BW_3pi, theta_ar_roof3(l),theta_max,Gauss_nodes, Gauss_weights,l))/theta_max
-                    else if (zen(l)>zen_ar_roof2(l)) then
-                        sdir_roof_t_shaded(l)=(integration_ar_WB_02_01(theta_ar_roof2(l),l)+gaussian_quadrature(integrand_ar_WB_12, theta_ar_roof2(l), theta_ar_roof1(l),Gauss_nodes, Gauss_weights, l)+&
-                                   integration_ar_WB_12(theta_ar_roof2(l), theta_ar_roof1(l),l)+gaussian_quadrature(integrand_ar_WB_13_23, theta_ar_roof1(l), theta_max, Gauss_nodes, Gauss_weights,l))/theta_max
                     else if (zen(l)>zen_ar_roof1(l)) then
-                       sdir_roof_t_shaded(l)=(integration_ar_WB_02_01(theta_ar_roof2(l),l)+gaussian_quadrature(integrand_ar_WB_12, theta_ar_roof2(l), theta_max, Gauss_nodes, Gauss_weights, l)+&
-                                 integration_ar_WB_12(theta_ar_roof2(l), theta_max,l))/theta_max
+                        sdir_roof_t_shaded(l)=(integration_ar_WB_02_01(theta_ar_roof2(l),l)+gaussian_quadrature(integrand_ar_WB_12, theta_ar_roof2(l), theta_ar_roof1(l),Gauss_nodes, Gauss_weights, l)+&
+                                   gaussian_quadrature(integrand_ar_WB_13_23, theta_ar_roof1(l), theta_max, Gauss_nodes, Gauss_weights,l))/theta_max
+                    else if (zen(l)>zen_ar_roof2(l)) then
+                       sdir_roof_t_shaded(l)=(integration_ar_WB_02_01(theta_ar_roof2(l),l)+gaussian_quadrature(integrand_ar_WB_12, theta_ar_roof2(l), theta_max, Gauss_nodes, Gauss_weights, l))/theta_max
                     else
                       sdir_roof_t_shaded(l)=(integration_ar_WB_02_01(theta_max,l))/theta_max  
                     end if            
@@ -1209,7 +1253,7 @@ contains
                                     integration_ar_wr_12_road_part_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                  
                   else if (zen(l)>zen_ar_wr3(l)) then
                      sdir_sunwall_t(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + &
-                               integration_ar_wr_12_13_part2_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) + integration_ar_wr_32_ca21(theta_ar_wr2(l), theta_max,l)+ &
+                               integration_ar_wr_12_13_part2_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) + integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_max,l)+ &
                                +gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_max, Gauss_nodes, Gauss_weights,l) ) / theta_max       
                      sdir_road_t(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l) + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_max, Gauss_nodes, Gauss_weights,l) + &
                                     integration_ar_wr_12_road_part_ca4321(theta_ar_wr1(l), theta_max,l)) / theta_max                          
@@ -1223,7 +1267,7 @@ contains
                      sdir_road_t(l,ib)= (integration_ar_wr_road_01_ca4321(theta_max,l)) / theta_max                   
                   end if  
                else if (ca_order(l)==1) then !zen_ar_wr1<3<2<5<4
-                  if (zen(l)>zen_ar_wr5(l)) then
+                  if (zen(l)>zen_ar_wr4(l)) then
                      sdir_sunwall_t(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + &
                                   integration_ar_wr_12_13_part2_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) + integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l) + &
                                   +gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+&
@@ -1234,7 +1278,7 @@ contains
                     sdir_road_t(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l) + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + &
                                    integration_ar_wr_12_road_part_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                  
                                   
-                  else if (zen(l)>zen_ar_wr4(l)) then
+                  else if (zen(l)>zen_ar_wr5(l)) then
                      sdir_sunwall_t(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + &
                                integration_ar_wr_12_13_part2_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) + integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l) + &
                                +gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+&
@@ -1252,7 +1296,7 @@ contains
                                     integration_ar_wr_12_road_part_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                  
                   else if (zen(l)>zen_ar_wr3(l)) then
                      sdir_sunwall_t(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + &
-                               integration_ar_wr_12_13_part2_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) + integration_ar_wr_32_ca21(theta_ar_wr2(l), theta_max,l) + &
+                               integration_ar_wr_12_13_part2_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) + integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_max,l) + &
                                +gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_max, Gauss_nodes, Gauss_weights,l) ) / theta_max       
                      
                      sdir_road_t(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l) + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_max, Gauss_nodes, Gauss_weights,l) + &
@@ -1269,7 +1313,12 @@ contains
                end if
             
             end if 
-            sdir_roof_t(l,ib)=(sdir_roof_t_shaded(l)+1.0_r8)/2.0_r8                            
+            sdir_roof_t(l,ib)=(sdir_roof_t_shaded(l)+1.0_r8)/2.0_r8  
+            
+            ! conservation check for road and wall. need to use wall fluxes converted to ground area
+            ! Need to add tree attenuation term later
+            swall_projected_t = (sdir_shadewall_t(l,ib) + sdir_sunwall_t(l,ib)) * canyon_hwr(l)
+            err1(l) = sdir(l,ib) - (sdir_road_t(l,ib) + swall_projected_t)                                
           else
             sdir_road_t(l,ib) = 0._r8
             sdir_sunwall_t(l,ib) = 0._r8
@@ -1291,6 +1340,15 @@ contains
             sdir_shadewall_o(l,ib) = 0._r8
          endif
          
+         ! printouts
+         write (6,'(A,2F10.3)') 'sdir_road_t(l,ib), sdir_road_o(l,ib) ',sdir_road_t(l,ib),sdir_road_o(l,ib)
+         write (6,'(A,2F10.3)') 'sdir_road_t(l,ib) - sdir_road_o(l,ib) ',sdir_road_t(l,ib) - sdir_road_o(l,ib)
+         write (6,'(A,2F10.3)') 'sdir_sunwall_t(l,ib), sdir_sunwall_o(l,ib) ',sdir_sunwall_t(l,ib), sdir_sunwall_o(l,ib)
+         write (6,'(A,2F10.3)') 'sdir_sunwall_t(l,ib) - sdir_sunwall_o(l,ib)) ',sdir_sunwall_t(l,ib) - sdir_sunwall_o(l,ib)
+         write (6,'(A,2F10.3)') 'sdir_roof_t(l,ib) ',sdir_roof_t(l,ib)
+         write (6,'(A,2F10.3)') 'sdir_roof_t_shaded(l) ',sdir_roof_t_shaded(l)
+         write (6,'(A,2F10.3)') 'err1(l) ',err1(l)
+
          !write (6,'(A,2F10.3)') 'integration_ar_wr_01_ca4321 ',integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) 
          !write (6,'(A,2F10.3)') 'integrand_ar_wr_12_13_ca4321',gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l)
          !write (6,'(A,2F10.3)') 'integration_ar_wr_12_13_part2_ca4321',integration_ar_wr_12_13_part2_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l)
@@ -1310,7 +1368,7 @@ contains
     contains    
       
     ! The integration functions 
-    !--------------------tree above roof wall functions---------
+    !------------------------------tree above roof wall functions-----------------------------
     function integration_br_wr_01(theta_in1, l) result(value)
       implicit none
       integer, intent(in) :: l                      ! urban landunit index
@@ -1356,7 +1414,7 @@ contains
         sin_theta = sin(theta)
 
         ! Compute exponential term
-        exp_m_W_h1_h2_H = exp(-Tree_at(l) * ((wcan(l) / (max(sin(theta),0.00001_r8) * sinzen_min)) + (Tree_abr(l) / coszen_min)))
+        exp_m_W_h1_h2_H = exp(-Tree_at(l) * ((wcan(l) / (max(sin(theta),min_zen) * sinzen_min)) + (Tree_abr(l) / coszen_min)))
         value = ((sin_theta * sinzen(l)) / (ht_roof(l) * Tree_at(l))) * (1.0_r8 - exp_m_W_h1_h2_H)
     end function integrand_br_wr_23
 
@@ -1379,7 +1437,7 @@ contains
        value = (1.0_r8 / wcan(l)) * (wcan(l) * theta_in1 - ht_roof(l) * tanzen(l) * (1.0_r8 - cos(theta_in1))) * exp_m_h2
     end function integration_br_road
     
-    !------------------------wall---------------------------
+    !----------------------------------wall-------------------------------------
     function integration_ar_wr_01_ca4321(theta_in1,l) result(value) !checked
        implicit none
        integer, intent(in) :: l                      ! urban landunit index
@@ -1389,9 +1447,9 @@ contains
        
        exp_m_h2 = exp(-Tree_at(l) * (h2(l) / coszen_min))
        exp_H_h1_h2 = exp(Tree_at(l) * ((-Tree_abr(l)) / coszen_min))
-       term1 = h1(l) * max(tanzen(l),0.0001_r8) * exp_m_h2
-       term2 = max(sinzen(l),0.0001_r8) / Tree_at(l) * (exp_H_h1_h2 - exp_m_h2)
-       value = 1 / ht_roof(l) * (term1 + term2) * (1-cos(max(theta_in1,0.0001)))       
+       term1 = h1(l) * max(tanzen(l),min_zen) * exp_m_h2
+       term2 = max(sinzen(l),min_zen) / Tree_at(l) * (exp_H_h1_h2 - exp_m_h2)
+       value = 1 / ht_roof(l) * (term1 + term2) * (1-cos(max(theta_in1,min_zen)))       
     end function integration_ar_wr_01_ca4321
     
     function integrand_ar_wr_12_13_ca4321(theta,l) result(value) !checked
@@ -1401,7 +1459,7 @@ contains
        real(8)            :: value 
        real(8)            :: exp_m_W_h1
 
-       exp_m_W_h1 = exp(-Tree_at(l) * ((wcan(l) / (max(sin(theta),0.00001_r8) * sinzen_min)) - (h1(l) / coszen_min)))
+       exp_m_W_h1 = exp(-Tree_at(l) * ((wcan(l) / (max(sin(theta),min_zen) * sinzen_min)) - (h1(l) / coszen_min)))
        value = (sin(theta) / ht_roof(l))*sinzen(l)/Tree_at(l)* exp_m_W_h1 
     end function integrand_ar_wr_12_13_ca4321
 
@@ -1428,7 +1486,7 @@ contains
        real(8)             :: exp_H_h1_h2
        
        exp_H_h1_h2 = exp(Tree_at(l) * ((-Tree_abr(l)) / coszen_min ))
-       value = (sinzen(l)/ht_roof(l)  / Tree_at(l)) * exp_H_h1_h2 * (cos(theta_in_s) - cos(theta_in_l))
+       value = (sinzen(l)/ht_roof(l)/ Tree_at(l)) * exp_H_h1_h2 * (cos(theta_in_s) - cos(theta_in_l))
     end function integration_ar_wr_32_ca21
 
     function integrand_ar_wr_32_ca21(theta,l) result(value) !checked
@@ -1437,7 +1495,7 @@ contains
       real(8), intent(in) :: theta
       real(8) :: value, sin_theta, exp_m_W, exp_m_W_h1,term1
       
-      sin_theta = max(sin(theta),0.00001_r8)
+      sin_theta = max(sin(theta),min_zen)
       exp_m_W = exp(-Tree_at(l)* (wcan(l) / (sinzen_min   * sin_theta)))
       exp_m_W_h1 = exp(-Tree_at(l) * ((wcan(l) / (sin_theta * sinzen_min )) - (h1(l) /coszen_min)))
       term1=(h2(l)*tanzen(l)-wcan(l)/sin_theta-2*sinzen_min/Tree_at(l))
@@ -1464,7 +1522,7 @@ contains
       real(8), intent(in) :: theta
       real(8) :: value, sin_theta, exp_m_W
       
-      sin_theta = max(sin(theta),0.00001_r8)
+      sin_theta = max(sin(theta),min_zen)
       exp_m_W = exp(-Tree_at(l)* (wcan(l) / (sinzen_min   * sin_theta)))
       value = (1_r8 / ht_roof(l)) * (h2(l) * tanzen(l)  - wcan(l) / sin_theta - 2 * sinzen (l) / (Tree_at(l))) * exp_m_W * sin_theta
     end function integrand_ar_wr_34_35_24_25_ca4321
@@ -1487,7 +1545,7 @@ contains
       real(8), intent(in) :: theta
       real(8) :: value, sin_theta, exp_m_W
       
-      sin_theta = max(sin(theta),0.00001_r8)
+      sin_theta = max(sin(theta),min_zen)
       exp_m_W = exp(-Tree_at(l) * (wcan(l) / (sin_theta * sinzen_min )))
       value = (1.0_r8 / ht_roof(l)) * (Tree_abr(l) * tanzen(l) * exp_m_W - (sinzen(l) / (Tree_at(l))) * exp_m_W) * sin_theta
     end function integrand_ar_wr_45_ca42
@@ -1508,7 +1566,7 @@ contains
       real(8), intent(in) :: theta
       real(8) :: value, sin_theta, exp_m_W
       
-      sin_theta = max(sin(theta),0.0001_r8)
+      sin_theta = max(sin(theta),min_zen)
       exp_m_W = exp(-Tree_at(l) * (wcan(l) / (sin_theta *sinzen_min )))
       value = sin_theta / ht_roof(l) * exp_m_W *((ht_roof(l)-h1(l))*tanzen(l)-sinzen(l)/Tree_at(l))
     end function integrand_ar_wr_54_ca31
@@ -1528,11 +1586,11 @@ contains
       integer, intent(in) :: l                      ! urban landunit index
       real(8), intent(in) :: theta
       real(8) :: value, exp_m_W
-      exp_m_W = exp(-Tree_at(l) * wcan(l) / (sinzen_min *max(sin(theta),0.0001_r8)))
+      exp_m_W = exp(-Tree_at(l) * wcan(l) / (sinzen_min *max(sin(theta),min_zen)))
       value = (wcan(l)/ ht_roof(l)) * exp_m_W
     end function integrand_ar_wr_45pi_ca1234
     
-    !------------------------road---------------------------  
+    !----------------------------------road-------------------------------------  
     function integration_ar_wr_road_01_ca4321(theta_in1,l) result(value) !checked
        implicit none
        integer, intent(in) :: l                      ! urban landunit index
@@ -1553,7 +1611,7 @@ contains
        real(8), intent(in) :: theta
        real(8) :: value, sin_theta, exp_m_W_h1
       
-       sin_theta = max(sin(theta),0.00001_r8)
+       sin_theta = max(sin(theta),min_zen)
        exp_m_W_h1 = exp(-Tree_at(l) * ((wcan(l) / (sin_theta * sinzen_min )) - (h1(l) / coszen_min )))
        value = (1/ wcan(l)) * (-sinzen(l)  / (Tree_at(l))) * exp_m_W_h1 * sin_theta
     end function integrand_ar_wr_12_road_ca4321
@@ -1568,7 +1626,7 @@ contains
        value = (1/ wcan(l))*(sinzen(l)  / Tree_at(l)) * exp_m_H_h1 * (cos(theta_in1) - cos(theta_in2))
     end function integration_ar_wr_12_road_part_ca4321
 
-    !------------------------functions for roofs------------------------   
+    !---------------------------------- roofs----------------------------------   
     function integration_ar_WB_02_01(theta_in21,l) result(value)
         ! Compute the integrand_WB_02 function in Fortran
         implicit none
@@ -1593,7 +1651,7 @@ contains
         integer, intent(in) :: l                      ! urban landunit index
         real(8), intent(in) :: theta
         real(8) :: value, sin_theta, term1, exp_m_W
-        sin_theta = max(sin(theta),0.00001_r8)
+        sin_theta = max(sin(theta),min_zen)
 
         ! Compute the first term
         term1 = (Tree_abr(l) * tanzen(l) - (wcan(l) / sin_theta) - (sinzen_min  / (Tree_at(l))))
@@ -1626,28 +1684,14 @@ contains
         integer, intent(in) :: l                      ! urban landunit index
         real(8), intent(in) :: theta
         real(8) :: value, sin_theta, term1, exp_B_h1_h2_H,exp_m_h1_h2_H_cos
-        sin_theta = max(sin(theta),0.0001_r8)
+        sin_theta = max(sin(theta),min_zen)
 
-        ! Compute the first term
         exp_m_h1_h2_H_cos = exp(-Tree_at(l) * (Tree_abr(l)/coszen_min))
         exp_B_h1_h2_H = exp(Tree_at(l) * (wbui(l) / (sin_theta * sinzen_min)-Tree_abr(l)/coszen_min))
-        term1 = sinzen(l)/Tree_abr(l)*(exp_B_h1_h2_H-exp_m_h1_h2_H_cos)
-        ! Compute the final result
+        term1 = sinzen(l)/Tree_at(l)*(exp_B_h1_h2_H-exp_m_h1_h2_H_cos)
+    
         value = (sin_theta / wbui(l)) * term1
     end function integrand_ar_WB_12
-
-    
-    function integration_ar_WB_12(theta_in1, theta_in2, l) result(value)
-        ! Compute the integrand_BW_12_direct function in Fortran
-        implicit none
-        integer, intent(in) :: l                      ! urban landunit index
-        real(8), intent(in) :: theta_in1,theta_in2
-        real(8) :: value, exp_m_h1_h2_H_tan
-        exp_m_h1_h2_H_tan = exp(-Tree_at(l) * (Tree_abr(l))*tanzen(l))
-
-        ! Compute the final result
-        value =(sinzen(l)/ wbui(l)/Tree_abr(l)) *exp_m_h1_h2_H_tan*(cos(theta_in1) - cos(theta_in2))
-    end function integration_ar_WB_12
     
     function integrand_ar_WB_13_23(theta, l) result(value)
         implicit none
@@ -1655,7 +1699,7 @@ contains
         real(8), intent(in) :: theta
         real(8) :: value, sin_theta, term1, term2, exp_B_h1_h2_H , exp_m_W
         
-        sin_theta =max(sin(theta),0.0001_r8)
+        sin_theta =max(sin(theta),min_zen)
       
         exp_B_h1_h2_H = exp(Tree_at(l) * ((wbui(l)) / (sinzen_min  * sin_theta) - Tree_abr(l) / coszen_min))
         exp_m_W = exp(-Tree_at(l) * (wcan(l) / (sinzen_min  * sin_theta)))
@@ -1673,16 +1717,11 @@ contains
         integer, intent(in) :: l                      ! urban landunit index
         real(8), intent(in) :: theta
         real(8) :: value,exp_m_W
-        exp_m_W = exp(-Tree_at(l) * (wcan(l) / (sinzen_min  * max(sin(theta),0.0001_r8))))
+        exp_m_W = exp(-Tree_at(l) * (wcan(l) / (sinzen_min  * max(sin(theta),min_zen))))
         value = exp_m_W
     end function integrand_ar_WB_BW_3pi
          
-  end subroutine incident_direct_tree
-
-
-
-
-     
+  end subroutine incident_direct_tree 
   !-----------------------------------------------------------------------
   subroutine incident_diffuse (bounds, &
        num_urbanl, filter_urbanl, canyon_hwr, &
