@@ -1722,7 +1722,7 @@ contains
                   if (izcan==1) then
                      rayy=(h1 + (dzcan-h1)*rnum)/dzcan
                   else if (izcan==2) then
-                     rayy=1.0_r8 + (h2-dzcan)*rnum/dzcan
+                     rayy=1.0_r8 + (h1 + h2-dzcan)*rnum/dzcan
                   end if
               end if
               
