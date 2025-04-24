@@ -1260,7 +1260,7 @@ contains
                   water_inst%waterstatebulk_inst, &
                   water_inst%waterdiagnosticbulk_inst, &
                   urbanparams_inst,         &
-                  solarabs_inst, surfalb_inst)
+                  solarabs_inst, surfalb_inst,atm2lnd_inst)
              call t_stopf('urbalb')
           end if
 

@@ -54,6 +54,11 @@ module SolarAbsorbedType
      real(r8), pointer :: sdir_road_t_lun   (:,:) ! lun diffuse solar absorbed by impervious road per unit ground area per unit incident flux
      real(r8), pointer :: sdir_sunwall_t_lun   (:,:) ! lun direct  solar absorbed by pervious road per unit ground area per unit incident flux
      real(r8), pointer :: sdir_roof_t_lun   (:,:) ! lun diffuse solar absorbed by pervious road per unit ground area per unit incident flux
+     real(r8), pointer :: sdir_force_lun   (:,:) ! lun diffuse solar absorbed by pervious road per unit ground area per unit incident flux
+
+     real(r8), pointer :: sdir_roof_tree_lun   (:,:) ! lun incident direct solar absorbed by canopy before reaching to roof per unit leaf area per unit incident flux
+     real(r8), pointer :: sdir_sunwall_tree_lun   (:,:) ! lun incident direct solar absorbed by canopy before reaching to sunwall per unit leaf area per unit incident flux
+     real(r8), pointer :: sdir_road_tree_lun   (:,:) ! lun incident direct solar absorbed by canopy before reaching to road per unit leaf area per unit incident flux
 
      real(r8), pointer :: sdir_road_lun   (:,:) ! lun diffuse solar absorbed by impervious road per unit ground area per unit incident flux
      real(r8), pointer :: sdir_sunwall_lun   (:,:) ! lun direct  solar absorbed by pervious road per unit ground area per unit incident flux
@@ -153,6 +158,11 @@ contains
     allocate(this%sdir_road_t_lun (begl:endl,1:numrad))     ; this%sdir_road_t_lun(:,:) = nan
     allocate(this%sdir_sunwall_t_lun (begl:endl,1:numrad))     ; this%sdir_sunwall_t_lun (:,:) = nan
     allocate(this%sdir_roof_t_lun (begl:endl,1:numrad))     ; this%sdir_roof_t_lun (:,:) = nan
+    allocate(this%sdir_force_lun (begl:endl,1:numrad))     ; this%sdir_force_lun (:,:) = nan
+
+    allocate(this%sdir_roof_tree_lun (begl:endl,1:numrad))     ; this%sdir_roof_tree_lun (:,:) = nan
+    allocate(this%sdir_sunwall_tree_lun (begl:endl,1:numrad))     ; this%sdir_sunwall_tree_lun (:,:) = nan
+    allocate(this%sdir_road_tree_lun (begl:endl,1:numrad))     ; this%sdir_road_tree_lun (:,:) = nan
 
     allocate(this%sdir_road_lun (begl:endl,1:numrad))     ; this%sdir_road_lun(:,:) = nan
     allocate(this%sdir_sunwall_lun (begl:endl,1:numrad))     ; this%sdir_sunwall_lun (:,:) = nan
@@ -217,7 +227,25 @@ contains
         avgflag='A', long_name='Unitless incident solar on sun-lit wall', &
         ptr_lunit=this%sdir_sunwall_lun, set_nourb=spval, l2g_scale_type='unity', &
         default='inactive')
-            
+
+    this%sdir_road_tree_lun(begl:endl,:) = spval 
+    call hist_addfld2d (fname='SDIR_ROAD_TREE', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Unitless incident solar absorbed by canopy before reaching to road', &
+        ptr_lunit=this%sdir_road_tree_lun , set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')            
+
+    this%sdir_roof_tree_lun(begl:endl,:) = spval 
+    call hist_addfld2d (fname='SDIR_ROOF_TREE', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Unitless incident solar absorbed by canopy before reaching to roof', &
+        ptr_lunit=this%sdir_roof_tree_lun , set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')   
+        
+    this%sdir_sunwall_tree_lun(begl:endl,:) = spval 
+    call hist_addfld2d (fname='SDIR_SUNWALL_TREE', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Unitless incident solar absorbed by canopy before reaching to sunwall', &
+        ptr_lunit=this%sdir_sunwall_tree_lun , set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')  
+                        
     this%sdir_road_t_lun(begl:endl,:) = spval 
     call hist_addfld2d (fname='SDIR_ROAD', units='unitless', type2d='numrad', &
         avgflag='A', long_name='Unitless incident solar on road', &
@@ -236,6 +264,12 @@ contains
         ptr_lunit=this%sdir_roof_t_lun, set_nourb=spval, l2g_scale_type='unity', &
         default='inactive')
     
+    this%sdir_force_lun(begl:endl,:) = spval 
+    call hist_addfld2d (fname='SDIR_FORCE', units='W m-2', type2d='numrad', &
+        avgflag='A', long_name='Incident solar', &
+        ptr_lunit=this%sdir_force_lun, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+            
     this%fsa_patch(begp:endp) = spval
     call hist_addfld1d (fname='FSA', units='W/m^2',  &
          avgflag='A', long_name='absorbed solar radiation', &
