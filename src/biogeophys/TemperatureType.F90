@@ -175,7 +175,71 @@ module TemperatureType
      real(r8), pointer :: kvs1d_out       (:,:)   ! view factor from vegetation to sky for a given canyon
      real(r8), pointer :: kts1d_out       (:)     ! view factor from ? to sky for a given canyon
      real(r8), pointer :: krs1d_out       (:,:)   ! view factor from roof to sky for a given canyon
-     
+
+     ! Separated dimensions of 3D unweighted shortwave view factor outputs
+     real(r8), pointer :: vfww_k_out1       (:,:)   ! Unweighted shortwave view factor from wall to wall dimension 1
+     real(r8), pointer :: vfww_k_out2       (:,:)   ! Unweighted shortwave view factor from wall to wall dimension 2
+     real(r8), pointer :: vfvv_k_out1       (:,:)   ! Unweighted shortwave view factor from vegetation to vegetation dimension 1
+     real(r8), pointer :: vfvv_k_out2       (:,:)   ! Unweighted shortwave view factor from vegetation to vegetation dimension 2
+     real(r8), pointer :: vfwv_k_out1       (:,:)   ! Unweighted shortwave view factor from wall to vegetation dimension 1
+     real(r8), pointer :: vfwv_k_out2       (:,:)   ! Unweighted shortwave view factor from wall to vegetation dimension 2
+     real(r8), pointer :: vfvw_k_out1       (:,:)   ! Unweighted shortwave view factor from vegetation to wall dimension 1
+     real(r8), pointer :: vfvw_k_out2       (:,:)   ! Unweighted shortwave view factor from vegetation to wall dimension 2
+     real(r8), pointer :: vfwr_k_out1       (:,:)   ! Unweighted shortwave view factor from wall to roof dimension 1
+     real(r8), pointer :: vfwr_k_out2       (:,:)   ! Unweighted shortwave view factor from wall to roof dimension 2
+     real(r8), pointer :: vfrw_k_out1       (:,:)   ! Unweighted shortwave view factor from roof to wall dimension 1
+     real(r8), pointer :: vfrw_k_out2       (:,:)   ! Unweighted shortwave view factor from roof to wall dimension 2
+     real(r8), pointer :: vfvr_k_out1       (:,:)   ! Unweighted shortwave view factor from vegetation to roof dimension 1
+     real(r8), pointer :: vfvr_k_out2       (:,:)   ! Unweighted shortwave view factor from vegetation to roof dimension 2
+     real(r8), pointer :: vfrv_k_out1       (:,:)   ! Unweighted shortwave view factor from roof to vegetation dimension 1
+     real(r8), pointer :: vfrv_k_out2       (:,:)   ! Unweighted shortwave view factor from roof to vegetation dimension 2
+
+     ! Direct 2D and 1D shortwave view factor outputs
+     real(r8), pointer :: vfwt_k_out        (:,:)   ! Unweighted shortwave view factor from wall to ground  
+     real(r8), pointer :: vftw_k_out        (:,:)   ! Unweighted shortwave view factor from ground to wall  
+     real(r8), pointer :: vftv_k_out        (:,:)   ! Unweighted shortwave view factor from ground to vegetation  
+     real(r8), pointer :: vfvt_k_out        (:,:)   ! Unweighted shortwave view factor from vegetation to ground  
+     real(r8), pointer :: vfsw_k_out        (:,:)   ! Unweighted shortwave view factor from sky to wall  
+     real(r8), pointer :: vfsr_k_out        (:,:)   ! Unweighted shortwave view factor from sky to roof  
+     real(r8), pointer :: vfsv_k_out        (:,:)   ! Unweighted shortwave view factor from sky to vegetation  
+     real(r8), pointer :: svfw_k_out        (:,:)   ! Unweighted shortwave sky view factor for wall  
+     real(r8), pointer :: svfv_k_out        (:,:)   ! Unweighted shortwave sky view factor for vegetation  
+     real(r8), pointer :: svfr_k_out        (:,:)   ! Unweighted shortwave sky view factor for roof  
+     real(r8), pointer :: vfst_k_out        (:)     ! Unweighted shortwave view factor from sky to ground
+     real(r8), pointer :: svft_k_out        (:)     ! Unweighted shortwave sky view factor for ground  
+  
+     ! Separated dimensions of 3D unweighted longwave view factor outputs
+     real(r8), pointer :: vfww_f_out1       (:,:)   ! Unweighted longwave view factor from wall to wall dimension 1
+     real(r8), pointer :: vfww_f_out2       (:,:)   ! Unweighted longwave view factor from wall to wall dimension 2
+     real(r8), pointer :: vfvv_f_out1       (:,:)   ! Unweighted longwave view factor from vegetation to vegetation dimension 1
+     real(r8), pointer :: vfvv_f_out2       (:,:)   ! Unweighted longwave view factor from vegetation to vegetation dimension 2
+     real(r8), pointer :: vfwv_f_out1       (:,:)   ! Unweighted longwave view factor from wall to vegetation dimension 1
+     real(r8), pointer :: vfwv_f_out2       (:,:)   ! Unweighted longwave view factor from wall to vegetation dimension 2
+     real(r8), pointer :: vfvw_f_out1       (:,:)   ! Unweighted longwave view factor from vegetation to wall dimension 1
+     real(r8), pointer :: vfvw_f_out2       (:,:)   ! Unweighted longwave view factor from vegetation to wall dimension 2
+     real(r8), pointer :: vfwr_f_out1       (:,:)   ! Unweighted longwave view factor from wall to roof dimension 1
+     real(r8), pointer :: vfwr_f_out2       (:,:)   ! Unweighted longwave view factor from wall to roof dimension 2
+     real(r8), pointer :: vfrw_f_out1       (:,:)   ! Unweighted longwave view factor from roof to wall dimension 1
+     real(r8), pointer :: vfrw_f_out2       (:,:)   ! Unweighted longwave view factor from roof to wall dimension 2
+     real(r8), pointer :: vfvr_f_out1       (:,:)   ! Unweighted longwave view factor from vegetation to roof dimension 1
+     real(r8), pointer :: vfvr_f_out2       (:,:)   ! Unweighted longwave view factor from vegetation to roof dimension 2
+     real(r8), pointer :: vfrv_f_out1       (:,:)   ! Unweighted longwave view factor from roof to vegetation dimension 1
+     real(r8), pointer :: vfrv_f_out2       (:,:)   ! Unweighted longwave view factor from roof to vegetation dimension 2
+
+     ! Direct 2D and 1D longwave view factor outputs
+     real(r8), pointer :: vfwt_f_out        (:,:)   ! Unweighted longwave view factor from wall to ground  
+     real(r8), pointer :: vftw_f_out        (:,:)   ! Unweighted longwave view factor from ground to wall  
+     real(r8), pointer :: vftv_f_out        (:,:)   ! Unweighted longwave view factor from ground to vegetation  
+     real(r8), pointer :: vfvt_f_out        (:,:)   ! Unweighted longwave view factor from vegetation to ground  
+     real(r8), pointer :: vfsw_f_out        (:,:)   ! Unweighted longwave view factor from sky to wall  
+     real(r8), pointer :: vfsr_f_out        (:,:)   ! Unweighted longwave view factor from sky to roof  
+     real(r8), pointer :: vfsv_f_out        (:,:)   ! Unweighted longwave view factor from sky to vegetation  
+     real(r8), pointer :: svfw_f_out        (:,:)   ! Unweighted longwave sky view factor for wall  
+     real(r8), pointer :: svfv_f_out        (:,:)   ! Unweighted longwave sky view factor for vegetation  
+     real(r8), pointer :: svfr_f_out        (:,:)   ! Unweighted longwave sky view factor for roof  
+     real(r8), pointer :: vfst_f_out        (:)     ! Unweighted longwave view factor from sky to ground  
+     real(r8), pointer :: svft_f_out        (:)     ! Unweighted longwave sky view factor for ground  
+
 !-------------------[kz.11]Ray tracing test------------------------- 
      ! Misc
      real(r8), pointer    :: xmf_col               (:)   ! total latent heat of phase change of ground water
@@ -425,6 +489,71 @@ contains
     allocate(this%kvs1d_out          (begl:endl,maxind))     ; this%kvs1d_out       (:,:) = nan
     allocate(this%kts1d_out          (begl:endl))            ; this%kts1d_out       (:) = nan
     allocate(this%krs1d_out          (begl:endl,maxind))     ; this%krs1d_out       (:,:) = nan
+    
+    ! Allocate and initialize separated dimensions of 3D unweighted shortwave view factor outputs
+    allocate(this%vfww_k_out1          (begl:endl,maxind))          ; this%vfww_k_out1       (:,:) = nan
+    allocate(this%vfww_k_out2          (begl:endl,maxind))          ; this%vfww_k_out2       (:,:) = nan
+    allocate(this%vfvv_k_out1          (begl:endl,maxind))          ; this%vfvv_k_out1       (:,:) = nan
+    allocate(this%vfvv_k_out2          (begl:endl,maxind))          ; this%vfvv_k_out2       (:,:) = nan
+    allocate(this%vfwv_k_out1          (begl:endl,maxind))          ; this%vfwv_k_out1       (:,:) = nan
+    allocate(this%vfwv_k_out2          (begl:endl,maxind))          ; this%vfwv_k_out2       (:,:) = nan
+    allocate(this%vfvw_k_out1          (begl:endl,maxind))          ; this%vfvw_k_out1       (:,:) = nan
+    allocate(this%vfvw_k_out2          (begl:endl,maxind))          ; this%vfvw_k_out2       (:,:) = nan
+    allocate(this%vfwr_k_out1          (begl:endl,maxind))          ; this%vfwr_k_out1       (:,:) = nan
+    allocate(this%vfwr_k_out2          (begl:endl,maxind))          ; this%vfwr_k_out2       (:,:) = nan
+    allocate(this%vfrw_k_out1          (begl:endl,maxind))          ; this%vfrw_k_out1       (:,:) = nan
+    allocate(this%vfrw_k_out2          (begl:endl,maxind))          ; this%vfrw_k_out2       (:,:) = nan
+    allocate(this%vfvr_k_out1          (begl:endl,maxind))          ; this%vfvr_k_out1       (:,:) = nan
+    allocate(this%vfvr_k_out2          (begl:endl,maxind))          ; this%vfvr_k_out2       (:,:) = nan
+    allocate(this%vfrv_k_out1          (begl:endl,maxind))          ; this%vfrv_k_out1       (:,:) = nan
+    allocate(this%vfrv_k_out2          (begl:endl,maxind))          ; this%vfrv_k_out2       (:,:) = nan
+
+    ! Direct 2D and 1D shortwave view factor outputs
+    allocate(this%vfwt_k_out           (begl:endl,maxind))          ; this%vfwt_k_out        (:,:) = nan
+    allocate(this%vftw_k_out           (begl:endl,maxind))          ; this%vftw_k_out        (:,:) = nan
+    allocate(this%vftv_k_out           (begl:endl,maxind))          ; this%vftv_k_out        (:,:) = nan
+    allocate(this%vfvt_k_out           (begl:endl,maxind))          ; this%vfvt_k_out        (:,:) = nan
+    allocate(this%vfsw_k_out           (begl:endl,maxind))          ; this%vfsw_k_out        (:,:) = nan
+    allocate(this%vfsr_k_out           (begl:endl,maxind))          ; this%vfsr_k_out        (:,:) = nan
+    allocate(this%vfsv_k_out           (begl:endl,maxind))          ; this%vfsv_k_out        (:,:) = nan
+    allocate(this%svfw_k_out           (begl:endl,maxind))          ; this%svfw_k_out        (:,:) = nan
+    allocate(this%svfv_k_out           (begl:endl,maxind))          ; this%svfv_k_out        (:,:) = nan
+    allocate(this%svfr_k_out           (begl:endl,maxind))          ; this%svfr_k_out        (:,:) = nan
+    allocate(this%vfst_k_out           (begl:endl))                 ; this%vfst_k_out        (:)    = nan
+    allocate(this%svft_k_out           (begl:endl))                 ; this%svft_k_out        (:)    = nan
+
+    ! Allocate and initialize separated dimensions of 3D unweighted longwave view factor outputs
+    allocate(this%vfww_f_out1          (begl:endl,maxind))          ; this%vfww_f_out1       (:,:) = nan
+    allocate(this%vfww_f_out2          (begl:endl,maxind))          ; this%vfww_f_out2       (:,:) = nan
+    allocate(this%vfvv_f_out1          (begl:endl,maxind))          ; this%vfvv_f_out1       (:,:) = nan
+    allocate(this%vfvv_f_out2          (begl:endl,maxind))          ; this%vfvv_f_out2       (:,:) = nan
+    allocate(this%vfwv_f_out1          (begl:endl,maxind))          ; this%vfwv_f_out1       (:,:) = nan
+    allocate(this%vfwv_f_out2          (begl:endl,maxind))          ; this%vfwv_f_out2       (:,:) = nan
+    allocate(this%vfvw_f_out1          (begl:endl,maxind))          ; this%vfvw_f_out1       (:,:) = nan
+    allocate(this%vfvw_f_out2          (begl:endl,maxind))          ; this%vfvw_f_out2       (:,:) = nan
+    allocate(this%vfwr_f_out1          (begl:endl,maxind))          ; this%vfwr_f_out1       (:,:) = nan
+    allocate(this%vfwr_f_out2          (begl:endl,maxind))          ; this%vfwr_f_out2       (:,:) = nan
+    allocate(this%vfrw_f_out1          (begl:endl,maxind))          ; this%vfrw_f_out1       (:,:) = nan
+    allocate(this%vfrw_f_out2          (begl:endl,maxind))          ; this%vfrw_f_out2       (:,:) = nan
+    allocate(this%vfvr_f_out1          (begl:endl,maxind))          ; this%vfvr_f_out1       (:,:) = nan
+    allocate(this%vfvr_f_out2          (begl:endl,maxind))          ; this%vfvr_f_out2       (:,:) = nan
+    allocate(this%vfrv_f_out1          (begl:endl,maxind))          ; this%vfrv_f_out1       (:,:) = nan
+    allocate(this%vfrv_f_out2          (begl:endl,maxind))          ; this%vfrv_f_out2       (:,:) = nan
+
+    ! Direct 2D and 1D longwave view factor outputs
+    allocate(this%vfwt_f_out           (begl:endl,maxind))          ; this%vfwt_f_out        (:,:) = nan
+    allocate(this%vftw_f_out           (begl:endl,maxind))          ; this%vftw_f_out        (:,:) = nan
+    allocate(this%vftv_f_out           (begl:endl,maxind))          ; this%vftv_f_out        (:,:) = nan
+    allocate(this%vfvt_f_out           (begl:endl,maxind))          ; this%vfvt_f_out        (:,:) = nan
+    allocate(this%vfsw_f_out           (begl:endl,maxind))          ; this%vfsw_f_out        (:,:) = nan
+    allocate(this%vfsr_f_out           (begl:endl,maxind))          ; this%vfsr_f_out        (:,:) = nan
+    allocate(this%vfsv_f_out           (begl:endl,maxind))          ; this%vfsv_f_out        (:,:) = nan
+    allocate(this%svfw_f_out           (begl:endl,maxind))          ; this%svfw_f_out        (:,:) = nan
+    allocate(this%svfv_f_out           (begl:endl,maxind))          ; this%svfv_f_out        (:,:) = nan
+    allocate(this%svfr_f_out           (begl:endl,maxind))          ; this%svfr_f_out        (:,:) = nan
+    allocate(this%vfst_f_out           (begl:endl))                 ; this%vfst_f_out        (:)    = nan
+    allocate(this%svft_f_out           (begl:endl))                 ; this%svft_f_out        (:)    = nan
+
 !-------------------[kz.13]Ray tracing test------------------------- 
     allocate(this%xmf_col                  (begc:endc))                      ; this%xmf_col                  (:)   = nan
     allocate(this%xmf_h2osfc_col           (begc:endc))                      ; this%xmf_h2osfc_col           (:)   = nan
@@ -1114,7 +1243,288 @@ contains
     call hist_addfld1d(fname='kts1d', units='unitless',  &
          avgflag='A', long_name='Area-weighted shortwave view factor from ? to sky for a given canyon', &
          ptr_lunit=this%kts1d_out, set_nourb=spval, l2g_scale_type='unity', &
-         default='inactive')            
+         default='inactive')      
+         
+   this%vfww_k_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfww_k_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from wall to wall (dim 1)', &
+       ptr_lunit=this%vfww_k_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfww_k_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfww_k_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from wall to wall (dim 2)', &
+       ptr_lunit=this%vfww_k_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvv_k_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvv_k_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from vegetation to vegetation (dim 1)', &
+       ptr_lunit=this%vfvv_k_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvv_k_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvv_k_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from vegetation to vegetation (dim 2)', &
+       ptr_lunit=this%vfvv_k_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfwv_k_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfwv_k_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from wall to vegetation (dim 1)', &
+       ptr_lunit=this%vfwv_k_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfwv_k_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfwv_k_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from wall to vegetation (dim 2)', &
+       ptr_lunit=this%vfwv_k_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvw_k_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvw_k_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from vegetation to wall (dim 1)', &
+       ptr_lunit=this%vfvw_k_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvw_k_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvw_k_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from vegetation to wall (dim 2)', &
+       ptr_lunit=this%vfvw_k_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfwr_k_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfwr_k_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from wall to roof (dim 1)', &
+       ptr_lunit=this%vfwr_k_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfwr_k_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfwr_k_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from wall to roof (dim 2)', &
+       ptr_lunit=this%vfwr_k_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfrw_k_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfrw_k_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from roof to wall (dim 1)', &
+       ptr_lunit=this%vfrw_k_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfrw_k_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfrw_k_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from roof to wall (dim 2)', &
+       ptr_lunit=this%vfrw_k_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvr_k_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvr_k_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from vegetation to roof (dim 1)', &
+       ptr_lunit=this%vfvr_k_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvr_k_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvr_k_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from vegetation to roof (dim 2)', &
+       ptr_lunit=this%vfvr_k_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfrv_k_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfrv_k_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from roof to vegetation (dim 1)', &
+       ptr_lunit=this%vfrv_k_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfrv_k_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfrv_k_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from roof to vegetation (dim 2)', &
+       ptr_lunit=this%vfrv_k_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfww_f_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfww_f_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from wall to wall (dim 1)', &
+       ptr_lunit=this%vfww_f_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfww_f_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfww_f_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from wall to wall (dim 2)', &
+       ptr_lunit=this%vfww_f_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvv_f_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvv_f_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from vegetation to vegetation (dim 1)', &
+       ptr_lunit=this%vfvv_f_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvv_f_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvv_f_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from vegetation to vegetation (dim 2)', &
+       ptr_lunit=this%vfvv_f_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfwv_f_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfwv_f_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from wall to vegetation (dim 1)', &
+       ptr_lunit=this%vfwv_f_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfwv_f_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfwv_f_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from wall to vegetation (dim 2)', &
+       ptr_lunit=this%vfwv_f_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvw_f_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvw_f_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from vegetation to wall (dim 1)', &
+       ptr_lunit=this%vfvw_f_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvw_f_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvw_f_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from vegetation to wall (dim 2)', &
+       ptr_lunit=this%vfvw_f_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfwr_f_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfwr_f_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from wall to roof (dim 1)', &
+       ptr_lunit=this%vfwr_f_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfwr_f_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfwr_f_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from wall to roof (dim 2)', &
+       ptr_lunit=this%vfwr_f_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfrw_f_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfrw_f_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from roof to wall (dim 1)', &
+       ptr_lunit=this%vfrw_f_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfrw_f_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfrw_f_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from roof to wall (dim 2)', &
+       ptr_lunit=this%vfrw_f_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvr_f_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvr_f_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from vegetation to roof (dim 1)', &
+       ptr_lunit=this%vfvr_f_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvr_f_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvr_f_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from vegetation to roof (dim 2)', &
+       ptr_lunit=this%vfvr_f_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfrv_f_out1(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfrv_f_1', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from roof to vegetation (dim 1)', &
+       ptr_lunit=this%vfrv_f_out1, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfrv_f_out2(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfrv_f_2', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from roof to vegetation (dim 2)', &
+       ptr_lunit=this%vfrv_f_out2, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfwt_k_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfwt_k', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from wall to ground', &
+       ptr_lunit=this%vfwt_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vftw_k_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vftw_k', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from ground to wall', &
+       ptr_lunit=this%vftw_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vftv_k_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vftv_k', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from ground to vegetation', &
+       ptr_lunit=this%vftv_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvt_k_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvt_k', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from vegetation to ground', &
+       ptr_lunit=this%vfvt_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfsw_k_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfsw_k', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from sky to wall', &
+       ptr_lunit=this%vfsw_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfsr_k_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfsr_k', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from sky to roof', &
+       ptr_lunit=this%vfsr_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfsv_k_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfsv_k', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from sky to vegetation', &
+       ptr_lunit=this%vfsv_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%svfw_k_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='svfw_k', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from sky view factor for wall', &
+       ptr_lunit=this%svfw_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%svfv_k_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='svfv_k', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from sky view factor for vegetation', &
+       ptr_lunit=this%svfv_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%svfr_k_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='svfr_k', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted shortwave view factor from sky view factor for roof', &
+       ptr_lunit=this%svfr_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfwt_f_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfwt_f', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from wall to ground', &
+       ptr_lunit=this%vfwt_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vftw_f_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vftw_f', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from ground to wall', &
+       ptr_lunit=this%vftw_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vftv_f_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vftv_f', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from ground to vegetation', &
+       ptr_lunit=this%vftv_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfvt_f_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfvt_f', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from vegetation to ground', &
+       ptr_lunit=this%vfvt_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfsw_f_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfsw_f', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from sky to wall', &
+       ptr_lunit=this%vfsw_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfsr_f_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfsr_f', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from sky to roof', &
+       ptr_lunit=this%vfsr_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfsv_f_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='vfsv_f', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from sky to vegetation', &
+       ptr_lunit=this%vfsv_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%svfw_f_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='svfw_f', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from sky view factor for wall', &
+       ptr_lunit=this%svfw_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%svfv_f_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='svfv_f', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from sky view factor for vegetation', &
+       ptr_lunit=this%svfv_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%svfr_f_out(begl:endl,:) = spval
+   call hist_addfld2d(fname='svfr_f', units='unitless', type2d='numrad', avgflag='A', &
+       long_name='Unweighted longwave view factor from sky view factor for roof', &
+       ptr_lunit=this%svfr_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfst_k_out(begl:endl) = spval
+   call hist_addfld1d(fname='vfst_k', units='unitless', avgflag='A', &
+       long_name='Unweighted shortwave view factor from sky to ground', &
+       ptr_lunit=this%vfst_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%svft_k_out(begl:endl) = spval
+   call hist_addfld1d(fname='svft_k', units='unitless', avgflag='A', &
+       long_name='Unweighted shortwave view factor from sky view factor for ground', &
+       ptr_lunit=this%svft_k_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%vfst_f_out(begl:endl) = spval
+   call hist_addfld1d(fname='vfst_f', units='unitless', avgflag='A', &
+       long_name='Unweighted longwave view factor from sky to ground', &
+       ptr_lunit=this%vfst_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+   
+   this%svft_f_out(begl:endl) = spval
+   call hist_addfld1d(fname='svft_f', units='unitless', avgflag='A', &
+       long_name='Unweighted longwave view factor from sky view factor for ground', &
+       ptr_lunit=this%svft_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+
 !-------------------[kz.14]Ray tracing test-------------------------          
 
   end subroutine InitHistory

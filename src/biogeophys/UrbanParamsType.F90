@@ -64,7 +64,10 @@ module UrbanParamsType
      real(r8), pointer :: thick_roof      (:,:)
      integer,  pointer :: nlev_improad    (:,:)
      real(r8), pointer :: t_building_min  (:,:)
- 
+     real(r8), pointer :: A_v1  (:,:)
+     real(r8), pointer :: A_v2  (:,:)
+     real(r8), pointer :: h1  (:,:)
+     real(r8), pointer :: h2  (:,:)
      
   end type urbinp_type
   type (urbinp_type), public :: urbinp   ! urban input derived type
@@ -116,7 +119,58 @@ module UrbanParamsType
      real(r8), pointer :: kvs1d_out       (:,:)   ! Shortwave radiation view factor from vegetation to sky 
      real(r8), pointer :: krs1d_out       (:,:)   ! Shortwave radiation view factor from roof to sky
      real(r8), pointer :: ksg1d_out       (:)     ! Shortwave radiation view factor from sky to ground 
-     real(r8), pointer :: kts1d_out       (:)     ! Shortwave radiation view factor from ground to sky 
+     real(r8), pointer :: kts1d_out       (:)     ! Shortwave radiation view factor from ground to sky
+     
+     ! Unweighted longwave radiation view factor outputs
+     real(r8), pointer :: vfww_f_out      (:,:,:)  ! Unweighted longwave view factor from wall to wall  
+     real(r8), pointer :: vfvv_f_out      (:,:,:)  ! Unweighted longwave view factor from vegetation to vegetation  
+     real(r8), pointer :: vfwv_f_out      (:,:,:)  ! Unweighted longwave view factor from wall to vegetation  
+     real(r8), pointer :: vfvw_f_out      (:,:,:)  ! Unweighted longwave view factor from vegetation to wall  
+     real(r8), pointer :: vfwr_f_out      (:,:,:)  ! Unweighted longwave view factor from wall to roof  
+     real(r8), pointer :: vfrw_f_out      (:,:,:)  ! Unweighted longwave view factor from roof to wall  
+     real(r8), pointer :: vfvr_f_out      (:,:,:)  ! Unweighted longwave view factor from vegetation to roof  
+     real(r8), pointer :: vfrv_f_out      (:,:,:)  ! Unweighted longwave view factor from roof to vegetation  
+     real(r8), pointer :: vfwt_f_out      (:,:)    ! Unweighted longwave view factor from wall to ground  
+     real(r8), pointer :: vftw_f_out      (:,:)    ! Unweighted longwave view factor from ground to wall  
+     real(r8), pointer :: vftv_f_out      (:,:)    ! Unweighted longwave view factor from ground to vegetation  
+     real(r8), pointer :: vfvt_f_out      (:,:)    ! Unweighted longwave view factor from vegetation to ground  
+     real(r8), pointer :: vfsw_f_out      (:,:)    ! Unweighted longwave view factor from sky to wall  
+     real(r8), pointer :: vfsr_f_out      (:,:)    ! Unweighted longwave view factor from sky to roof  
+     real(r8), pointer :: vfsv_f_out      (:,:)    ! Unweighted longwave view factor from sky to vegetation  
+     real(r8), pointer :: svfw_f_out      (:,:)    ! Unweighted longwave sky view factor for wall  
+     real(r8), pointer :: svfv_f_out      (:,:)    ! Unweighted longwave sky view factor for vegetation  
+     real(r8), pointer :: svfr_f_out      (:,:)    ! Unweighted longwave sky view factor for roof  
+     real(r8), pointer :: vfst_f_out      (:)      ! Unweighted longwave view factor from sky to ground  
+     real(r8), pointer :: svft_f_out      (:)      ! Unweighted longwave sky view factor for ground  
+
+     ! Unweighted shortwave radiation view factor outputs
+     real(r8), pointer :: vfww_k_out      (:,:,:)  ! Unweighted shortwave view factor from wall to wall  
+     real(r8), pointer :: vfvv_k_out      (:,:,:)  ! Unweighted shortwave view factor from vegetation to vegetation  
+     real(r8), pointer :: vfwv_k_out      (:,:,:)  ! Unweighted shortwave view factor from wall to vegetation  
+     real(r8), pointer :: vfvw_k_out      (:,:,:)  ! Unweighted shortwave view factor from vegetation to wall  
+     real(r8), pointer :: vfwr_k_out      (:,:,:)  ! Unweighted shortwave view factor from wall to roof  
+     real(r8), pointer :: vfrw_k_out      (:,:,:)  ! Unweighted shortwave view factor from roof to wall  
+     real(r8), pointer :: vfvr_k_out      (:,:,:)  ! Unweighted shortwave view factor from vegetation to roof  
+     real(r8), pointer :: vfrv_k_out      (:,:,:)  ! Unweighted shortwave view factor from roof to vegetation  
+     real(r8), pointer :: vfwt_k_out      (:,:)    ! Unweighted shortwave view factor from wall to ground  
+     real(r8), pointer :: vftw_k_out      (:,:)    ! Unweighted shortwave view factor from ground to wall  
+     real(r8), pointer :: vftv_k_out      (:,:)    ! Unweighted shortwave view factor from ground to vegetation  
+     real(r8), pointer :: vfvt_k_out      (:,:)    ! Unweighted shortwave view factor from vegetation to ground  
+     real(r8), pointer :: vfsw_k_out      (:,:)    ! Unweighted shortwave view factor from sky to wall  
+     real(r8), pointer :: vfsr_k_out      (:,:)    ! Unweighted shortwave view factor from sky to roof  
+     real(r8), pointer :: vfsv_k_out      (:,:)    ! Unweighted shortwave view factor from sky to vegetation  
+
+     ! Unweighted sky view factor outputs (for both longwave and shortwave)
+     real(r8), pointer :: svfw_k_out      (:,:)    ! Unweighted shortwave sky view factor for wall  
+     real(r8), pointer :: svfv_k_out      (:,:)    ! Unweighted shortwave sky view factor for vegetation  
+     real(r8), pointer :: svfr_k_out      (:,:)    ! Unweighted shortwave sky view factor for roof  
+     real(r8), pointer :: vfst_k_out      (:)      ! Unweighted shortwave view factor from sky to ground  
+     real(r8), pointer :: svft_k_out      (:)      ! Unweighted shortwave sky view factor for ground  
+     real(r8), pointer :: A_v1     (:)      ! Unweighted shortwave view factor from sky to ground  
+     real(r8), pointer :: A_v2      (:)      ! Unweighted shortwave sky view factor for ground  
+     real(r8), pointer :: h1      (:)      ! Unweighted shortwave view factor from sky to ground  
+     real(r8), pointer :: h2      (:)      ! Unweighted shortwave sky view factor for ground  
+     
   !-------------------[kz.2]Ray tracing test-------------------------  
      real(r8), allocatable :: wind_hgt_canyon     (:)   ! lun height above road at which wind in canyon is to be computed (m)
      real(r8), allocatable :: em_roof             (:)   ! lun roof emissivity
@@ -277,7 +331,54 @@ contains
     real(r8)            :: kvs1d(nzcanm)          ! Shortwave radiation view factor from vegetation to sky 
     real(r8)            :: krs1d(nzcanm)          ! Shortwave radiation view factor from roof to sky     
     real(r8)            :: ksg1d                  ! Shortwave radiation view factor from sky to ground         
-    real(r8)            :: kts1d                  ! Shortwave radiation view factor from ground to sky              
+    real(r8)            :: kts1d                  ! Shortwave radiation view factor from ground to sky   
+    
+    ! Unweighted longwave radiation view factors (for initialization)
+    real(r8)            :: vfww_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from wall to wall
+    real(r8)            :: vfvv_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from vegetation to vegetation
+    real(r8)            :: vfwv_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from wall to vegetation
+    real(r8)            :: vfvw_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from vegetation to wall
+    real(r8)            :: vfwr_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from wall to roof
+    real(r8)            :: vfrw_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from roof to wall
+    real(r8)            :: vfvr_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from vegetation to roof
+    real(r8)            :: vfrv_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from roof to vegetation
+    real(r8)            :: vfwt_f(nzcanm)             ! Unweighted longwave radiation view factor from wall to ground
+    real(r8)            :: vftw_f(nzcanm)             ! Unweighted longwave radiation view factor from ground to wall
+    real(r8)            :: vftv_f(nzcanm)             ! Unweighted longwave radiation view factor from ground to vegetation
+    real(r8)            :: vfvt_f(nzcanm)             ! Unweighted longwave radiation view factor from vegetation to ground
+    real(r8)            :: vfsw_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to wall
+    real(r8)            :: vfsr_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to roof
+    real(r8)            :: vfsv_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to vegetation
+    real(r8)            :: vfst_f                     ! Unweighted longwave radiation view factor from sky to ground    
+    real(r8)            :: svft_f                     ! Unweighted longwave sky view factor for ground
+
+    ! Unweighted shortwave radiation view factors (for initialization)
+    real(r8)            :: vfww_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from wall to wall
+    real(r8)            :: vfvv_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from vegetation to vegetation
+    real(r8)            :: vfwv_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from wall to vegetation
+    real(r8)            :: vfvw_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from vegetation to wall
+    real(r8)            :: vfwr_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from wall to roof
+    real(r8)            :: vfrw_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from roof to wall
+    real(r8)            :: vfvr_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from vegetation to roof
+    real(r8)            :: vfrv_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from roof to vegetation
+    real(r8)            :: vfwt_k(nzcanm)             ! Unweighted shortwave radiation view factor from wall to ground
+    real(r8)            :: vftw_k(nzcanm)             ! Unweighted shortwave radiation view factor from ground to wall
+    real(r8)            :: vftv_k(nzcanm)             ! Unweighted shortwave radiation view factor from ground to vegetation
+    real(r8)            :: vfvt_k(nzcanm)             ! Unweighted shortwave radiation view factor from vegetation to ground
+    real(r8)            :: vfsw_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to wall
+    real(r8)            :: vfsr_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to roof
+    real(r8)            :: vfsv_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to vegetation
+    real(r8)            :: vfst_k                     ! Unweighted shortwave radiation view factor from sky to ground
+    real(r8)            :: svft_k                     ! Unweighted shortwave sky view factor for ground
+    
+    ! Unweighted sky view factors (for initialization)
+    real(r8)            :: svfw_f(nzcanm)             ! Unweighted longwave sky view factor for wall
+    real(r8)            :: svfv_f(nzcanm)             ! Unweighted longwave sky view factor for vegetation
+    real(r8)            :: svfr_f(nzcanm)             ! Unweighted longwave sky view factor for roof
+    real(r8)            :: svfw_k(nzcanm)             ! Unweighted shortwave sky view factor for wall
+    real(r8)            :: svfv_k(nzcanm)             ! Unweighted shortwave sky view factor for vegetation
+    real(r8)            :: svfr_k(nzcanm)             ! Unweighted shortwave sky view factor for roof
+    real(r8)            :: rnum                                   ! A temporary random number to generate various tree geometry for test purpose
 !-------------------[kz.3]Ray tracing test-------------------------   
     
     begp = bounds%begp; endp = bounds%endp
@@ -365,6 +466,56 @@ contains
     allocate(this%ksg1d_out           (begl:endl))            ; this%ksg1d_out       (:) = nan   
     allocate(this%kts1d_out           (begl:endl))            ; this%kts1d_out       (:) = nan
 
+    ! Allocate and initialize unweighted longwave radiation view factor outputs
+    allocate(this%vfww_f_out           (begl:endl,nzcanm,nzcanm))          ; this%vfww_f_out       (:,:,:) = nan
+    allocate(this%vfvv_f_out           (begl:endl,nzcanm,nzcanm))          ; this%vfvv_f_out       (:,:,:) = nan
+    allocate(this%vfwv_f_out           (begl:endl,nzcanm,nzcanm))          ; this%vfwv_f_out       (:,:,:) = nan
+    allocate(this%vfvw_f_out           (begl:endl,nzcanm,nzcanm))          ; this%vfvw_f_out       (:,:,:) = nan
+    allocate(this%vfwr_f_out           (begl:endl,nzcanm,nzcanm))          ; this%vfwr_f_out       (:,:,:) = nan
+    allocate(this%vfrw_f_out           (begl:endl,nzcanm,nzcanm))          ; this%vfrw_f_out       (:,:,:) = nan
+    allocate(this%vfvr_f_out           (begl:endl,nzcanm,nzcanm))          ; this%vfvr_f_out       (:,:,:) = nan
+    allocate(this%vfrv_f_out           (begl:endl,nzcanm,nzcanm))          ; this%vfrv_f_out       (:,:,:) = nan
+    allocate(this%vfwt_f_out           (begl:endl,nzcanm))                 ; this%vfwt_f_out       (:,:)   = nan
+    allocate(this%vftw_f_out           (begl:endl,nzcanm))                 ; this%vftw_f_out       (:,:)   = nan
+    allocate(this%vftv_f_out           (begl:endl,nzcanm))                 ; this%vftv_f_out       (:,:)   = nan
+    allocate(this%vfvt_f_out           (begl:endl,nzcanm))                 ; this%vfvt_f_out       (:,:)   = nan
+    allocate(this%vfsw_f_out           (begl:endl,nzcanm))                 ; this%vfsw_f_out       (:,:)   = nan
+    allocate(this%vfsr_f_out           (begl:endl,nzcanm))                 ; this%vfsr_f_out       (:,:)   = nan
+    allocate(this%vfsv_f_out           (begl:endl,nzcanm))                 ; this%vfsv_f_out       (:,:)   = nan
+    allocate(this%vfst_f_out           (begl:endl))                        ; this%vfst_f_out       (:)     = nan
+    allocate(this%svft_f_out           (begl:endl))                        ; this%svft_f_out       (:)     = nan
+
+    ! Allocate and initialize unweighted shortwave radiation view factor outputs
+    allocate(this%vfww_k_out           (begl:endl,nzcanm,nzcanm))          ; this%vfww_k_out       (:,:,:) = nan
+    allocate(this%vfvv_k_out           (begl:endl,nzcanm,nzcanm))          ; this%vfvv_k_out       (:,:,:) = nan
+    allocate(this%vfwv_k_out           (begl:endl,nzcanm,nzcanm))          ; this%vfwv_k_out       (:,:,:) = nan
+    allocate(this%vfvw_k_out           (begl:endl,nzcanm,nzcanm))          ; this%vfvw_k_out       (:,:,:) = nan
+    allocate(this%vfwr_k_out           (begl:endl,nzcanm,nzcanm))          ; this%vfwr_k_out       (:,:,:) = nan
+    allocate(this%vfrw_k_out           (begl:endl,nzcanm,nzcanm))          ; this%vfrw_k_out       (:,:,:) = nan
+    allocate(this%vfvr_k_out           (begl:endl,nzcanm,nzcanm))          ; this%vfvr_k_out       (:,:,:) = nan
+    allocate(this%vfrv_k_out           (begl:endl,nzcanm,nzcanm))          ; this%vfrv_k_out       (:,:,:) = nan
+    allocate(this%vfwt_k_out           (begl:endl,nzcanm))                 ; this%vfwt_k_out       (:,:)   = nan
+    allocate(this%vftw_k_out           (begl:endl,nzcanm))                 ; this%vftw_k_out       (:,:)   = nan
+    allocate(this%vftv_k_out           (begl:endl,nzcanm))                 ; this%vftv_k_out       (:,:)   = nan
+    allocate(this%vfvt_k_out           (begl:endl,nzcanm))                 ; this%vfvt_k_out       (:,:)   = nan
+    allocate(this%vfsw_k_out           (begl:endl,nzcanm))                 ; this%vfsw_k_out       (:,:)   = nan
+    allocate(this%vfsr_k_out           (begl:endl,nzcanm))                 ; this%vfsr_k_out       (:,:)   = nan
+    allocate(this%vfsv_k_out           (begl:endl,nzcanm))                 ; this%vfsv_k_out       (:,:)   = nan
+
+    ! Allocate and initialize unweighted sky view factor outputs
+    allocate(this%svfw_f_out           (begl:endl,nzcanm))                 ; this%svfw_f_out       (:,:)   = nan
+    allocate(this%svfv_f_out           (begl:endl,nzcanm))                 ; this%svfv_f_out       (:,:)   = nan
+    allocate(this%svfr_f_out           (begl:endl,nzcanm))                 ; this%svfr_f_out       (:,:)   = nan
+    allocate(this%svfw_k_out           (begl:endl,nzcanm))                 ; this%svfw_k_out       (:,:)   = nan
+    allocate(this%svfv_k_out           (begl:endl,nzcanm))                 ; this%svfv_k_out       (:,:)   = nan
+    allocate(this%svfr_k_out           (begl:endl,nzcanm))                 ; this%svfr_k_out       (:,:)   = nan
+    allocate(this%vfst_k_out           (begl:endl))                        ; this%vfst_k_out       (:)     = nan
+    allocate(this%svft_k_out           (begl:endl))                        ; this%svft_k_out       (:)     = nan
+    allocate(this%A_v2                 (begl:endl))                        ; this%A_v2             (:)     = nan
+    allocate(this%A_v1                 (begl:endl))                        ; this%A_v1             (:)     = nan
+    allocate(this%h1                 (begl:endl))                        ; this%h1             (:)     = nan
+    allocate(this%h2                 (begl:endl))                        ; this%h2             (:)     = nan
+    
    !------------------------------------------------------------------------------
    ! These values give a single-layer urban canyon for view factor calculation
    !------------------------------------------------------------------------------
@@ -388,8 +539,9 @@ contains
     ! Could change these values if view factors from sky are not accurate, especially nsky
     nsky=1
     hsky=1.5_r8
-    
-    write(6,*)'nrays = ',nrays
+    !if (debug_write) then
+    !    write(6,*)'nrays = ',nrays
+    !end if
 !-------------------[kz.4]Ray tracing test-------------------------  
           
     do l = bounds%begl,bounds%endl
@@ -443,29 +595,48 @@ contains
           dzcan=lun%ht_roof(l)
           wcan=lun%ht_roof(l)/lun%canyon_hwr(l)        
           wbui = lun%ht_roof(l)/(lun%canyon_hwr(l)*(1._r8-lun%wtlunit_roof(l))/lun%wtlunit_roof(l))
-          h1=min(0.2_r8*dzcan,10.0_r8)
-          h2=min(0.4_r8*dzcan,20.0_r8)
-                    
-          ! Currently a constant lai=3 and tree_cov=0.6 is used in surface data
-          if ((h1+h2)<= lun%ht_roof(l)) then
-              lad(1)=lun%lai(l)/h2     ! set the LAD (m2/m3) in the canyon here
-              lad(2)=0._r8                         ! set the LAD above the canyon to be zero
-          else if ((h1+h2) > lun%ht_roof(l)) then
-              lad(1)=lun%lai(l)/(h2)     ! set the LAD (m2/m3) in the canyon here
-              lad(2)=lun%lai(l)/(h2)     ! set the LAD above the canyon to be zero
-          end if
-          !lad(2)=lun%lai(l)/lun%ht_roof(l)      ! set the LAD above the canyon to be zero
           
+          lad(:)=0.4_r8
           ! These are unused but keep for now:
           lads=lad  ! for shortwave calcs (usually equal to "lad")
           ladl=lad  ! lfor longwave calcs (usually equal to "lad")
           
-          tree_cov=lun%tree_cov(l)
+          ! Specify various h1 and h2 combincations for test
+          call RANDOM_NUMBER(rnum)
+          if (rnum > 0.8_r8) then 
+              lun%h1(l)=min(lun%ht_roof(l)*0.6_r8,10.0_r8) ! ca=1
+              lun%h2(l)=min(lun%ht_roof(l)*1.1_r8,20.0_r8)  
+          else if (rnum > 0.6_r8) then 
+              lun%h1(l)=min(lun%ht_roof(l)*0.4_r8,10.0_r8) ! ca=2
+              lun%h2(l)=min(lun%ht_roof(l)*1.1_r8,20.0_r8)  
+          else if (rnum > 0.4_r8) then 
+              lun%h1(l)=min(lun%ht_roof(l)*0.7_r8,10.0_r8) ! ca=3
+              lun%h2(l)=min(lun%ht_roof(l)*0.8_r8,20.0_r8)          
+          else if (rnum > 0.2_r8) then     
+              lun%h1(l)=min(lun%ht_roof(l)*0.3_r8,10.0_r8) ! ca=4
+              lun%h2(l)=min(lun%ht_roof(l)*0.8_r8,15.0_r8)
+          else
+              lun%h1(l)=max(lun%ht_roof(l)*0.2_r8,1.0_r8)  ! ca=0
+              lun%h2(l)=max(lun%ht_roof(l)*0.6_r8,1.0_r8)
+          end if
+                            
           !Eq. 15 in Krayenhoff et al. 2020
           omega=-1.0_r8 / (0.5_r8 * lun%lai(l)) * log(1.0_r8 - lun%tree_cov(l) * &
                 (1.0_r8 - exp(-0.5_r8 * lun%lai(l)/lun%tree_cov(l))))
           dray=0.05_r8*min(min(dzcan,wcan),wbui)/dzcan
-      
+
+          if ((lun%h1(l)+lun%h2(l))<= lun%ht_roof(l)) then
+              lun%A_v1(l)=wcan*lad(1)*omega(1)*lun%h2(l)*2._r8
+              lun%A_v2(l)=0._r8 
+          else if ((lun%h1(l)+lun%h2(l)) > lun%ht_roof(l)) then
+              lun%A_v1(l)=wcan*lad(1)*omega(1)*(lun%ht_roof(l)-lun%h1(l))*2._r8
+              lun%A_v2(l)=wcan*lad(2)*omega(2)*(lun%h1(l)+lun%h2(l)-lun%ht_roof(l))*2._r8   
+          end if  
+                              
+          tree_cov=lun%tree_cov(l)
+          h1=lun%h1(l)
+          h2=lun%h2(l)
+          
           ! calculate view factor
           call view_factors_v(nzcanm,dzcan,wcan,wbui,&
                   tree_cov,lad,lads,ladl,omega,ss_in,pb_in,dray,maxind,&
@@ -474,8 +645,12 @@ contains
                           frv1d,fwg1d,fgw1d,fgv1d,fsw1d,fvg1d,fsg1d,fsr1d,&
                           fsv1d,kww1d,kvv1d,kwv1d,kvw1d,kwr1d,krw1d,kvr1d,&
                           krv1d,kwg1d,kgw1d,kgv1d,ksw1d,kvg1d,ksg1d,ksr1d,&
-                          ksv1d,kws1d,kvs1d,kts1d,krs1d,fws1d,fvs1d,fts1d,frs1d,l)
-                
+                          ksv1d,kws1d,kvs1d,kts1d,krs1d,fws1d,fvs1d,fts1d,frs1d,&
+                          vfww_f,vfvv_f,vfwv_f,vfvw_f,vfwr_f,vfrw_f,vfvr_f,&
+                          vfrv_f,vfwt_f,vftw_f,vftv_f,vfsw_f,vfvt_f,vfst_f,vfsr_f,&
+                          vfsv_f,vfww_k,vfvv_k,vfwv_k,vfvw_k,vfwr_k,vfrw_k,vfvr_k,&
+                          vfrv_k,vfwt_k,vftw_k,vftv_k,vfsw_k,vfvt_k,vfst_k,vfsr_k,&
+                          vfsv_k,svfw_k,svfv_k,svft_k,svfr_k,svfw_f,svfv_f,svft_f,svfr_f,l)
           this%fww1d_out(l,:,:)      = fww1d(:,:)
           this%fvv1d_out(l,:,:)      = fvv1d(:,:)
           this%fwv1d_out(l,:,:)      = fwv1d(:,:)
@@ -519,6 +694,50 @@ contains
           this%krs1d_out(l,:)      = krs1d(:) 
           this%ksg1d_out(l)        = ksg1d
           this%kts1d_out(l)        = kts1d   
+          
+          this%vfww_f_out(l,:,:)      = vfww_f(:,:)
+          this%vfvv_f_out(l,:,:)      = vfvv_f(:,:)
+          this%vfwv_f_out(l,:,:)      = vfwv_f(:,:)
+          this%vfvw_f_out(l,:,:)      = vfvw_f(:,:)
+          this%vfwr_f_out(l,:,:)      = vfwr_f(:,:)
+          this%vfrw_f_out(l,:,:)      = vfrw_f(:,:)
+          this%vfvr_f_out(l,:,:)      = vfvr_f(:,:)
+          this%vfrv_f_out(l,:,:)      = vfrv_f(:,:)
+          this%vfwt_f_out(l,:)        = vfwt_f(:)
+          this%vftw_f_out(l,:)        = vftw_f(:)
+          this%vftv_f_out(l,:)        = vftv_f(:)
+          this%vfvt_f_out(l,:)        = vfvt_f(:)
+          this%vfsw_f_out(l,:)        = vfsw_f(:)
+          this%vfsr_f_out(l,:)        = vfsr_f(:)
+          this%vfsv_f_out(l,:)        = vfsv_f(:)
+          this%vfst_f_out(l)          = vfst_f
+          this%vfst_k_out(l)          = vfst_k
+
+          this%vfww_k_out(l,:,:)      = vfww_k(:,:)
+          this%vfvv_k_out(l,:,:)      = vfvv_k(:,:)
+          this%vfwv_k_out(l,:,:)      = vfwv_k(:,:)
+          this%vfvw_k_out(l,:,:)      = vfvw_k(:,:)
+          this%vfwr_k_out(l,:,:)      = vfwr_k(:,:)
+          this%vfrw_k_out(l,:,:)      = vfrw_k(:,:)
+          this%vfvr_k_out(l,:,:)      = vfvr_k(:,:)
+          this%vfrv_k_out(l,:,:)      = vfrv_k(:,:)
+          this%vfwt_k_out(l,:)        = vfwt_k(:)
+          this%vftw_k_out(l,:)        = vftw_k(:)
+          this%vftv_k_out(l,:)        = vftv_k(:)
+          this%vfvt_k_out(l,:)        = vfvt_k(:)
+          this%vfsw_k_out(l,:)        = vfsw_k(:)
+          this%vfsr_k_out(l,:)        = vfsr_k(:)
+          this%vfsv_k_out(l,:)        = vfsv_k(:)
+
+          this%svfw_f_out(l,:)        = svfw_f(:)
+          this%svfv_f_out(l,:)        = svfv_f(:)
+          this%svfr_f_out(l,:)        = svfr_f(:)
+          this%svfw_k_out(l,:)        = svfw_k(:)
+          this%svfv_k_out(l,:)        = svfv_k(:)
+          this%svfr_k_out(l,:)        = svfr_k(:)
+          this%svft_f_out(l)          = svft_f
+          this%svft_k_out(l)          = svft_k
+
 !-------------------[kz.6]Ray tracing test------------------------- 
           
           ! Inferred from Sailor and Lu 2004
@@ -685,6 +904,53 @@ contains
           this%krs1d_out(l,:)      = spval
           this%kts1d_out(l)        = spval
           this%ksg1d_out(l)        = spval  
+          
+          ! Initialize unweighted longwave radiation view factor outputs
+          this%vfww_f_out(l,:,:)      = spval
+          this%vfvv_f_out(l,:,:)      = spval
+          this%vfwv_f_out(l,:,:)      = spval
+          this%vfvw_f_out(l,:,:)      = spval
+          this%vfwr_f_out(l,:,:)      = spval
+          this%vfrw_f_out(l,:,:)      = spval
+          this%vfvr_f_out(l,:,:)      = spval
+          this%vfrv_f_out(l,:,:)      = spval
+          this%vfwt_f_out(l,:)        = spval
+          this%vftw_f_out(l,:)        = spval
+          this%vftv_f_out(l,:)        = spval
+          this%vfvt_f_out(l,:)        = spval
+          this%vfsw_f_out(l,:)        = spval
+          this%vfsr_f_out(l,:)        = spval
+          this%vfsv_f_out(l,:)        = spval
+          this%vfst_f_out(l)          = spval
+          this%svft_f_out(l)          = spval
+
+          ! Initialize unweighted shortwave radiation view factor outputs
+          this%vfww_k_out(l,:,:)      = spval
+          this%vfvv_k_out(l,:,:)      = spval
+          this%vfwv_k_out(l,:,:)      = spval
+          this%vfvw_k_out(l,:,:)      = spval
+          this%vfwr_k_out(l,:,:)      = spval
+          this%vfrw_k_out(l,:,:)      = spval
+          this%vfvr_k_out(l,:,:)      = spval
+          this%vfrv_k_out(l,:,:)      = spval
+          this%vfwt_k_out(l,:)        = spval
+          this%vftw_k_out(l,:)        = spval
+          this%vftv_k_out(l,:)        = spval
+          this%vfvt_k_out(l,:)        = spval
+          this%vfsw_k_out(l,:)        = spval
+          this%vfsr_k_out(l,:)        = spval
+          this%vfsv_k_out(l,:)        = spval
+          this%vfst_k_out(l)          = spval
+          this%svft_k_out(l)          = spval
+
+          ! Initialize unweighted sky view factor outputs
+          this%svfw_f_out(l,:)        = spval
+          this%svfv_f_out(l,:)        = spval
+          this%svfr_f_out(l,:)        = spval
+          this%svfw_k_out(l,:)        = spval
+          this%svfv_k_out(l,:)        = spval
+          this%svfr_k_out(l,:)        = spval
+
 !-------------------[kz.7]Ray tracing test-------------------------     
        end if
     end do
@@ -1181,10 +1447,11 @@ contains
   !----------------------------------------------------------------------- 
   subroutine view_factors_v(nzcanm,dzcan,wcan,wbui,&
       tree_cov,lad,lads,ladl,omega,ss,pb,dray,maxind,maxbhind,n,nsky,hsky,h1,h2,&
-      fww1d,fvv1d,fwv1d,fvw1d,fwr1d,frw1d,fvr1d,frv1d,fwg1d,fgw1d,fgv1d,fsw1d,&
-      fvg1d,fsg1d,fsr1d,fsv1d,kww1d,kvv1d,kwv1d,kvw1d,kwr1d,krw1d,kvr1d,krv1d,kwg1d,&
-      kgw1d,kgv1d,ksw1d,kvg1d,ksg1d,ksr1d,ksv1d,kws1d,kvs1d,kts1d,krs1d,fws1d,fvs1d,&
-      fts1d,frs1d,l)  
+      fww1d,fvv1d,fwv1d,fvw1d,fwr1d,frw1d,fvr1d,frv1d,fwg1d,fgw1d,fgv1d,fsw1d,fvg1d,fsg1d,fsr1d,&
+      fsv1d,kww1d,kvv1d,kwv1d,kvw1d,kwr1d,krw1d,kvr1d,krv1d,kwg1d,kgw1d,kgv1d,ksw1d,kvg1d,ksg1d,ksr1d,&
+      ksv1d,kws1d,kvs1d,kts1d,krs1d,fws1d,fvs1d,fts1d,frs1d,vfww_f,vfvv_f,vfwv_f,vfvw_f,vfwr_f,vfrw_f,vfvr_f,&
+      vfrv_f,vfwt_f,vftw_f,vftv_f,vfsw_f,vfvt_f,vfst_f,vfsr_f,vfsv_f,vfww_k,vfvv_k,vfwv_k,vfvw_k,vfwr_k,vfrw_k,vfvr_k,&
+      vfrv_k,vfwt_k,vftw_k,vftv_k,vfsw_k,vfvt_k,vfst_k,vfsr_k,vfsv_k,svfw_k,svfv_k,svft_k,svfr_k,svfw_f,svfv_f,svft_f,svfr_f,l)
     !
     ! !DESCRIPTION: 
     !
@@ -1258,6 +1525,51 @@ contains
     real(r8), intent(out) :: krs1d(nzcanm)               ! Shortwave view factor from roof to sky
     real(r8), intent(out) :: ksg1d                       ! Shortwave view factor from sky to ground 
     real(r8), intent(out) :: kts1d                       ! Shortwave view factor from ground to sky
+    
+    ! Unweighted view factors (copied for storage) - longwave (suffix _f) and shortwave (suffix _k)
+    real(r8), intent(out) :: vfww_f(nzcanm,nzcanm)       ! Unweighted view factor from wall to wall (longwave)
+    real(r8), intent(out) :: vfvv_f(nzcanm,nzcanm)       ! Unweighted view factor from vegetation to vegetation (longwave)
+    real(r8), intent(out) :: vfwv_f(nzcanm,nzcanm)       ! Unweighted view factor from wall to vegetation (longwave)
+    real(r8), intent(out) :: vfvw_f(nzcanm,nzcanm)       ! Unweighted view factor from vegetation to wall (longwave)
+    real(r8), intent(out) :: vfwr_f(nzcanm,nzcanm)       ! Unweighted view factor from wall to roof (longwave)
+    real(r8), intent(out) :: vfrw_f(nzcanm,nzcanm)       ! Unweighted view factor from roof to wall (longwave)
+    real(r8), intent(out) :: vfvr_f(nzcanm,nzcanm)       ! Unweighted view factor from vegetation to roof (longwave)
+    real(r8), intent(out) :: vfrv_f(nzcanm,nzcanm)       ! Unweighted view factor from roof to vegetation (longwave)
+    real(r8), intent(out) :: vfwt_f(nzcanm)              ! Unweighted view factor from wall to ground (longwave)
+    real(r8), intent(out) :: vftw_f(nzcanm)              ! Unweighted view factor from ground to wall (longwave)
+    real(r8), intent(out) :: vftv_f(nzcanm)              ! Unweighted view factor from ground to vegetation (longwave)
+    real(r8), intent(out) :: vfvt_f(nzcanm)              ! Unweighted view factor from vegetation to ground (longwave)
+    real(r8), intent(out) :: vfsw_f(nzcanm)              ! Unweighted view factor from sky to wall (longwave)
+    real(r8), intent(out) :: vfsr_f(nzcanm)              ! Unweighted view factor from sky to roof (longwave)
+    real(r8), intent(out) :: vfsv_f(nzcanm)              ! Unweighted view factor from sky to vegetation (longwave)
+    real(r8), intent(out) :: vfst_f                      ! Unweighted view factor from sky to ground (longwave)
+    real(r8), intent(out) :: svft_f                      ! Unweighted sky view factor for ground (longwave)
+
+    real(r8), intent(out) :: vfww_k(nzcanm,nzcanm)       ! Unweighted view factor from wall to wall (shortwave)
+    real(r8), intent(out) :: vfvv_k(nzcanm,nzcanm)       ! Unweighted view factor from vegetation to vegetation (shortwave)
+    real(r8), intent(out) :: vfwv_k(nzcanm,nzcanm)       ! Unweighted view factor from wall to vegetation (shortwave)
+    real(r8), intent(out) :: vfvw_k(nzcanm,nzcanm)       ! Unweighted view factor from vegetation to wall (shortwave)
+    real(r8), intent(out) :: vfwr_k(nzcanm,nzcanm)       ! Unweighted view factor from wall to roof (shortwave)
+    real(r8), intent(out) :: vfrw_k(nzcanm,nzcanm)       ! Unweighted view factor from roof to wall (shortwave)
+    real(r8), intent(out) :: vfvr_k(nzcanm,nzcanm)       ! Unweighted view factor from vegetation to roof (shortwave)
+    real(r8), intent(out) :: vfrv_k(nzcanm,nzcanm)       ! Unweighted view factor from roof to vegetation (shortwave)
+    real(r8), intent(out) :: vfwt_k(nzcanm)              ! Unweighted view factor from wall to ground (shortwave)
+    real(r8), intent(out) :: vftw_k(nzcanm)              ! Unweighted view factor from ground to wall (shortwave)
+    real(r8), intent(out) :: vftv_k(nzcanm)              ! Unweighted view factor from ground to vegetation (shortwave)
+    real(r8), intent(out) :: vfvt_k(nzcanm)              ! Unweighted view factor from vegetation to ground (shortwave)
+    real(r8), intent(out) :: vfsw_k(nzcanm)              ! Unweighted view factor from sky to wall (shortwave)
+    real(r8), intent(out) :: vfsr_k(nzcanm)              ! Unweighted view factor from sky to roof (shortwave)
+    real(r8), intent(out) :: vfsv_k(nzcanm)              ! Unweighted view factor from sky to vegetation (shortwave)
+    real(r8), intent(out) :: vfst_k                      ! Unweighted view factor from sky to ground (shortwave)
+    real(r8), intent(out) :: svft_k                      ! Unweighted sky view factor for ground (shortwave)
+
+    real(r8), intent(out) :: svfw_f(nzcanm)              ! Unweighted sky view factor for wall (longwave)
+    real(r8), intent(out) :: svfv_f(nzcanm)              ! Unweighted sky view factor for vegetation (longwave)
+    real(r8), intent(out) :: svfr_f(nzcanm)              ! Unweighted sky view factor for roof (longwave)
+    
+    real(r8), intent(out) :: svfw_k(nzcanm)              ! Unweighted sky view factor for wall (shortwave)
+    real(r8), intent(out) :: svfv_k(nzcanm)              ! Unweighted sky view factor for vegetation (shortwave)
+    real(r8), intent(out) :: svfr_k(nzcanm)              ! Unweighted sky view factor for roof (shortwave)
     
     ! LOCAL VARIABLES:    
     real(r8), parameter :: pi = 3.1415926535897932384626433832795_r8
@@ -1337,7 +1649,6 @@ contains
     real(r8)            :: vfsr(nzcanm)                 ! View factors from sky to roof
     real(r8)            :: vfsw(nzcanm)                 ! View factors from sky to wall
     real(r8)            :: vfsv(nzcanm)                 ! View factors from sky to vegetation
-    real(r8)            :: vfst                         ! View factors from sky to ground
     real(r8)            :: vfswtmp(nzcanm, nzcanm)      ! Temporary view factors from sky to wall
     real(r8)            :: vfsrtmp(nzcanm, nzcanm)      ! Temporary view factors from sky to roof
     real(r8)            :: vfsvtmp(nzcanm, nzcanm)      ! Temporary view factors from sky to vegetation
@@ -1346,7 +1657,8 @@ contains
     real(r8)            :: vftw(nzcanm)                 ! View factor from ground to wall
     real(r8)            :: vftv(nzcanm)                 ! View factor from ground to vegetation
     real(r8)            :: vfvt(nzcanm)                 ! View factor from vegetation to ground
-    
+    real(r8)            :: vfst                         ! View factors from sky to ground
+
     logical             :: horiz                        ! Whether the surface is horizontal 
     real(r8)            :: wfact, rfact                 ! Ray strength attenuated by wall and roof
     real(r8)            :: raystrtmp                    ! Temporary ray strength
@@ -1358,13 +1670,16 @@ contains
     logical             :: solar                        ! Logical flags indicating if this is shortwave radiation calcs    
     integer             :: start_time, end_time, clock_rate    ! Timekeeping variables
     real(r8)            :: elapsed_time                        ! Elapsed time 
-    logical             :: foliage                      ! Whether the surface is vegetation or not                 
+    logical             :: foliage                      ! Whether the surface is vegetation or not     
+    logical  :: debug_write = .false.                  ! true => write out many intermediate variables for debugging            
     !----------------------------------------------------------------
     ! Get the clock rate (ticks per second)
     call system_clock(count_rate=clock_rate)
     call system_clock(start_time)
                                 
     write(6,*)'calculating view factors...',n
+    
+    debug_write = .false.!.true.!.false.
     
     !Initialization
     !----------------------------------------------------------------
@@ -1504,11 +1819,16 @@ contains
     wtot=wcan+wbui
     bldfrac=wbui/wtot
     xdom=wtot/dzcan
-    write(6,*)'wcan,wbui,wtot,dzcan',wcan,wbui,wtot,dzcan
-    write(6,*)'lad1, lad2',lad(1),lad(2)
+    if (debug_write) then
+        write(6,*)'wcan,wbui,wtot,dzcan',wcan,wbui,wtot,dzcan
+        write(6,*)'lad1, lad2',lad(1),lad(2)
+    end if
     
     nsrays=(maxind)*nsky
-    write(6,*)'dray,nsky,hsky',dray,nsky,hsky
+    if (debug_write) then
+        write(6,*)'dray,nsky,hsky',dray,nsky,hsky
+    end if    
+    
     
     svft=0._r8 !double check
         
@@ -1518,6 +1838,7 @@ contains
 358   continue
 
     solar=.true.
+    
     write(6,*)'----------SOLAR VIEW FACTORS----------'
 
 359   continue
@@ -1617,8 +1938,10 @@ contains
                       xxt,-zzhr(kk),hemi32r(kk),xdom,dray,dzcan,bldfrac,pb, &
                       pb_old,ss,kbs_vf,lad,omega,horiz,h1,h2, vfw,vfr,vfv,vft)
              if (kk<2) then
-                write(6,*)'sky vfw,vfr',vfw,vfr
-                write(6,*)'sky vfv,vft',vfv,vft
+                if (debug_write) then
+                    write(6,*)'sky vfw,vfr',vfw,vfr
+                    write(6,*)'sky vfv,vft',vfv,vft
+                end if
              end if
              do kzcan=1,nzcanm
                 vfsw(kzcan)=vfsw(kzcan)+vfw(kzcan)
@@ -1662,7 +1985,9 @@ contains
                         bldfrac,pb,kbs_vf,lad_tree,lad,omega,horiz,vfw,vfv,h1,h2,foliage)
              ! delete later
              if (kk<2) then
-                 write(6,*)'wall up vfw,vfv',vfw,vfv
+                 if (debug_write) then
+                     write(6,*)'wall up vfw,vfv',vfw,vfv
+                 end if 
              end if
              ! write(6,*)'raystr,lad_tree',raystr,lad_tree
              do kzcan=1,nzcanm
@@ -1677,8 +2002,10 @@ contains
                         xxhr(kk),zzhr(kk),hemi32r(kk),xdom,dray,dzcan,&
                         bldfrac,pb,pb_old,ss,kbs_vf,lad,omega,horiz,h1,h2, vfw,vfr,vfv,vft)
              if (kk<2) then
-                 write(6,*)'wall dn vfw,vfr',vfw,vfr
-                 write(6,*)'wall dn vfv,vft',vfv,vft
+                 if (debug_write) then
+                     write(6,*)'wall dn vfw,vfr',vfw,vfr
+                     write(6,*)'wall dn vfv,vft',vfv,vft
+                 end if 
              end if                        
              do kzcan=1,nzcanm
                 vfww(izcan,kzcan)=vfww(izcan,kzcan)+vfw(kzcan)
@@ -1722,7 +2049,7 @@ contains
                   if (izcan==1) then
                      rayy=(h1 + (dzcan-h1)*rnum)/dzcan
                   else if (izcan==2) then
-                     rayy=1.0_r8 + (h1 + h2-dzcan)*rnum/dzcan
+                     rayy=1.0_r8 + (h1 +h2-dzcan)*rnum/dzcan
                   end if
               end if
               
@@ -1755,7 +2082,9 @@ contains
                          kbs_vf,lad_tree,lad,omega,horiz,vfw,vfv,h1,h2,foliage)    
               ! delete later
               if (k<2) then
-                  write(6,*)'veg up vfw,vfv',vfw,vfv
+                  if (debug_write) then
+                     write(6,*)'veg up vfw,vfv',vfw,vfv
+                  end if 
               end if                
               ! write(6,*)'foliage,vfw,vfv',foliage,vfw,vfv
               ! write(6,*)'n,raystr,lad_tree',n,raystr,lad_tree                     
@@ -1772,7 +2101,9 @@ contains
                         xxrt,zzes,circ32es,xdom,dray,dzcan,bldfrac, &
                         pb,pb_old,ss,kbs_vf,lad,omega,horiz,h1,h2, vfw,vfr,vfv,vft)
               if (k<2) then
-                  write(6,*)'veg dn vfw,vfr',vfw,vfr
+                  if (debug_write) then
+                      write(6,*)'veg dn vfw,vfr',vfw,vfr
+                  end if
               end if                           
               do kzcan=1,nzcanm
                  vfvw(izcan,kzcan)=vfvw(izcan,kzcan)+vfw(kzcan)
@@ -1825,7 +2156,9 @@ contains
                        bldfrac,pb,kbs_vf,lad_tree,lad,omega,horiz,vfw,vfv,h1,h2,foliage)
              ! delete later
              if (kk<2) then
-                 write(6,*)'roof up vfw,vfv',vfw,vfv
+                 if (debug_write) then
+                    write(6,*)'roof up vfw,vfv',vfw,vfv
+                 end if
              end if 
              ! write(6,*)'raystr,lad_tree',raystr,lad_tree            
              do kzcan=1,nzcanm
@@ -1870,7 +2203,9 @@ contains
                  xxrt,zzhr(kk),hemi32r(kk),xdom,dray,dzcan,bldfrac,&
                  pb,kbs_vf,lad_tree,lad,omega,horiz,vfw,vfv,h1,h2,foliage)
        if (kk<2) then
-           write(6,*)'road up vfw,vfv',vfw,vfv
+           if (debug_write) then
+              write(6,*)'road up vfw,vfv',vfw,vfv
+           end if
        end if    
        do kzcan=1,nzcanm
           vftw(kzcan)=vftw(kzcan)+vfw(kzcan)
@@ -1923,31 +2258,36 @@ contains
        vfsr(izcan)=vfsr(izcan)/real(maxind,r8)
        vfsv(izcan)=vfsv(izcan)/real(maxind,r8)
        vfs_tot=vfs_tot+2._r8*vfsw(izcan)+vfsr(izcan)+vfsv(izcan)
-       write(6,*)'i,sw,sr',izcan,vfsw(izcan),vfsr(izcan)
+       if (debug_write) then
+           write(6,*)'i,sw,sr',izcan,vfsw(izcan),vfsr(izcan)
+       end if
     enddo
     
-
-    do izcan=1,maxind
-       write(6,*)'i,tv,vt',izcan,vftv(izcan),vfvt(izcan)                                     
-       write(6,*)'i,sv',izcan,vfsv(izcan)
-    enddo    
+    if (debug_write) then
+        do izcan=1,maxind
+           write(6,*)'i,tv,vt',izcan,vftv(izcan),vfvt(izcan)                                     
+           write(6,*)'i,sv',izcan,vfsv(izcan)
+        enddo    
+    end if
     
     vfst=vfst/real(maxind,r8)
     vfs_tot=vfs_tot+vfst
-    write(6,*)'st',vfst
-
+    if (debug_write) then
+        write(6,*)'st',vfst
+    end if 
     vft_tot=svft
     do jzcan=1,maxind	             
        vft_tot=vft_tot+2._r8*vftw(jzcan)+vftv(jzcan)           
     enddo
     
-    write(6,*)'vft,vfs',vft_tot,vfs_tot
-    
-    do izcan=1,maxind            	 
-       write(6,*)'i,vfw,vfr',izcan,vfw_tot(izcan),vfr_tot(izcan)                                              	 
-       write(6,*)'i,vfv',izcan,vfv_tot(izcan)                                    
-    enddo
-   
+    if (debug_write) then
+        write(6,*)'vft,vfs',vft_tot,vfs_tot
+        
+        do izcan=1,maxind            	 
+           write(6,*)'i,vfw,vfr',izcan,vfw_tot(izcan),vfr_tot(izcan)                                              	 
+           write(6,*)'i,vfv',izcan,vfv_tot(izcan)                                    
+        enddo
+    end if 
     !Calculate the modified radiation and the streets fluxes 
     !-------------------------------------------------------
     ! areas of all elements (normalized by dzcan, i.e., xdom = domain width/dzcan)
@@ -2004,6 +2344,16 @@ contains
              krw1d(izcan,jzcan)=vfrw(izcan,jzcan)*A_r(izcan)/A_w_max(jzcan)
              kvr1d(izcan,jzcan)=vfvr(izcan,jzcan)*A_vs(izcan)/A_r_max(jzcan)
              krv1d(izcan,jzcan)=vfrv(izcan,jzcan)*A_r(izcan)/A_vs_max(jzcan)
+             
+             vfww_k(izcan,jzcan) = vfww(izcan,jzcan)
+             vfvv_k(izcan,jzcan) = vfvv(izcan,jzcan)
+             vfwv_k(izcan,jzcan) = vfwv(izcan,jzcan)
+             vfvw_k(izcan,jzcan) = vfvw(izcan,jzcan)
+             vfwr_k(izcan,jzcan) = vfwr(izcan,jzcan)
+             vfrw_k(izcan,jzcan) = vfrw(izcan,jzcan)
+             vfvr_k(izcan,jzcan) = vfvr(izcan,jzcan)
+             vfrv_k(izcan,jzcan) = vfrv(izcan,jzcan)
+
           end do !izcan
        end do !jzcan
 
@@ -2018,9 +2368,24 @@ contains
           kws1d(izcan)=svfw(izcan)
           krs1d(izcan)=svfr(izcan)
           kvs1d(izcan)=svfv(izcan)
+          
+          vfwt_k(izcan) = vfwt(izcan)
+          vftw_k(izcan) = vftw(izcan)
+          vftv_k(izcan) = vftv(izcan)
+          vfvt_k(izcan) = vfvt(izcan)
+          vfsw_k(izcan) = vfsw(izcan)
+          vfsr_k(izcan) = vfsr(izcan)
+          vfsv_k(izcan) = vfsv(izcan)
+          svfw_k(izcan) = svfw(izcan)
+          svfr_k(izcan) = svfr(izcan)
+          svfv_k(izcan) = svfv(izcan)
+          
        end do
        ksg1d=vfst*A_s/A_g
        kts1d=svft
+       
+       vfst_k=vfst
+       svft_k=svft
     else
       ! Longwave view factors!
       ! view factors multiplied by relative areas (so that correct flux densities are exchanged):  
@@ -2034,6 +2399,16 @@ contains
              frw1d(izcan,jzcan)=vfrw(izcan,jzcan)*A_r(izcan)/A_w_max(jzcan)
              fvr1d(izcan,jzcan)=vfvr(izcan,jzcan)*A_vl(izcan)/A_r_max(jzcan)
              frv1d(izcan,jzcan)=vfrv(izcan,jzcan)*A_r(izcan)/A_vl_max(jzcan)
+             
+             vfww_f(izcan,jzcan) = vfww(izcan,jzcan)
+             vfvv_f(izcan,jzcan) = vfvv(izcan,jzcan)
+             vfwv_f(izcan,jzcan) = vfwv(izcan,jzcan)
+             vfvw_f(izcan,jzcan) = vfvw(izcan,jzcan)
+             vfwr_f(izcan,jzcan) = vfwr(izcan,jzcan)
+             vfrw_f(izcan,jzcan) = vfrw(izcan,jzcan)
+             vfvr_f(izcan,jzcan) = vfvr(izcan,jzcan)
+             vfrv_f(izcan,jzcan) = vfrv(izcan,jzcan)
+             
           end do !izcan
        end do !jzcan
       
@@ -2048,22 +2423,43 @@ contains
           fws1d(izcan)=svfw(izcan)
           frs1d(izcan)=svfr(izcan)
           fvs1d(izcan)=svfv(izcan)
+          
+          vfwt_f(izcan) = vfwt(izcan)
+          vftw_f(izcan) = vftw(izcan)
+          vftv_f(izcan) = vftv(izcan)
+          vfvt_f(izcan) = vfvt(izcan)
+          vfsw_f(izcan) = vfsw(izcan)
+          vfsr_f(izcan) = vfsr(izcan)
+          vfsv_f(izcan) = vfsv(izcan)
+          svfw_f(izcan) = svfw(izcan)
+          svfr_f(izcan) = svfr(izcan)
+          svfv_f(izcan) = svfv(izcan)
+          
        enddo
        fts1d=svft
        fsg1d=vfst*A_s/A_g
+       
+       svft_f=svft
+       vfst_f=vfst
+       
+       
     endif
  
     call system_clock(end_time)        
     ! Calculate elapsed time in seconds
     elapsed_time = real(end_time - start_time,r8) / real(clock_rate,r8)
+    
+    if (debug_write) then
+        if (solar) then !print calulation time after solar calculation finishs
+           ! write the elapsed time for each iteration  
+           write(*, '(A, I0, A, F6.3)') 'Calculation elapsed time for solar calculation l = ', l, ': ', elapsed_time, ' seconds'           
+        else ! print longwave 
+           ! write the elapsed time for each iteration  
+           write(*, '(A, I0, A, F6.3)') 'Calculation elapsed time for longwave calculation l = ', l, ': ', elapsed_time, ' seconds'           
+        endif
+    end if    
   
-    if (solar) then !print calulation time after solar calculation finishs
-       ! write the elapsed time for each iteration  
-       write(*, '(A, I0, A, F6.3)') 'Calculation elapsed time for solar calculation l = ', l, ': ', elapsed_time, ' seconds'           
-    else ! print longwave 
-       ! write the elapsed time for each iteration  
-       write(*, '(A, I0, A, F6.3)') 'Calculation elapsed time for longwave calculation l = ', l, ': ', elapsed_time, ' seconds'           
-    endif           
+       
   
     if (solar) goto 348
     !-----------------------------------------------------------------------

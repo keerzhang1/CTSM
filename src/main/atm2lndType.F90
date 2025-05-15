@@ -523,7 +523,7 @@ contains
   subroutine InitHistory(this, bounds)
     !
     ! !USES:
-    use histFileMod, only : hist_addfld1d
+    use histFileMod, only : hist_addfld1d, hist_addfld2d
     !
     ! !ARGUMENTS:
     class(atm2lnd_type) :: this
@@ -540,10 +540,21 @@ contains
     begc = bounds%begc; endc= bounds%endc
     begp = bounds%begp; endp= bounds%endp
 
+    this%forc_solai_grc(begg:endg,:) = spval 
+    call hist_addfld2d (fname='FORC_SOLAI', units='W/m2', type2d='numrad', &
+      avgflag='A', long_name='Incoming diffuse solar radiation', &
+      ptr_lnd=this%forc_solai_grc, default='inactive')
+
+    this%forc_solad_not_downscaled_grc(begg:endg,:) = spval 
+    call hist_addfld2d (fname='FORC_SOLAD', units='W/m2', type2d='numrad', &
+      avgflag='A', long_name='Incoming direct solar radiation', &
+      ptr_lnd=this%forc_solad_not_downscaled_grc, default='inactive')
+        
     this%forc_wind_grc(begg:endg) = spval
     call hist_addfld1d (fname='WIND', units='m/s',  &
          avgflag='A', long_name='atmospheric wind velocity magnitude', &
          ptr_lnd=this%forc_wind_grc)
+         
     ! Rename of WIND for Urban intercomparision project
     call hist_addfld1d (fname='Wind', units='m/s',  &
          avgflag='A', long_name='atmospheric wind velocity magnitude', &
@@ -605,7 +616,7 @@ contains
     call hist_addfld1d (fname='FSDS', units='W/m^2',  &
          avgflag='A', long_name='atmospheric incident solar radiation (downscaled for glacier and hillslope columns)', &
          ptr_col=this%forc_solar_downscaled_col)
-
+          
     this%forc_t_downscaled_col(begc:endc) = spval
     call hist_addfld1d (fname='TBOT', units='K',  &
          avgflag='A', long_name='atmospheric air temperature (downscaled for glacier and hillslope columns)', &
