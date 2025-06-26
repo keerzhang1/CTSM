@@ -1995,10 +1995,9 @@ contains
         ! total emitted longwave for canyon. project wall fluxes to horizontal
 
         lwup_canyon_t(l) = 0.0_r8
-        lwup_canyon_t(l) = lwup_canyon_t(l) + (lwup_improad_t(l)*wtroad_imperv(l)+ lwup_perroad_t(l)*wtroad_perv(l))*A_g(l)/A_s(l)
-        lwup_canyon_t(l) = lwup_canyon_t(l) + (lwup_sunwall_t(l) + lwup_shadewall_t(l))* A_w(l)/A_s(l)
-        lwup_canyon_t(l) = lwup_canyon_t(l) + lwup_br_tree_t(l)*A_v1(l)/A_s(l) + lwup_ar_tree_t(l)*A_v2(l)/A_s(l) 
-        lwup_canyon_t(l) = lwup_canyon_t(l) + lwup_shaderoof_t(l)*A_r(l)/A_s(l)
+        lwup_canyon_t(l) = lwup_canyon_t(l) + (lwup_improad_t(l)*wtroad_imperv(l)+ lwup_perroad_t(l)*wtroad_perv(l))*A_g(l)/A_s(l)&
+                            + (lwup_sunwall_t(l) + lwup_shadewall_t(l))* A_w(l)/A_s(l)&
+                            +lwup_br_tree_t(l)*A_v1(l)/A_s(l) + lwup_ar_tree_t(l)*A_v2(l)/A_s(l) + lwup_shaderoof_t(l)*A_r(l)/A_s(l)
 
         if (debug_write) then
            write(6,*) '--- lwnet_canyon_t(l) components ---'
