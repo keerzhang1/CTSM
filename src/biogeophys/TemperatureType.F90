@@ -275,7 +275,7 @@ contains
 
   !------------------------------------------------------------------------
   subroutine Init(this, bounds, &
-       em_roof_lun,  em_wall_lun, em_improad_lun, em_perroad_lun, &
+       em_roof_lun,  em_wall_lun, em_improad_lun, em_perroad_lun,em_tree_lun, &
        is_simple_buildtemp, is_prog_buildtemp, exice_init_conc_col, NLFileName)
     !
     ! !DESCRIPTION:
@@ -289,6 +289,7 @@ contains
     real(r8)          , intent(in) :: em_wall_lun(bounds%begl:)
     real(r8)          , intent(in) :: em_improad_lun(bounds%begl:)
     real(r8)          , intent(in) :: em_perroad_lun(bounds%begl:)
+    real(r8)          , intent(in) :: em_tree_lun(bounds%begl:)
     logical           , intent(in) :: is_simple_buildtemp  ! Simple building temp is being used
     logical           , intent(in) :: is_prog_buildtemp    ! Prognostic building temp is being used
     real(r8)          , intent(in) :: exice_init_conc_col(bounds%begc:)  ! initial coldstart excess ice concentration (from the stream file)
@@ -308,6 +309,7 @@ contains
          em_wall_lun(bounds%begl:bounds%endl),    &
          em_improad_lun(bounds%begl:bounds%endl), &
          em_perroad_lun(bounds%begl:bounds%endl), &
+         em_tree_lun(bounds%begl:bounds%endl), &
          is_simple_buildtemp, is_prog_buildtemp,  &
          exice_init_conc_col(bounds%begc:bounds%endc) )
 
@@ -1531,7 +1533,7 @@ contains
 
   !-----------------------------------------------------------------------
   subroutine InitCold(this, bounds, &
-       em_roof_lun,  em_wall_lun, em_improad_lun, em_perroad_lun, &
+       em_roof_lun,  em_wall_lun, em_improad_lun, em_perroad_lun,em_tree_lun, &
        is_simple_buildtemp, is_prog_buildtemp, exice_init_conc_col)
     !
     ! !DESCRIPTION:
@@ -1543,7 +1545,7 @@ contains
     use clm_varcon     , only : denice, denh2o, zisoi
     use landunit_varcon, only : istwet, istsoil, istdlak, istice, istcrop
     use column_varcon  , only : icol_road_imperv, icol_roof, icol_sunwall
-    use column_varcon  , only : icol_shadewall, icol_road_perv
+    use column_varcon  , only : icol_shadewall, icol_road_perv, icol_road_tree
     use clm_varctl     , only : iulog, use_vancouver, use_mexicocity
     use clm_varctl     , only : use_excess_ice
     use initVerticalMod , only : find_soil_layer_containing_depth
@@ -1555,6 +1557,7 @@ contains
     real(r8)          , intent(in) :: em_wall_lun(bounds%begl:)
     real(r8)          , intent(in) :: em_improad_lun(bounds%begl:)
     real(r8)          , intent(in) :: em_perroad_lun(bounds%begl:)
+    real(r8)          , intent(in) :: em_tree_lun(bounds%begl:)
     logical           , intent(in) :: is_simple_buildtemp  ! Simple building temp is being used
     logical           , intent(in) :: is_prog_buildtemp    ! Prognostic building temp is being used
     real(r8)          , intent(in) :: exice_init_conc_col(bounds%begc:) ! initial coldstart excess ice concentration (from the stream file)
@@ -1572,6 +1575,7 @@ contains
     SHR_ASSERT_ALL_FL((ubound(em_wall_lun)    == (/bounds%endl/)), sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(em_improad_lun) == (/bounds%endl/)), sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(em_perroad_lun) == (/bounds%endl/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(em_tree_lun) == (/bounds%endl/)), sourcefile, __LINE__)
 
     associate(snl => col%snl) ! Output: [integer (:)    ]  number of snow layers
 
@@ -1602,7 +1606,7 @@ contains
 
             else if (lun%urbpoi(l)) then
                if (use_vancouver) then
-                  if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv) then
+                  if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv .or. col%itype(c) == icol_road_tree) then
                      ! Set road top layer to initial air temperature and interpolate other
                      ! layers down to 20C in bottom layer
                      do j = 1, nlevgrnd
@@ -1615,7 +1619,7 @@ contains
                      this%t_soisno_col(c,1:nlevgrnd) = 283._r8
                   end if
                else if (use_mexicocity) then
-                  if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv) then
+                  if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv .or. col%itype(c) == icol_road_tree) then
                      ! Set road top layer to initial air temperature and interpolate other
                      ! layers down to 22C in bottom layer
                      do j = 1, nlevgrnd
@@ -1628,7 +1632,7 @@ contains
                      this%t_soisno_col(c,1:nlevgrnd) = 283._r8
                   end if
                else
-                  if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv) then
+                  if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv .or. col%itype(c) == icol_road_tree) then
                      this%t_soisno_col(c,1:nlevgrnd) = 274._r8
                   else if (col%itype(c) == icol_sunwall .or. col%itype(c) == icol_shadewall &
                        .or. col%itype(c) == icol_roof) then
@@ -1774,6 +1778,7 @@ contains
        if (col%itype(c) == icol_shadewall  ) this%emg_col(c) = em_wall_lun(l)
        if (col%itype(c) == icol_road_imperv) this%emg_col(c) = em_improad_lun(l)
        if (col%itype(c) == icol_road_perv  ) this%emg_col(c) = em_perroad_lun(l)
+       if (col%itype(c) == icol_road_tree  ) this%emg_col(c) = em_tree_lun(l)
     end do
 
     ! Initialize dynbal_baseline_heat_col: for some columns, this is set elsewhere in

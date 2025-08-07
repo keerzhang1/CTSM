@@ -17,7 +17,8 @@ module ColumnType
   !   73 => (icol_shadewall)   urban shadewall
   !   74 => (icol_road_imperv) urban impervious road
   !   75 => (icol_road_perv)   urban pervious road
-  !
+  !   76 => (icol_road_tree)   urban road tree
+
   use shr_kind_mod   , only : r8 => shr_kind_r8
   use shr_infnan_mod , only : nan => shr_infnan_nan, assignment(=)
   use clm_varpar     , only : nlevsno, nlevgrnd, nlevlak, nlevmaxurbgrnd

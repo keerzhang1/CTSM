@@ -330,7 +330,7 @@ contains
     ! !USES:
     use shr_const_mod   , only : SHR_CONST_TKFRZ
     use landunit_varcon , only : istwet, istsoil, istcrop, istice
-    use column_varcon   , only : icol_road_perv, icol_road_imperv
+    use column_varcon   , only : icol_road_perv, icol_road_imperv, icol_road_tree
     use clm_varcon      , only : denice, denh2o, bdsno , zisoi
     use clm_varcon      , only : tfrz, aquifer_water_baseline
     use initVerticalMod , only : find_soil_layer_containing_depth
@@ -409,6 +409,15 @@ contains
                         this%h2osoi_vol_col(c,j) = 0.0_r8
                      end if
                   end do
+               else if (col%itype(c) == icol_road_tree) then
+                  nlevs = nlevgrnd
+                  do j = 1, nlevs
+                     if (j <= nlevsoi) then
+                        this%h2osoi_vol_col(c,j) = 0.3_r8 * ratio
+                     else
+                        this%h2osoi_vol_col(c,j) = 0.0_r8
+                     end if
+                 end do
                else if (col%itype(c) == icol_road_imperv) then
                   nlevs = nlevgrnd
                   do j = 1, nlevs
@@ -527,7 +536,7 @@ contains
             l = col%landunit(c)
             if (.not. lun%lakpoi(l)) then  !not lake
                if (lun%urbpoi(l)) then
-                  if (col%itype(c) == icol_road_perv) then
+                  if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_tree) then
                      ! Note that the following hard-coded constant (on the next line)
                      ! seems implicitly related to aquifer_water_baseline 
                      this%wa_col(c)  = 4800._r8 * ratio

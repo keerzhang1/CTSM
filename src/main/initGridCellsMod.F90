@@ -514,7 +514,7 @@ contains
     !
     ! !USES
     use column_varcon   , only : icol_roof, icol_sunwall, icol_shadewall
-    use column_varcon   , only : icol_road_perv, icol_road_imperv
+    use column_varcon   , only : icol_road_perv, icol_road_imperv, icol_road_tree
     use landunit_varcon , only : isturb_tbd, isturb_hd, isturb_md, isturb_MIN
     use clm_varpar      , only : maxpatch_urb
     use clm_instur      , only : wt_lunit
@@ -541,6 +541,7 @@ contains
     real(r8) :: wtcol2lunit   ! weight of column with respect to landunit
     real(r8) :: wtlunit_roof  ! weight of roof with respect to landunit
     real(r8) :: wtroad_perv   ! weight of pervious road column with respect to total road
+    real(r8) :: wtroad_tree   ! weight of road tree column with respect to total road
     integer  :: ier           ! error status 
     !------------------------------------------------------------------------
 
@@ -568,6 +569,7 @@ contains
        n = ltype - isturb_MIN + 1
        wtlunit_roof = urbinp%wtlunit_roof(gi,n)
        wtroad_perv  = urbinp%wtroad_perv(gi,n)
+       wtroad_tree  = urbinp%wtroad_tree(gi,n)
 
        call add_landunit(li=li, gi=gi, ltype=ltype, wtgcell=wtlunit2gcell)
 
@@ -587,10 +589,13 @@ contains
              wtcol2lunit = (1. - wtlunit_roof)/3
           else if (m == 4) then
              ctype = icol_road_imperv
-             wtcol2lunit = ((1. - wtlunit_roof)/3) * (1.-wtroad_perv)
+             wtcol2lunit = ((1. - wtlunit_roof)/3) * (1.-wtroad_perv -wtroad_tree)
           else if (m == 5) then
              ctype = icol_road_perv
              wtcol2lunit = ((1. - wtlunit_roof)/3) * (wtroad_perv)
+          else if (m == 6) then
+             ctype = icol_road_tree
+             wtcol2lunit = ((1. - wtlunit_roof)/3) * (wtroad_tree)
           end if
 
           call add_column(ci=ci, li=li, ctype=ctype, wtlunit=wtcol2lunit)

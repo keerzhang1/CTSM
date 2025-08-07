@@ -40,9 +40,11 @@ module UrbanParamsType
      real(r8), pointer :: tree_cov        (:,:)      
      real(r8), pointer :: wtlunit_roof    (:,:)  
      real(r8), pointer :: wtroad_perv     (:,:)  
+     real(r8), pointer :: wtroad_tree     (:,:)  
      real(r8), pointer :: em_roof         (:,:)   
      real(r8), pointer :: em_improad      (:,:)  
      real(r8), pointer :: em_perroad      (:,:)  
+     real(r8), pointer :: em_tree      (:,:)  
      real(r8), pointer :: em_wall         (:,:)  
      real(r8), pointer :: alb_roof_dir    (:,:,:)  
      real(r8), pointer :: alb_roof_dif    (:,:,:)  
@@ -50,6 +52,9 @@ module UrbanParamsType
      real(r8), pointer :: alb_improad_dif (:,:,:)  
      real(r8), pointer :: alb_perroad_dir (:,:,:)  
      real(r8), pointer :: alb_perroad_dif (:,:,:)  
+     real(r8), pointer :: alb_tree_dir (:,:,:)  
+     real(r8), pointer :: alb_tree_dif (:,:,:)  
+
      real(r8), pointer :: alb_wall_dir    (:,:,:)  
      real(r8), pointer :: alb_wall_dif    (:,:,:)  
      real(r8), pointer :: ht_roof         (:,:)
@@ -176,6 +181,7 @@ module UrbanParamsType
      real(r8), allocatable :: em_roof             (:)   ! lun roof emissivity
      real(r8), allocatable :: em_improad          (:)   ! lun impervious road emissivity
      real(r8), allocatable :: em_perroad          (:)   ! lun pervious road emissivity
+     real(r8), allocatable :: em_tree          (:)   ! lun pervious road emissivity
      real(r8), allocatable :: em_wall             (:)   ! lun wall emissivity
      real(r8), allocatable :: alb_roof_dir        (:,:) ! lun direct  roof albedo
      real(r8), allocatable :: alb_roof_dif        (:,:) ! lun diffuse roof albedo
@@ -183,6 +189,8 @@ module UrbanParamsType
      real(r8), allocatable :: alb_improad_dif     (:,:) ! lun diffuse impervious road albedo
      real(r8), allocatable :: alb_perroad_dir     (:,:) ! lun direct  pervious road albedo
      real(r8), allocatable :: alb_perroad_dif     (:,:) ! lun diffuse pervious road albedo
+     real(r8), allocatable :: alb_tree_dir     (:,:) ! lun direct road tree albedo
+     real(r8), allocatable :: alb_tree_dif     (:,:) ! lun diffuse road tree albedo
      real(r8), allocatable :: alb_wall_dir        (:,:) ! lun direct  wall albedo
      real(r8), allocatable :: alb_wall_dif        (:,:) ! lun diffuse wall albedo
 
@@ -241,7 +249,7 @@ contains
     use clm_varctl      , only : use_vancouver, use_mexicocity
     use clm_varcon      , only : vkc
     use column_varcon   , only : icol_roof, icol_sunwall, icol_shadewall
-    use column_varcon   , only : icol_road_perv, icol_road_imperv, icol_road_perv
+    use column_varcon   , only : icol_road_perv, icol_road_imperv,icol_road_tree
     use landunit_varcon , only : isturb_MIN
     !
     ! !ARGUMENTS:
@@ -409,13 +417,16 @@ contains
     allocate(this%em_roof             (begl:endl))          ; this%em_roof             (:)   = nan
     allocate(this%em_improad          (begl:endl))          ; this%em_improad          (:)   = nan
     allocate(this%em_perroad          (begl:endl))          ; this%em_perroad          (:)   = nan
+    allocate(this%em_tree          (begl:endl))          ; this%em_tree          (:)   = nan
     allocate(this%em_wall             (begl:endl))          ; this%em_wall             (:)   = nan
     allocate(this%alb_roof_dir        (begl:endl,numrad))   ; this%alb_roof_dir        (:,:) = nan
     allocate(this%alb_roof_dif        (begl:endl,numrad))   ; this%alb_roof_dif        (:,:) = nan    
     allocate(this%alb_improad_dir     (begl:endl,numrad))   ; this%alb_improad_dir     (:,:) = nan       
     allocate(this%alb_perroad_dir     (begl:endl,numrad))   ; this%alb_perroad_dir     (:,:) = nan       
+    allocate(this%alb_tree_dir     (begl:endl,numrad))   ; this%alb_tree_dir     (:,:) = nan       
     allocate(this%alb_improad_dif     (begl:endl,numrad))   ; this%alb_improad_dif     (:,:) = nan       
     allocate(this%alb_perroad_dif     (begl:endl,numrad))   ; this%alb_perroad_dif     (:,:) = nan       
+    allocate(this%alb_tree_dif     (begl:endl,numrad))   ; this%alb_tree_dif     (:,:) = nan       
     allocate(this%alb_wall_dir        (begl:endl,numrad))   ; this%alb_wall_dir        (:,:) = nan    
     allocate(this%alb_wall_dif        (begl:endl,numrad))   ; this%alb_wall_dif        (:,:) = nan
     allocate(this%eflx_traffic_factor (begl:endl))          ; this%eflx_traffic_factor (:)   = nan
@@ -557,14 +568,17 @@ contains
              this%alb_roof_dif   (l,ib) = urbinp%alb_roof_dif   (g,dindx,ib)
              this%alb_improad_dir(l,ib) = urbinp%alb_improad_dir(g,dindx,ib)
              this%alb_perroad_dir(l,ib) = urbinp%alb_perroad_dir(g,dindx,ib)
+             this%alb_tree_dir(l,ib) = urbinp%alb_tree_dir(g,dindx,ib)
              this%alb_improad_dif(l,ib) = urbinp%alb_improad_dif(g,dindx,ib)
              this%alb_perroad_dif(l,ib) = urbinp%alb_perroad_dif(g,dindx,ib)
+             this%alb_tree_dif(l,ib) = urbinp%alb_tree_dif(g,dindx,ib)
              this%alb_wall_dir   (l,ib) = urbinp%alb_wall_dir   (g,dindx,ib)
              this%alb_wall_dif   (l,ib) = urbinp%alb_wall_dif   (g,dindx,ib)
           end do
           this%em_roof   (l) = urbinp%em_roof   (g,dindx)
           this%em_improad(l) = urbinp%em_improad(g,dindx)
           this%em_perroad(l) = urbinp%em_perroad(g,dindx)
+          this%em_tree(l) = urbinp%em_tree(g,dindx)
           this%em_wall   (l) = urbinp%em_wall   (g,dindx)
 
           ! Landunit level initialization for urban wall and roof layers and interfaces
@@ -575,6 +589,7 @@ contains
           lun%tree_cov(l)     = urbinp%tree_cov(g,dindx)       
 !-------------------[kz.5]Ray tracing test-------------------------     
           lun%wtroad_perv(l)  = urbinp%wtroad_perv(g,dindx)
+          lun%wtroad_tree(l)  = urbinp%wtroad_tree(g,dindx)
           lun%ht_roof(l)      = urbinp%ht_roof(g,dindx)
           lun%wtlunit_roof(l) = urbinp%wtlunit_roof(g,dindx)
 
@@ -1032,16 +1047,20 @@ contains
 !-------------------[kz.7]Ray tracing test-------------------------                                      
                 urbinp%wtlunit_roof(begg:endg, numurbl), &  
                 urbinp%wtroad_perv(begg:endg, numurbl), &
+                urbinp%wtroad_tree(begg:endg, numurbl), &
                 urbinp%em_roof(begg:endg, numurbl), &     
                 urbinp%em_improad(begg:endg, numurbl), &    
                 urbinp%em_perroad(begg:endg, numurbl), &    
+                urbinp%em_tree(begg:endg, numurbl), &    
                 urbinp%em_wall(begg:endg, numurbl), &    
                 urbinp%alb_roof_dir(begg:endg, numurbl, numrad), &    
                 urbinp%alb_roof_dif(begg:endg, numurbl, numrad), &    
                 urbinp%alb_improad_dir(begg:endg, numurbl, numrad), &    
                 urbinp%alb_perroad_dir(begg:endg, numurbl, numrad), &    
+                urbinp%alb_tree_dir(begg:endg, numurbl, numrad), &    
                 urbinp%alb_improad_dif(begg:endg, numurbl, numrad), &    
                 urbinp%alb_perroad_dif(begg:endg, numurbl, numrad), &    
+                urbinp%alb_tree_dif(begg:endg, numurbl, numrad), &    
                 urbinp%alb_wall_dir(begg:endg, numurbl, numrad), &    
                 urbinp%alb_wall_dif(begg:endg, numurbl, numrad), &
                 urbinp%ht_roof(begg:endg, numurbl), &
@@ -1124,6 +1143,12 @@ contains
           call endrun( msg=' ERROR: WTROAD_PERV NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
        end if
 
+       call ncd_io(ncid=ncid, varname='WTROAD_TREE', flag='read', data=urbinp%wtroad_tree, &
+            dim1name=grlnd, readvar=readvar)
+       if (.not. readvar) then
+          call endrun( msg=' ERROR: WTROAD_TREE NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
+       end if
+
        call ncd_io(ncid=ncid, varname='EM_ROOF', flag='read', data=urbinp%em_roof, &
             dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
@@ -1140,6 +1165,12 @@ contains
             dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
           call endrun( msg=' ERROR: EM_PERROAD NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
+       end if
+
+       call ncd_io(ncid=ncid, varname='EM_TREE', flag='read', data=urbinp%em_tree, &
+            dim1name=grlnd, readvar=readvar)
+       if (.not. readvar) then
+          call endrun( msg=' ERROR: EM_TREE NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
        end if
 
        call ncd_io(ncid=ncid, varname='EM_WALL', flag='read', data=urbinp%em_wall, &
@@ -1208,6 +1239,18 @@ contains
           call endrun( msg=' ERROR: ALB_PERROAD_DIF NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
        end if
 
+       call ncd_io(ncid=ncid, varname='ALB_TREE_DIR', flag='read',data=urbinp%alb_tree_dir, &
+            dim1name=grlnd, readvar=readvar)
+       if (.not. readvar) then
+          call endrun( msg=' ERROR: ALB_TREE_DIR NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
+       end if
+
+       call ncd_io(ncid=ncid, varname='ALB_TREE_DIF', flag='read',data=urbinp%alb_tree_dif, &
+            dim1name=grlnd, readvar=readvar)
+       if (.not. readvar) then
+          call endrun( msg=' ERROR: ALB_TREE_DIF NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
+       end if
+       
        call ncd_io(ncid=ncid, varname='ALB_ROOF_DIR', flag='read', data=urbinp%alb_roof_dir,  &
             dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
@@ -1284,16 +1327,20 @@ contains
 !-------------------[kz.9]Ray tracing test-------------------------                    
                   urbinp%wtlunit_roof, &
                   urbinp%wtroad_perv, &
+                  urbinp%wtroad_tree, &
                   urbinp%em_roof, &
                   urbinp%em_improad, &
                   urbinp%em_perroad, &
+                  urbinp%em_tree, &
                   urbinp%em_wall, &
                   urbinp%alb_roof_dir, &
                   urbinp%alb_roof_dif, &
                   urbinp%alb_improad_dir, &
                   urbinp%alb_perroad_dir, &
+                  urbinp%alb_tree_dir, &
                   urbinp%alb_improad_dif, &
                   urbinp%alb_perroad_dif, &
+                  urbinp%alb_tree_dif, &
                   urbinp%alb_wall_dir, &
                   urbinp%alb_wall_dif, &
                   urbinp%ht_roof, &
@@ -1359,6 +1406,7 @@ contains
 !-------------------[kz.10]Ray tracing test-------------------------                                     
                   urbinp%em_improad(nl,n)            <= 0._r8 .or. &
                   urbinp%em_perroad(nl,n)            <= 0._r8 .or. &
+                  urbinp%em_tree(nl,n)            <= 0._r8 .or. &
                   urbinp%em_roof(nl,n)               <= 0._r8 .or. &
                   urbinp%em_wall(nl,n)               <= 0._r8 .or. &
                   urbinp%ht_roof(nl,n)               <= 0._r8 .or. &
@@ -1368,6 +1416,7 @@ contains
                   urbinp%wind_hgt_canyon(nl,n)       <= 0._r8 .or. &
                   urbinp%wtlunit_roof(nl,n)          <= 0._r8 .or. &
                   urbinp%wtroad_perv(nl,n)           <= 0._r8 .or. &
+                  urbinp%wtroad_tree(nl,n)           <= 0._r8 .or. &
                   any(urbinp%alb_improad_dir(nl,n,:) <= 0._r8) .or. &
                   any(urbinp%alb_improad_dif(nl,n,:) <= 0._r8) .or. &
                   any(urbinp%alb_perroad_dir(nl,n,:) <= 0._r8) .or. &
@@ -1411,6 +1460,7 @@ contains
 !-------------------[kz.11]Ray tracing test-------------------------             
        write(iulog,*)'em_improad:      ',urbinp%em_improad(nindx,dindx)
        write(iulog,*)'em_perroad:      ',urbinp%em_perroad(nindx,dindx)
+       write(iulog,*)'em_tree:      ',urbinp%em_tree(nindx,dindx)
        write(iulog,*)'em_roof:         ',urbinp%em_roof(nindx,dindx)
        write(iulog,*)'em_wall:         ',urbinp%em_wall(nindx,dindx)
        write(iulog,*)'ht_roof:         ',urbinp%ht_roof(nindx,dindx)
@@ -1420,10 +1470,13 @@ contains
        write(iulog,*)'wind_hgt_canyon: ',urbinp%wind_hgt_canyon(nindx,dindx)
        write(iulog,*)'wtlunit_roof:    ',urbinp%wtlunit_roof(nindx,dindx)
        write(iulog,*)'wtroad_perv:     ',urbinp%wtroad_perv(nindx,dindx)
+       write(iulog,*)'wtroad_tree:     ',urbinp%wtroad_tree(nindx,dindx)
        write(iulog,*)'alb_improad_dir: ',urbinp%alb_improad_dir(nindx,dindx,:)
        write(iulog,*)'alb_improad_dif: ',urbinp%alb_improad_dif(nindx,dindx,:)
        write(iulog,*)'alb_perroad_dir: ',urbinp%alb_perroad_dir(nindx,dindx,:)
        write(iulog,*)'alb_perroad_dif: ',urbinp%alb_perroad_dif(nindx,dindx,:)
+       write(iulog,*)'alb_tree_dir: ',urbinp%alb_tree_dir(nindx,dindx,:)
+       write(iulog,*)'alb_tree_dif: ',urbinp%alb_tree_dif(nindx,dindx,:)
        write(iulog,*)'alb_roof_dir:    ',urbinp%alb_roof_dir(nindx,dindx,:)
        write(iulog,*)'alb_roof_dif:    ',urbinp%alb_roof_dif(nindx,dindx,:)
        write(iulog,*)'alb_wall_dir:    ',urbinp%alb_wall_dir(nindx,dindx,:)

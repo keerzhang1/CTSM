@@ -729,7 +729,7 @@ contains
     !
     ! !USES:
     use landunit_varcon, only : istice, isturb_MIN, isturb_MAX
-    use column_varcon  , only : icol_road_perv
+    use column_varcon  , only : icol_road_perv, icol_road_tree
     !
     ! !ARGUMENTS:
     integer, intent(in) :: col_itype  ! col%itype value
@@ -755,7 +755,7 @@ contains
     if (lun_itype == istice) then
        hasBedrock = .false.
     else if (lun_itype >= isturb_MIN .and. lun_itype <= isturb_MAX) then
-       if (col_itype == icol_road_perv) then
+       if (col_itype == icol_road_perv .or. col_itype == icol_road_tree) then
           hasBedrock = .true.
        else
           hasBedrock = .false.

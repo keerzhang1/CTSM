@@ -10,7 +10,7 @@ module subgridAveMod
   use shr_kind_mod  , only : r8 => shr_kind_r8
   use shr_log_mod   , only : errMsg => shr_log_errMsg
   use column_varcon , only : icol_roof, icol_sunwall, icol_shadewall
-  use column_varcon , only : icol_road_perv , icol_road_imperv
+  use column_varcon , only : icol_road_perv , icol_road_imperv, icol_road_tree
   use clm_varcon    , only : spval
   use clm_varctl    , only : iulog
   use abortutils    , only : endrun
@@ -131,7 +131,7 @@ contains
                 scale_c2l(c) = 3.0 * lun%canyon_hwr(l) 
              else if (col%itype(c) == icol_shadewall) then
                 scale_c2l(c) = 3.0 * lun%canyon_hwr(l) 
-             else if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv) then
+             else if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv .or. col%itype(c) == icol_road_tree) then
                 scale_c2l(c) = 3.0_r8
              else if (col%itype(c) == icol_roof) then
                 scale_c2l(c) = 1.0_r8
@@ -148,7 +148,7 @@ contains
                 scale_c2l(c) = (3.0 * lun%canyon_hwr(l)) / (2.*lun%canyon_hwr(l) + 1.)
              else if (col%itype(c) == icol_shadewall) then
                 scale_c2l(c) = (3.0 * lun%canyon_hwr(l)) / (2.*lun%canyon_hwr(l) + 1.)
-             else if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv) then
+             else if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv .or. col%itype(c) == icol_road_tree) then
                 scale_c2l(c) = 3.0 / (2.*lun%canyon_hwr(l) + 1.)
              else if (col%itype(c) == icol_roof) then
                 scale_c2l(c) = 1.0_r8

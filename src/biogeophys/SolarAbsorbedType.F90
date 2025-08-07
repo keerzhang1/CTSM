@@ -50,6 +50,8 @@ module SolarAbsorbedType
      real(r8), pointer :: sabs_improad_dif_lun   (:,:) ! lun diffuse solar absorbed by impervious road per unit ground area per unit incident flux
      real(r8), pointer :: sabs_perroad_dir_lun   (:,:) ! lun direct  solar absorbed by pervious road per unit ground area per unit incident flux
      real(r8), pointer :: sabs_perroad_dif_lun   (:,:) ! lun diffuse solar absorbed by pervious road per unit ground area per unit incident flux
+     real(r8), pointer :: sabs_tree_dir_lun   (:,:) ! lun direct  solar absorbed by road tree per unit ground area per unit incident flux
+     real(r8), pointer :: sabs_tree_dif_lun   (:,:) ! lun diffuse solar absorbed by road tree per unit ground area per unit incident flux
 
      real(r8), pointer :: sdir_road_t_lun   (:,:) ! lun diffuse solar absorbed by impervious road per unit ground area per unit incident flux
      real(r8), pointer :: sdir_sunwall_t_lun   (:,:) ! lun direct  solar absorbed by pervious road per unit ground area per unit incident flux
@@ -204,7 +206,9 @@ contains
     allocate(this%sabs_improad_dif_lun   (begl:endl,1:numrad))     ; this%sabs_improad_dif_lun   (:,:) = nan
     allocate(this%sabs_perroad_dir_lun   (begl:endl,1:numrad))     ; this%sabs_perroad_dir_lun   (:,:) = nan
     allocate(this%sabs_perroad_dif_lun   (begl:endl,1:numrad))     ; this%sabs_perroad_dif_lun   (:,:) = nan 
-    
+    allocate(this%sabs_tree_dir_lun   (begl:endl,1:numrad))     ; this%sabs_tree_dir_lun   (:,:) = nan
+    allocate(this%sabs_tree_dif_lun   (begl:endl,1:numrad))     ; this%sabs_tree_dif_lun   (:,:) = nan
+
     allocate(this%sdir_road_t_lun (begl:endl,1:numrad))     ; this%sdir_road_t_lun(:,:) = nan
     allocate(this%sdir_sunwall_t_lun (begl:endl,1:numrad))     ; this%sdir_sunwall_t_lun (:,:) = nan
     allocate(this%sdir_shadewall_t_lun (begl:endl,1:numrad))     ; this%sdir_shadewall_t_lun (:,:) = nan
@@ -242,6 +246,7 @@ contains
     allocate(this%sabs_improad_dif_t_lun(begl:endl,1:numrad))      ; this%sabs_improad_dif_t_lun(:,:) = nan
     allocate(this%sabs_perroad_dir_t_lun(begl:endl,1:numrad))      ; this%sabs_perroad_dir_t_lun(:,:) = nan
     allocate(this%sabs_perroad_dif_t_lun(begl:endl,1:numrad))      ; this%sabs_perroad_dif_t_lun(:,:) = nan
+
     allocate(this%sabs_br_tree_dir_t_lun(begl:endl,1:numrad))        ; this%sabs_br_tree_dir_t_lun(:,:) = nan
     allocate(this%sabs_br_tree_dif_t_lun(begl:endl,1:numrad))        ; this%sabs_br_tree_dif_t_lun(:,:) = nan
     allocate(this%sabs_ar_tree_dir_t_lun(begl:endl,1:numrad))        ; this%sabs_ar_tree_dir_t_lun(:,:) = nan
@@ -258,6 +263,7 @@ contains
     allocate(this%sref_improad_dif_t_lun(begl:endl,1:numrad))      ; this%sref_improad_dif_t_lun(:,:) = nan
     allocate(this%sref_perroad_dir_t_lun(begl:endl,1:numrad))      ; this%sref_perroad_dir_t_lun(:,:) = nan
     allocate(this%sref_perroad_dif_t_lun(begl:endl,1:numrad))      ; this%sref_perroad_dif_t_lun(:,:) = nan
+
     allocate(this%sref_br_tree_dir_t_lun(begl:endl,1:numrad))      ; this%sref_br_tree_dir_t_lun(:,:) = nan
     allocate(this%sref_br_tree_dif_t_lun(begl:endl,1:numrad))      ; this%sref_br_tree_dif_t_lun(:,:) = nan
     allocate(this%sref_ar_tree_dir_t_lun(begl:endl,1:numrad))      ; this%sref_ar_tree_dir_t_lun(:,:) = nan
@@ -268,6 +274,7 @@ contains
     allocate(this%lwnet_shaderoof_t_lun(begl:endl))       ; this%lwnet_shaderoof_t_lun(:) = nan
     allocate(this%lwnet_improad_t_lun(begl:endl))         ; this%lwnet_improad_t_lun(:) = nan
     allocate(this%lwnet_perroad_t_lun(begl:endl))         ; this%lwnet_perroad_t_lun(:) = nan
+
     allocate(this%lwnet_sunwall_t_lun(begl:endl))         ; this%lwnet_sunwall_t_lun(:) = nan
     allocate(this%lwnet_shadewall_t_lun(begl:endl))       ; this%lwnet_shadewall_t_lun(:) = nan
     allocate(this%lwnet_br_tree_t_lun(begl:endl))         ; this%lwnet_br_tree_t_lun(:) = nan
@@ -417,12 +424,14 @@ contains
        avgflag='A', long_name='Unitless incident direct solar absorbed by pervious road per unit ground area per unit incident flux', &
        ptr_lunit=this%sabs_perroad_dir_t_lun, set_nourb=spval, l2g_scale_type='unity', &
        default='inactive')
+       
     this%sabs_perroad_dif_t_lun(begl:endl,:) = spval
     call hist_addfld2d (fname='SABS_PERROAD_DIF', units='unitless', type2d='numrad', &
        avgflag='A', long_name='Unitless incident diffuse solar absorbed by pervious road per unit ground area per unit incident flux', &
        ptr_lunit=this%sabs_perroad_dif_t_lun, set_nourb=spval, l2g_scale_type='unity', &
        default='inactive')
-       
+
+
     this%sabs_br_tree_dir_t_lun(begl:endl,:) = spval
     call hist_addfld2d (fname='SABS_BR_TREE_DIR', units='unitless', type2d='numrad', &
        avgflag='A', long_name='Unitless incident direct solar absorbed by below-roof treeetation per unit treeetation area per unit incident flux', &
@@ -510,17 +519,17 @@ contains
        avgflag='A', long_name='Unitless incident perroad diffuse solar flux lun', &
        ptr_lunit=this%sref_perroad_dif_t_lun, set_nourb=spval, l2g_scale_type='unity', &
        default='inactive')
-       
-    this%sref_br_tree_dir_t_lun(begl:endl,:) = spval
-    call hist_addfld2d (fname='SREF_BR_TREE_DIR', units='unitless', type2d='numrad', &
-       avgflag='A', long_name='Unitless incident brree direct solar flux lun', &
-       ptr_lunit=this%sref_br_tree_dir_t_lun, set_nourb=spval, l2g_scale_type='unity', &
-       default='inactive')
-    this%sref_br_tree_dif_t_lun(begl:endl,:) = spval
-    call hist_addfld2d (fname='SREF_BR_TREE_DIF', units='unitless', type2d='numrad', &
-       avgflag='A', long_name='Unitless incident brree diffuse solar flux lun', &
-       ptr_lunit=this%sref_br_tree_dif_t_lun, set_nourb=spval, l2g_scale_type='unity', &
-       default='inactive')
+
+     this%sref_br_tree_dir_t_lun(begl:endl,:) = spval
+     call hist_addfld2d (fname='SREF_BR_TREE_DIR', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Unitless incident brree direct solar flux lun', &
+        ptr_lunit=this%sref_br_tree_dir_t_lun, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
+     this%sref_br_tree_dif_t_lun(begl:endl,:) = spval
+     call hist_addfld2d (fname='SREF_BR_TREE_DIF', units='unitless', type2d='numrad', &
+        avgflag='A', long_name='Unitless incident brree diffuse solar flux lun', &
+        ptr_lunit=this%sref_br_tree_dif_t_lun, set_nourb=spval, l2g_scale_type='unity', &
+        default='inactive')
        
     this%sref_ar_tree_dir_t_lun(begl:endl,:) = spval
     call hist_addfld2d (fname='SREF_AR_TREE_DIR', units='unitless', type2d='numrad', &
@@ -554,11 +563,13 @@ contains
       avgflag='A', long_name='Unitless incident net longwave flux at impervious road', &
       ptr_lunit=this%lwnet_improad_t_lun, set_nourb=spval, l2g_scale_type='unity', &
       default='inactive')
+      
     this%lwnet_perroad_t_lun(begl:endl) = spval
     call hist_addfld1d (fname='LWNET_PERROAD', units='unitless', &
       avgflag='A', long_name='Unitless incident net longwave flux at pervious road', &
       ptr_lunit=this%lwnet_perroad_t_lun, set_nourb=spval, l2g_scale_type='unity', &
       default='inactive')
+
     this%lwnet_sunwall_t_lun(begl:endl) = spval
     call hist_addfld1d (fname='LWNET_SUNWALL', units='unitless', &
       avgflag='A', long_name='Unitless incident net longwave flux at sunlit wall', &
@@ -803,6 +814,8 @@ contains
     this%sabs_improad_dif_lun   (begl:endl, :) = 0._r8
     this%sabs_perroad_dir_lun   (begl:endl, :) = 0._r8
     this%sabs_perroad_dif_lun   (begl:endl, :) = 0._r8
+    this%sabs_tree_dir_lun   (begl:endl, :) = 0._r8
+    this%sabs_tree_dif_lun   (begl:endl, :) = 0._r8
 
   end subroutine InitCold
 
@@ -889,6 +902,18 @@ contains
          long_name='diffuse solar absorbed by pervious road per unit ground area per unit incident flux', units='',   &
          scale_by_thickness=.false., &
          interpinic_flag='interp', readvar=readvar, data=this%sabs_perroad_dif_lun)
+
+    call restartvar(ncid=ncid, flag=flag, varname='sabs_tree_dir', xtype=ncd_double,  dim1name='landunit',         & 
+         dim2name='numrad', switchdim=.true.,                                                                         &
+         long_name='direct solar absorbed by road tree per unit ground area per unit incident flux', units='',    &
+         scale_by_thickness=.false., &
+         interpinic_flag='interp', readvar=readvar, data=this%sabs_tree_dir_lun)
+
+    call restartvar(ncid=ncid, flag=flag, varname='sabs_tree_dif', xtype=ncd_double,  dim1name='landunit',         & 
+         dim2name='numrad', switchdim=.true.,                                                                         &
+         long_name='diffuse solar absorbed by road tree per unit ground area per unit incident flux', units='',   &
+         scale_by_thickness=.false., &
+         interpinic_flag='interp', readvar=readvar, data=this%sabs_tree_dif_lun)
 
    if(use_luna)then
       call restartvar(ncid=ncid, flag=flag, varname='par240d', xtype=ncd_double,  &

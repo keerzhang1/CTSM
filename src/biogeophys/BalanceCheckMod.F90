@@ -34,7 +34,7 @@ module BalanceCheckMod
   use PatchType          , only : patch                
   use landunit_varcon    , only : istdlak, istsoil,istcrop,istwet,istice
   use column_varcon      , only : icol_roof, icol_sunwall, icol_shadewall
-  use column_varcon      , only : icol_road_perv, icol_road_imperv
+  use column_varcon      , only : icol_road_perv, icol_road_imperv, icol_road_tree
   use clm_varctl         , only : use_hillslope_routing
   !
   ! !PUBLIC TYPES:
@@ -695,7 +695,8 @@ contains
 
               if (.not.(col%itype(indexc) == icol_roof .or. &
                    col%itype(indexc) == icol_road_imperv .or. &
-                   col%itype(indexc) == icol_road_perv)) then
+                   col%itype(indexc) == icol_road_perv .or. &
+                   col%itype(indexc) == icol_road_tree)) then
                    write(iulog,*)'qflx_drain_perched         = ',qflx_drain_perched_col(indexc)*dtime
                    write(iulog,*)'qflx_flood                 = ',qflx_flood_col(indexc)*dtime
                    write(iulog,*)'qflx_glcice_dyn_water_flux = ', qflx_glcice_dyn_water_flux_col(indexc)*dtime
@@ -826,7 +827,7 @@ contains
                         + qflx_snow_drain(c)  + qflx_sl_top_soil(c)
                 endif
 
-                 if (col%itype(c) == icol_road_perv .or. lun%itype(l) == istsoil .or. &
+                 if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_tree .or. lun%itype(l) == istsoil .or. &
                       lun%itype(l) == istcrop .or. lun%itype(l) == istwet .or. &
                       lun%itype(l) == istice) then
                    snow_sources(c) = (qflx_snow_grnd_col(c) - qflx_snow_h2osfc(c) ) &

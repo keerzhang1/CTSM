@@ -7,7 +7,7 @@ module SoilWaterPlantSinkMod
    use abortutils            , only : endrun
    use clm_varctl            , only : iulog
    use landunit_varcon       , only : istsoil,istcrop
-   use column_varcon         , only : icol_road_perv
+   use column_varcon         , only : icol_road_perv, icol_road_tree
    implicit none
 
    character(len=*), parameter, private :: sourcefile = &
@@ -68,7 +68,7 @@ contains
       num_filterc = 0
       do fc = 1, num_hydrologyc
          c = filter_hydrologyc(fc)
-         if (col%itype(c) == icol_road_perv) then
+         if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_tree) then
             num_filterc = num_filterc + 1
             filterc(num_filterc) = c
          end if
@@ -94,7 +94,7 @@ contains
       do fc = 1, num_hydrologyc
          c = filter_hydrologyc(fc)
          l = col%landunit(c)
-         if ( (col%itype(c) /= icol_road_perv) .and. (lun%itype(l) /= istsoil) ) then
+         if ( col%itype(c) /= icol_road_perv .and. lun%itype(l) /= istsoil .and. col%itype(c) /= icol_road_tree ) then
             num_filterc = num_filterc + 1
             filterc(num_filterc) = c
          end if
@@ -249,7 +249,7 @@ contains
         use ColumnType       , only : col
         use clm_varctl       , only : iulog
         use PhotosynthesisMod, only : plc, params_inst
-        use column_varcon    , only : icol_road_perv
+        use column_varcon    , only : icol_road_perv, icol_road_tree
         use shr_infnan_mod   , only : isnan => shr_infnan_isnan
         use EnergyFluxType   , only : energyflux_type
         !
@@ -347,7 +347,7 @@ contains
     use PatchType        , only : patch
     use ColumnType       , only : col
     use clm_varctl       , only : use_hydrstress
-    use column_varcon    , only : icol_road_perv
+    use column_varcon    , only : icol_road_perv, icol_road_tree
     !
     ! !ARGUMENTS:
     type(bounds_type)    , intent(in)    :: bounds                          ! bounds

@@ -10,7 +10,7 @@ Module SoilHydrologyType
   use LandunitType          , only : lun                
   use ColumnType            , only : col                
   use WaterStateBulkType    , only : waterstatebulk_type
-  use column_varcon         , only : icol_shadewall, icol_road_perv, icol_road_imperv, icol_roof, icol_sunwall
+  use column_varcon         , only : icol_shadewall, icol_road_perv, icol_road_imperv, icol_road_tree, icol_roof, icol_sunwall
   !
   ! !PUBLIC TYPES:
   implicit none
@@ -225,7 +225,7 @@ contains
        l = col%landunit(c)
        if (.not. lun%lakpoi(l)) then  !not lake
           if (lun%urbpoi(l)) then
-             if (col%itype(c) == icol_road_perv) then
+             if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_tree) then
                 if (use_aquifer_layer) then
                    ! NOTE(wjs, 2018-11-27) There is no fundamental reason why zwt should
                    ! be initialized differently based on use_aquifer_layer, but we (Bill

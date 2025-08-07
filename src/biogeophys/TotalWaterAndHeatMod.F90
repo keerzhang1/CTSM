@@ -23,7 +23,7 @@ module TotalWaterAndHeatMod
   use TemperatureType    , only : temperature_type
   use LakeStateType      , only : lakestate_type
   use column_varcon      , only : icol_roof, icol_sunwall, icol_shadewall
-  use column_varcon      , only : icol_road_perv, icol_road_imperv
+  use column_varcon      , only : icol_road_perv, icol_road_imperv, icol_road_tree
   use landunit_varcon    , only : istdlak, istsoil,istcrop,istwet,istice
   !
   ! !PUBLIC TYPES:

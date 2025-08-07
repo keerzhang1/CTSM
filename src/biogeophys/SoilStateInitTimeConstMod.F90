@@ -181,7 +181,7 @@ contains
     use clm_varctl          , only : use_cn, use_lch4, use_fates
     use clm_varctl          , only : iulog, fsurdat, paramfile, soil_layerstruct_predefined
     use landunit_varcon     , only : istdlak, istwet, istsoil, istcrop, istice
-    use column_varcon       , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv, icol_road_imperv 
+    use column_varcon       , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv, icol_road_imperv , icol_road_tree
     use fileutils           , only : getfil
     use organicFileMod      , only : organicrd 
     use FuncPedotransferMod , only : pedotransf, get_ipedof
@@ -273,6 +273,21 @@ contains
                + sum(soilstate_inst%rootfr_road_perv_col(c,col%nbedrock(c)+1:nlevsoi)) &
                /real(col%nbedrock(c))
           soilstate_inst%rootfr_road_perv_col(c,col%nbedrock(c)+1:nlevsoi) = 0._r8
+       end if
+       
+       if (lun%urbpoi(l) .and. col%itype(c) == icol_road_tree) then 
+          do lev = 1, nlevgrnd
+             soilstate_inst%rootfr_road_tree_col(c,lev) = 0._r8
+          enddo
+          do lev = 1,nlevsoi
+             soilstate_inst%rootfr_road_tree_col(c,lev) = 1.0_r8/real(nlevsoi,r8)
+          end do
+! remove roots below bedrock layer
+          soilstate_inst%rootfr_road_tree_col(c,1:col%nbedrock(c)) = &
+               soilstate_inst%rootfr_road_tree_col(c,1:col%nbedrock(c)) &
+               + sum(soilstate_inst%rootfr_road_tree_col(c,col%nbedrock(c)+1:nlevsoi)) &
+               /real(col%nbedrock(c))
+          soilstate_inst%rootfr_road_tree_col(c,col%nbedrock(c)+1:nlevsoi) = 0._r8
        end if
     end do
 
@@ -418,7 +433,7 @@ contains
        ! urban roof, sunwall, shadewall properties set to special value
        if (lun%itype(l)==istwet .or. lun%itype(l)==istice .or. &
            (lun%urbpoi(l) .and. col%itype(c) /= icol_road_perv .and. &
-                                col%itype(c) /= icol_road_imperv)) then
+            col%itype(c) /= icol_road_imperv .and. col%itype(c) /= icol_road_tree)) then
 
           do lev = 1,nlevmaxurbgrnd
              soilstate_inst%watsat_col(c,lev) = spval
@@ -610,6 +625,8 @@ contains
              end do
           else if (col%itype(c) == icol_road_perv) then 
              ! pervious road layers  - set in UrbanInitTimeConst
+          else if (col%itype(c) == icol_road_tree) then 
+             ! road tree layers  - set in UrbanInitTimeConst        
           end if
 
        end if

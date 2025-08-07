@@ -252,7 +252,7 @@ contains
      use clm_varcon      , only : denh2o, denice
      use landunit_varcon , only : istice, istwet, istsoil, istcrop
      use column_varcon   , only : icol_roof, icol_sunwall, icol_shadewall
-     use column_varcon   , only : icol_road_imperv, icol_road_perv
+     use column_varcon   , only : icol_road_imperv, icol_road_perv, icol_road_tree
      use ColumnType      , only : col
      use LandunitType    , only : lun
      !
@@ -300,7 +300,7 @@ contains
                 else   !when water content of ths top layer is more than that at F.C.
                    soilbeta(c) = 1._r8
                 end if
-             else if (col%itype(c) == icol_road_perv) then
+             else if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_tree) then
                 soilbeta(c) = 0._r8
              else if (col%itype(c) == icol_sunwall .or. col%itype(c) == icol_shadewall) then
                 soilbeta(c) = 0._r8          
@@ -349,7 +349,7 @@ contains
      use clm_varcon      , only : denh2o, denice
      use landunit_varcon , only : istice, istwet, istsoil, istcrop
      use column_varcon   , only : icol_roof, icol_sunwall, icol_shadewall
-     use column_varcon   , only : icol_road_imperv, icol_road_perv
+     use column_varcon   , only : icol_road_imperv, icol_road_perv, icol_road_tree
      use ColumnType      , only : col
      use LandunitType    , only : lun
      !
@@ -411,7 +411,7 @@ contains
             soilresis(c) = dsl(c)/(dg*eps*1.e3) + 20._r8
             soilresis(c) = min(1.e6_r8,soilresis(c))
 
-         else if (col%itype(c) == icol_road_perv) then
+         else if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_tree) then
             soilresis(c) = 1.e6_r8
          else if (col%itype(c) == icol_sunwall .or. col%itype(c) == icol_shadewall) then
             soilresis(c) = 1.e6_r8          

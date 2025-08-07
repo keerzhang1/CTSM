@@ -50,7 +50,7 @@ contains
     !
     ! !USES:
     use landunit_varcon  , only : istwet, istsoil, istice, istcrop
-    use column_varcon    , only : icol_roof, icol_road_imperv, icol_road_perv, icol_sunwall, icol_shadewall
+    use column_varcon    , only : icol_roof, icol_road_imperv, icol_road_perv, icol_road_tree, icol_sunwall, icol_shadewall
     use clm_varcon       , only : denh2o, denice
     use clm_varctl       , only : use_vichydro, use_hillslope, use_hillslope_routing
     use clm_varpar       , only : nlevgrnd, nlevurb
@@ -203,7 +203,7 @@ contains
                  qflx_snwcp_discarded_ice(c) - qflx_snwcp_discarded_liq(c) - &
                  (endwb(c)-begwb(c))/dtime
 
-         else if (lun%urbpoi(l) .and. ctype(c) /= icol_road_perv) then
+         else if (lun%urbpoi(l) .and. ctype(c) /= icol_road_perv .and. ctype(c) /= icol_road_tree) then
 
             qflx_drain_perched(c) = 0._r8
             qflx_rsub_sat(c)      = spval

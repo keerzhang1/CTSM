@@ -118,7 +118,7 @@ contains
     use clm_varctl               , only : iulog, use_excess_ice
     use clm_varcon               , only : cnfac, cpice, cpliq, denh2o, denice
     use landunit_varcon          , only : istsoil, istcrop
-    use column_varcon            , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv, icol_road_imperv
+    use column_varcon            , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv, icol_road_imperv, icol_road_tree
     use BandDiagonalMod          , only : BandDiagonal
     use UrbanParamsType          , only : IsSimpleBuildTemp, IsProgBuildTemp
     use UrbBuildTempOleson2015Mod, only : BuildingTemperature
@@ -623,7 +623,7 @@ contains
     use clm_varpar      , only : nlevsno, nlevgrnd, nlevurb, nlevsoi, nlevmaxurbgrnd
     use clm_varcon      , only : denh2o, denice, tfrz, tkwat, tkice, tkair, cpice,  cpliq, thk_bedrock, csol_bedrock
     use landunit_varcon , only : istice, istwet
-    use column_varcon   , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv, icol_road_imperv
+    use column_varcon   , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv, icol_road_imperv, icol_road_tree
     use clm_varctl      , only : iulog, snow_thermal_cond_method
     !
     ! !ARGUMENTS:
@@ -703,7 +703,7 @@ contains
             if (j >= 1) then    
                l = col%landunit(c)
 
-               ! This will include pervious road for all nlevgrnd layers and impervious road for j > nlev_improad
+               ! This will include pervious road and road tree for all nlevgrnd layers and impervious road for j > nlev_improad
                if ((lun%itype(l) /= istwet .and. lun%itype(l) /= istice &
                   .and. col%itype(c) /= icol_sunwall .and. col%itype(c) /= icol_shadewall .and. &
                   col%itype(c) /= icol_roof .and. col%itype(c) /= icol_road_imperv) .or. &
@@ -1130,7 +1130,7 @@ contains
     use clm_varpar       , only : nlevsno, nlevgrnd, nlevurb, nlevmaxurbgrnd
     use clm_varctl       , only : iulog
     use clm_varcon       , only : tfrz, hfus, grav, denice
-    use column_varcon    , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv
+    use column_varcon    , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv, icol_road_tree
     use landunit_varcon  , only : istsoil, istcrop, istice
     !
     ! !ARGUMENTS:
@@ -1304,7 +1304,7 @@ contains
 
                ! from Zhao (1997) and Koren (1999)
                supercool(c,j) = 0.0_r8
-               if (lun%itype(l) == istsoil .or. lun%itype(l) == istcrop .or. col%itype(c) == icol_road_perv) then
+               if (lun%itype(l) == istsoil .or. lun%itype(l) == istcrop .or. col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_tree) then
                   if(t_soisno(c,j) < tfrz) then
                      smp = hfus*(tfrz-t_soisno(c,j))/(grav*t_soisno(c,j)) * 1000._r8  !(mm)
                      supercool(c,j) = watsat(c,j)*(smp/sucsat(c,j))**(-1._r8/bsw(c,j))
@@ -1537,7 +1537,7 @@ contains
     !
     ! !USES:
     use clm_varcon     , only : sb, hvap
-    use column_varcon  , only : icol_road_perv, icol_road_imperv
+    use column_varcon  , only : icol_road_perv, icol_road_imperv, icol_road_tree
     use clm_varpar     , only : nlevsno
     use UrbanParamsType, only : IsSimpleBuildTemp, IsProgBuildTemp
     !
@@ -1685,7 +1685,7 @@ contains
             ! interactions between urban columns.
 
             ! All wasteheat and traffic flux goes into canyon floor
-            if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv) then
+            if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_imperv .or. col%itype(c) == icol_road_tree) then
                ! Note that we divide the following landunit variables by 1-wtlunit_roof which 
                ! essentially converts the flux from W/m2 of urban area to W/m2 of canyon floor area
                eflx_wasteheat_patch(p) = eflx_wasteheat(l)/(1._r8-lun%wtlunit_roof(l))
@@ -2043,7 +2043,7 @@ contains
     ! !USES:
     use clm_varcon     , only : cnfac
     use column_varcon  , only : icol_roof, icol_sunwall, icol_shadewall
-    use column_varcon  , only : icol_road_perv, icol_road_imperv
+    use column_varcon  , only : icol_road_perv, icol_road_imperv, icol_road_tree
     use clm_varpar     , only : nlevsno, nlevmaxurbgrnd
     !
     ! !ARGUMENTS:
@@ -2205,7 +2205,7 @@ contains
     ! !USES:
     use clm_varcon     , only : cnfac
     use column_varcon  , only : icol_roof, icol_sunwall, icol_shadewall
-    use column_varcon  , only : icol_road_perv, icol_road_imperv
+    use column_varcon  , only : icol_road_perv, icol_road_imperv, icol_road_tree
     use clm_varpar     , only : nlevsno, nlevurb, nlevgrnd, nlevmaxurbgrnd
     !
     ! !ARGUMENTS:
@@ -2293,7 +2293,8 @@ contains
             l = col%landunit(c)
             if ((.not. lun%urbpoi(l)) .or. & 
                (col%itype(c) == icol_road_imperv .or. &
-                col%itype(c) == icol_road_perv)) then
+                col%itype(c) == icol_road_perv .or. &
+                col%itype(c) == icol_road_tree)) then
 
                if (j == col%snl(c)+1) then
                   rt(c,j) = t_soisno(c,j) +  fact(c,j)*( hs_top_snow(c) &
@@ -2578,7 +2579,7 @@ contains
     ! !USES:
     use clm_varcon     , only : cnfac
     use column_varcon  , only : icol_roof, icol_sunwall, icol_shadewall
-    use column_varcon  , only : icol_road_perv, icol_road_imperv
+    use column_varcon  , only : icol_road_perv, icol_road_imperv, icol_road_tree
     use clm_varpar     , only : nlevsno, nlevgrnd, nlevurb, nlevmaxurbgrnd
     !
     ! !ARGUMENTS:
@@ -2675,7 +2676,7 @@ end subroutine SetMatrix_Snow
     ! !USES:
     use clm_varcon     , only : cnfac
     use column_varcon  , only : icol_roof, icol_sunwall, icol_shadewall
-    use column_varcon  , only : icol_road_perv, icol_road_imperv
+    use column_varcon  , only : icol_road_perv, icol_road_imperv, icol_road_tree
     use clm_varpar     , only : nlevsno, nlevgrnd, nlevurb, nlevmaxurbgrnd
     !
     ! !ARGUMENTS:
@@ -2776,6 +2777,7 @@ end subroutine SetMatrix_Snow
             l = col%landunit(c)
             if ((col%itype(c) == icol_road_imperv) .or. &
                 (col%itype(c) == icol_road_perv)   .or. &
+                (col%itype(c) == icol_road_tree)   .or. &
                 (.not. lun%urbpoi(l))) then
 
                 if (j == col%snl(c)+1) then

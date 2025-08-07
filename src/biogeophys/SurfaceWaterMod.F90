@@ -12,7 +12,7 @@ module SurfaceWaterMod
   use clm_varcon                  , only : denh2o, denice, roverg, tfrz, rpi
   use clm_varpar                  , only : nlevsno, nlevmaxurbgrnd
   use clm_time_manager            , only : get_step_size_real
-  use column_varcon               , only : icol_roof, icol_road_imperv, icol_sunwall, icol_shadewall, icol_road_perv
+  use column_varcon               , only : icol_roof, icol_road_imperv, icol_sunwall, icol_shadewall, icol_road_perv, icol_road_tree
   use decompMod                   , only : bounds_type, subgrid_level_column
   use ColumnType                  , only : col
   use NumericsMod                 , only : truncate_small_values

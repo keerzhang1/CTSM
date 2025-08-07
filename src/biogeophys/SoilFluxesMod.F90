@@ -48,7 +48,7 @@ contains
     use clm_time_manager , only : get_step_size_real
     use clm_varcon       , only : hvap, cpair, grav, vkc, tfrz, sb 
     use landunit_varcon  , only : istsoil, istcrop
-    use column_varcon    , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv
+    use column_varcon    , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv, icol_road_tree
     use subgridAveMod    , only : p2c
     !
     ! !ARGUMENTS:
@@ -299,7 +299,7 @@ contains
          ! top soil layer for urban columns (excluding pervious road, which 
          ! shouldn't be limited here b/c it uses the uses the soilwater
          ! equations, while the other urban columns do not)
-         if (lun%urbpoi(patch%landunit(p)) .and. (col%itype(c)/=icol_road_perv) .and. (j == 1)) then
+         if (lun%urbpoi(patch%landunit(p)) .and. col%itype(c)/=icol_road_perv .and. col%itype(c)/=icol_road_tree .and. j == 1) then
             evaporation_limit = (h2osoi_ice(c,j)+h2osoi_liq(c,j))/dtime
             if (qflx_evap_soi(p) > evaporation_limit) then
                evaporation_demand = qflx_evap_soi(p)
@@ -417,6 +417,7 @@ contains
             c = patch%column(p)
 
 ! Do this for perv and imperv road for -nlevsno+1,nlevgrnd
+! Also do this for road tree
             if (col%itype(c) /= icol_sunwall .and. col%itype(c) /= icol_shadewall &
                  .and. col%itype(c) /= icol_roof) then
                ! area weight heat absorbed by snow layers

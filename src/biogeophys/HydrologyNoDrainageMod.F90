@@ -150,8 +150,8 @@ contains
     ! !USES:
     use clm_varcon           , only : denh2o, denice, hfus, grav, tfrz
     use landunit_varcon      , only : istwet, istsoil, istcrop, istdlak 
-    use column_varcon        , only : icol_roof, icol_road_imperv, icol_road_perv, icol_sunwall
-    use column_varcon        , only : icol_shadewall
+    use column_varcon        , only : icol_roof, icol_road_imperv, icol_road_perv, icol_sunwall, icol_road_tree
+    use column_varcon        , only : icol_shadewall, icol_road_tree
     use clm_varctl           , only : use_cn
     use clm_varpar           , only : nlevgrnd, nlevsno, nlevsoi, nlevurb
     use clm_time_manager     , only : get_step_size_real, get_nstep

@@ -90,7 +90,7 @@ contains
     ! !USES:
     use clm_varcon          , only : cpair, vkc, spval, grav, pondmx_urban, rpi, rgas
     use clm_varcon          , only : ht_wasteheat_factor, ac_wasteheat_factor, wasteheat_limit
-    use column_varcon       , only : icol_shadewall, icol_road_perv, icol_road_imperv
+    use column_varcon       , only : icol_shadewall, icol_road_perv, icol_road_imperv, icol_road_tree
     use column_varcon       , only : icol_roof, icol_sunwall
     use filterMod           , only : filter
     use QSatMod             , only : QSat
@@ -171,6 +171,8 @@ contains
     real(r8) :: wtuq_roof(bounds%begl:bounds%endl)                   ! latent heat conductance for roof (scaled) (m/s)
     real(r8) :: wtus_road_perv(bounds%begl:bounds%endl)              ! sensible heat conductance for pervious road (scaled) (m/s)
     real(r8) :: wtuq_road_perv(bounds%begl:bounds%endl)              ! latent heat conductance for pervious road (scaled) (m/s)
+    real(r8) :: wtus_road_tree(bounds%begl:bounds%endl)              ! sensible heat conductance for road tree (scaled) (m/s)
+    real(r8) :: wtuq_road_tree(bounds%begl:bounds%endl)              ! latent heat conductance for road tree (scaled) (m/s)
     real(r8) :: wtus_road_imperv(bounds%begl:bounds%endl)            ! sensible heat conductance for impervious road (scaled) (m/s)
     real(r8) :: wtuq_road_imperv(bounds%begl:bounds%endl)            ! latent heat conductance for impervious road (scaled) (m/s)
     real(r8) :: wtus_sunwall(bounds%begl:bounds%endl)                ! sensible heat conductance for sunwall (scaled) (m/s)
@@ -181,6 +183,8 @@ contains
     real(r8) :: wtuq_roof_unscl(bounds%begl:bounds%endl)             ! latent heat conductance for roof (not scaled) (m/s)
     real(r8) :: wtus_road_perv_unscl(bounds%begl:bounds%endl)        ! sensible heat conductance for pervious road (not scaled) (m/s)
     real(r8) :: wtuq_road_perv_unscl(bounds%begl:bounds%endl)        ! latent heat conductance for pervious road (not scaled) (m/s)
+    real(r8) :: wtus_road_tree_unscl(bounds%begl:bounds%endl)        ! sensible heat conductance for pervious road (not scaled) (m/s)
+    real(r8) :: wtuq_road_tree_unscl(bounds%begl:bounds%endl)        ! latent heat conductance for pervious road (not scaled) (m/s)
     real(r8) :: wtus_road_imperv_unscl(bounds%begl:bounds%endl)      ! sensible heat conductance for impervious road (not scaled) (m/s)
     real(r8) :: wtuq_road_imperv_unscl(bounds%begl:bounds%endl)      ! latent heat conductance for impervious road (not scaled) (m/s)
     real(r8) :: wtus_sunwall_unscl(bounds%begl:bounds%endl)          ! sensible heat conductance for sunwall (not scaled) (m/s)
@@ -224,7 +228,7 @@ contains
          wtlunit_roof        =>   lun%wtlunit_roof                          , & ! Input:  [real(r8) (:)   ]  weight of roof with respect to landunit           
          canyon_hwr          =>   lun%canyon_hwr                            , & ! Input:  [real(r8) (:)   ]  ratio of building height to street width          
          wtroad_perv         =>   lun%wtroad_perv                           , & ! Input:  [real(r8) (:)   ]  weight of pervious road wrt total road            
-
+         wtroad_tree         =>   lun%wtroad_tree                          , & ! Input:  [real(r8) (:)   ]  weight of road tree wrt total road            
          forc_t              =>   atm2lnd_inst%forc_t_not_downscaled_grc    , & ! Input:  [real(r8) (:)   ]  atmospheric temperature (K)                       
          forc_th             =>   atm2lnd_inst%forc_th_not_downscaled_grc   , & ! Input:  [real(r8) (:)   ]  atmospheric potential temperature (K)             
          forc_rho            =>   atm2lnd_inst%forc_rho_not_downscaled_grc  , & ! Input:  [real(r8) (:)   ]  density (kg/m**3)                                 
@@ -237,6 +241,7 @@ contains
          eflx_traffic_factor =>   urbanparams_inst%eflx_traffic_factor      , & ! Input:  [real(r8) (:)   ]  multiplicative urban traffic factor for sensible heat flux
 
          rootr_road_perv     =>   soilstate_inst%rootr_road_perv_col        , & ! Input:  [real(r8) (:,:) ]  effective fraction of roots in each soil layer for urban pervious road
+         rootr_road_tree     =>   soilstate_inst%rootr_road_tree_col        , & ! Input:  [real(r8) (:,:) ]  effective fraction of roots in each soil layer for urban pervious road
          soilalpha_u         =>   soilstate_inst%soilalpha_u_col            , & ! Input:  [real(r8) (:)   ]  Urban factor that reduces ground saturated specific humidity (-)
          rootr               =>   soilstate_inst%rootr_patch                , & ! Output: [real(r8) (:,:) ]  effective fraction of roots in each soil layer (SMS method only) 
 
@@ -418,21 +423,25 @@ contains
       ! Initialize conductances
       wtus_roof(begl:endl)        = 0._r8
       wtus_road_perv(begl:endl)   = 0._r8
+      wtus_road_tree(begl:endl)   = 0._r8
       wtus_road_imperv(begl:endl) = 0._r8
       wtus_sunwall(begl:endl)     = 0._r8
       wtus_shadewall(begl:endl)   = 0._r8
       wtuq_roof(begl:endl)        = 0._r8
       wtuq_road_perv(begl:endl)   = 0._r8
+      wtuq_road_tree(begl:endl)   = 0._r8
       wtuq_road_imperv(begl:endl) = 0._r8
       wtuq_sunwall(begl:endl)     = 0._r8
       wtuq_shadewall(begl:endl)   = 0._r8
       wtus_roof_unscl(begl:endl)        = 0._r8
       wtus_road_perv_unscl(begl:endl)   = 0._r8
+      wtus_road_tree_unscl(begl:endl)   = 0._r8
       wtus_road_imperv_unscl(begl:endl) = 0._r8
       wtus_sunwall_unscl(begl:endl)     = 0._r8
       wtus_shadewall_unscl(begl:endl)   = 0._r8
       wtuq_roof_unscl(begl:endl)        = 0._r8
       wtuq_road_perv_unscl(begl:endl)   = 0._r8
+      wtuq_road_tree_unscl(begl:endl)   = 0._r8
       wtuq_road_imperv_unscl(begl:endl) = 0._r8
       wtuq_sunwall_unscl(begl:endl)     = 0._r8
       wtuq_shadewall_unscl(begl:endl)   = 0._r8
@@ -542,11 +551,22 @@ contains
                wtuq_road_perv(l) = wtuq(c)
                ! unscaled latent heat conductance
                wtuq_road_perv_unscl(l) = 1._r8/canyon_resistance(l)
+            else if (ctype(c) == icol_road_tree) then
+               ! scaled sensible heat conductance
+               wtus(c) = wtroad_tree(l)*(1._r8-wtlunit_roof(l))/canyon_resistance(l)
+               wtus_road_tree(l) = wtus(c)
+               ! unscaled sensible heat conductance
+               wtus_road_tree_unscl(l) = 1._r8/canyon_resistance(l)
 
+               ! scaled latent heat conductance
+               wtuq(c) = wtroad_tree(l)*(1._r8-wtlunit_roof(l))/canyon_resistance(l)
+               wtuq_road_tree(l) = wtuq(c)
+               ! unscaled latent heat conductance
+               wtuq_road_tree_unscl(l) = 1._r8/canyon_resistance(l)
             else if (ctype(c) == icol_road_imperv) then
 
                ! scaled sensible heat conductance
-               wtus(c) = (1._r8-wtroad_perv(l))*(1._r8-wtlunit_roof(l))/canyon_resistance(l)
+               wtus(c) = (1._r8-wtroad_perv(l)-wtroad_tree(l))*(1._r8-wtlunit_roof(l))/canyon_resistance(l)
                wtus_road_imperv(l) = wtus(c)
                ! unscaled sensible heat conductance
                wtus_road_imperv_unscl(l) = 1._r8/canyon_resistance(l)
@@ -561,7 +581,7 @@ contains
                   fwet_road_imperv = 1._r8
                end if
                ! scaled latent heat conductance
-               wtuq(c) = fwet_road_imperv*(1._r8-wtroad_perv(l))*(1._r8-wtlunit_roof(l))/canyon_resistance(l)
+               wtuq(c) = fwet_road_imperv*(1._r8-wtroad_perv(l)-wtroad_tree(l))*(1._r8-wtlunit_roof(l))/canyon_resistance(l)
                wtuq_road_imperv(l) = wtuq(c)
                ! unscaled latent heat conductance
                wtuq_road_imperv_unscl(l) = fwet_road_imperv*(1._r8/canyon_resistance(l))
@@ -602,8 +622,8 @@ contains
 
             else
                write(iulog,*) 'c, ctype, pi = ', c, ctype(c), pi
-               write(iulog,*) 'Column indices for: shadewall, sunwall, road_imperv, road_perv, roof: '
-               write(iulog,*) icol_shadewall, icol_sunwall, icol_road_imperv, icol_road_perv, icol_roof
+               write(iulog,*) 'Column indices for: shadewall, sunwall, road_imperv, road_perv,road_tree, roof: '
+               write(iulog,*) icol_shadewall, icol_sunwall, icol_road_imperv, icol_road_perv,icol_road_tree, icol_roof
                call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, &
                     msg="ERROR, ctype out of range"//errmsg(sourcefile, __LINE__))
             end if
@@ -627,16 +647,16 @@ contains
 
             ! Calculate traffic heat flux
             ! Only comes from impervious road
-            eflx_traffic(l) = (1._r8-wtlunit_roof(l))*(1._r8-wtroad_perv(l))* &
+            eflx_traffic(l) = (1._r8-wtlunit_roof(l))*(1._r8-wtroad_perv(l)-wtroad_tree(l))* &
                  eflx_traffic_factor(l)
 
             taf(l) = taf_numer(l)/taf_denom(l)
             qaf(l) = qaf_numer(l)/qaf_denom(l)
 
-            wts_sum(l) = wtas(l) + wtus_roof(l) + wtus_road_perv(l) + &
+            wts_sum(l) = wtas(l) + wtus_roof(l) + wtus_road_perv(l) +  wtus_road_tree(l) + &
                  wtus_road_imperv(l) + wtus_sunwall(l) + wtus_shadewall(l)
 
-            wtq_sum(l) = wtaq(l) + wtuq_roof(l) + wtuq_road_perv(l) + &
+            wtq_sum(l) = wtaq(l) + wtuq_roof(l) + wtuq_road_perv(l) + wtuq_road_tree(l) + &
                  wtuq_road_imperv(l) + wtuq_sunwall(l) + wtuq_shadewall(l)
 
          end do
@@ -695,34 +715,41 @@ contains
          ! ground temperature
 
          if (ctype(c) == icol_roof) then
-            cgrnds(p) = forc_rho(g) * cpair * (wtas(l) + wtus_road_perv(l) +  &
+            cgrnds(p) = forc_rho(g) * cpair * (wtas(l) + wtus_road_perv(l) + wtus_road_tree(l) +  &
                  wtus_road_imperv(l) + wtus_sunwall(l) + wtus_shadewall(l)) * &
                  (wtus_roof_unscl(l)/wts_sum(l))
-            cgrndl(p) = forc_rho(g) * (wtaq(l) + wtuq_road_perv(l) +  &
+            cgrndl(p) = forc_rho(g) * (wtaq(l) + wtuq_road_perv(l) + wtuq_road_tree(l) +  &
                  wtuq_road_imperv(l) + wtuq_sunwall(l) + wtuq_shadewall(l)) * &
                  (wtuq_roof_unscl(l)/wtq_sum(l))*dqgdT(c)
          else if (ctype(c) == icol_road_perv) then
             cgrnds(p) = forc_rho(g) * cpair * (wtas(l) + wtus_roof(l) +  &
-                 wtus_road_imperv(l) + wtus_sunwall(l) + wtus_shadewall(l)) * &
+                 wtus_road_imperv(l) + wtus_sunwall(l) + wtus_shadewall(l)+ wtus_road_tree(l)) * &
                  (wtus_road_perv_unscl(l)/wts_sum(l))
             cgrndl(p) = forc_rho(g) * (wtaq(l) + wtuq_roof(l) +  &
-                 wtuq_road_imperv(l) + wtuq_sunwall(l) + wtuq_shadewall(l)) * &
+                 wtuq_road_imperv(l) + wtuq_sunwall(l) + wtuq_shadewall(l)+ wtuq_road_tree(l)) * &
                  (wtuq_road_perv_unscl(l)/wtq_sum(l))*dqgdT(c)
+         else if (ctype(c) == icol_road_tree) then
+            cgrnds(p) = forc_rho(g) * cpair * (wtas(l) + wtus_roof(l) +  &
+                 wtus_road_imperv(l) + wtus_road_perv(l) + wtus_sunwall(l) + wtus_shadewall(l)) * &
+                 (wtus_road_tree_unscl(l)/wts_sum(l))
+            cgrndl(p) = forc_rho(g) * (wtaq(l) + wtuq_roof(l) +  &
+                 wtuq_road_imperv(l) + wtuq_road_perv(l) + wtuq_sunwall(l) + wtuq_shadewall(l)) * &
+                 (wtuq_road_tree_unscl(l)/wtq_sum(l))*dqgdT(c)
          else if (ctype(c) == icol_road_imperv) then
             cgrnds(p) = forc_rho(g) * cpair * (wtas(l) + wtus_roof(l) +  &
-                 wtus_road_perv(l) + wtus_sunwall(l) + wtus_shadewall(l)) * &
+                 wtus_road_perv(l) +wtus_road_tree(l) + wtus_sunwall(l) + wtus_shadewall(l)) * &
                  (wtus_road_imperv_unscl(l)/wts_sum(l))
             cgrndl(p) = forc_rho(g) * (wtaq(l) + wtuq_roof(l) +  &
-                 wtuq_road_perv(l) + wtuq_sunwall(l) + wtuq_shadewall(l)) * &
+                 wtuq_road_perv(l) +wtuq_road_tree(l) + wtuq_sunwall(l) + wtuq_shadewall(l)) * &
                  (wtuq_road_imperv_unscl(l)/wtq_sum(l))*dqgdT(c)
          else if (ctype(c) == icol_sunwall) then
             cgrnds(p) = forc_rho(g) * cpair * (wtas(l) + wtus_roof(l) +  &
-                 wtus_road_perv(l) + wtus_road_imperv(l) + wtus_shadewall(l)) * &
+                 wtus_road_perv(l) +wtus_road_tree(l) + wtus_road_imperv(l) + wtus_shadewall(l)) * &
                  (wtus_sunwall_unscl(l)/wts_sum(l))
             cgrndl(p) = 0._r8
          else if (ctype(c) == icol_shadewall) then
             cgrnds(p) = forc_rho(g) * cpair * (wtas(l) + wtus_roof(l) +  &
-                 wtus_road_perv(l) + wtus_road_imperv(l) + wtus_sunwall(l)) * &
+                 wtus_road_perv(l) + wtus_road_tree(l) + wtus_road_imperv(l) + wtus_sunwall(l)) * &
                  (wtus_shadewall_unscl(l)/wts_sum(l))
             cgrndl(p) = 0._r8
          end if
@@ -743,6 +770,11 @@ contains
             eflx_sh_h2osfc(p)= 0._r8
          else if (ctype(c) == icol_road_perv) then
             eflx_sh_grnd(p)  = -forc_rho(g)*cpair*wtus_road_perv_unscl(l)*dth(l)
+            eflx_sh_snow(p)  = 0._r8
+            eflx_sh_soil(p)  = 0._r8
+            eflx_sh_h2osfc(p)= 0._r8
+         else if (ctype(c) == icol_road_tree) then
+            eflx_sh_grnd(p)  = -forc_rho(g)*cpair*wtus_road_tree_unscl(l)*dth(l)
             eflx_sh_snow(p)  = 0._r8
             eflx_sh_soil(p)  = 0._r8
             eflx_sh_h2osfc(p)= 0._r8
@@ -782,6 +814,18 @@ contains
                qflx_tran_veg(p) = -forc_rho(g)*wtuq_road_perv_unscl(l)*dqh(l)
             end if
             qflx_evap_veg(p) = qflx_tran_veg(p)
+        else if (ctype(c) == icol_road_tree) then
+           ! Evaporation assigned to soil term if dew or snow
+           ! or if no liquid water available in soil column
+           if (dqh(l) > 0._r8 .or. frac_sno(c) > 0._r8 .or. soilalpha_u(c) <= 0._r8) then
+              qflx_evap_soi(p) = -forc_rho(g)*wtuq_road_tree_unscl(l)*dqh(l)
+              qflx_tran_veg(p) = 0._r8
+              ! Otherwise, evaporation assigned to transpiration term
+           else
+              qflx_evap_soi(p) = 0._r8
+              qflx_tran_veg(p) = -forc_rho(g)*wtuq_road_tree_unscl(l)*dqh(l)
+           end if
+           qflx_evap_veg(p) = qflx_tran_veg(p)
          else if (ctype(c) == icol_road_imperv) then
             qflx_evap_soi(p) = -forc_rho(g)*wtuq_road_imperv_unscl(l)*dqh(l)
          else if (ctype(c) == icol_sunwall) then
@@ -865,7 +909,9 @@ contains
             c = patch%column(p)
             if (ctype(c) == icol_road_perv) then
                rootr(p,j) = rootr_road_perv(c,j)
-            else
+            else if (ctype(c) == icol_road_tree) then 
+               rootr(p,j) = rootr_road_tree(c,j)
+            else 
                rootr(p,j) = 0._r8
             end if
          end do

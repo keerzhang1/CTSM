@@ -927,7 +927,7 @@ contains
      !
      ! !USES:
      use clm_varcon       , only : pondmx, tfrz, watmin,rpi, secspday, nlvic
-     use column_varcon    , only : icol_roof, icol_road_imperv, icol_road_perv
+     use column_varcon    , only : icol_roof, icol_road_imperv, icol_road_perv, icol_road_tree
      !
      ! !ARGUMENTS:
      type(bounds_type)        , intent(in)    :: bounds               
@@ -1456,7 +1456,7 @@ contains
 
        do fc = 1, num_urbanc
           c = filter_urbanc(fc)
-          if (col%itype(c) /= icol_road_perv) then
+          if (col%itype(c) /= icol_road_perv .and. col%itype(c) /= icol_road_tree) then
              qflx_drain(c) = 0._r8
              ! This must be done for roofs and impervious road (walls will be zero)
              qflx_qrgwl(c) = qflx_snwcp_liq(c)
@@ -2097,7 +2097,7 @@ contains
      use clm_varpar       , only : nlevsoi, nlevgrnd, nlayer, nlayert
      use clm_varctl       , only : nhillslope
      use clm_varcon       , only : pondmx, watmin,rpi, secspday
-     use column_varcon    , only : icol_road_perv
+     use column_varcon    , only : icol_road_perv, icol_road_tree
      use abortutils       , only : endrun
      use GridcellType     , only : grc  
      use landunit_varcon  , only : istsoil, istcrop
@@ -2611,7 +2611,7 @@ contains
 
        do fc = 1, num_urbanc
           c = filter_urbanc(fc)
-          if (col%itype(c) /= icol_road_perv) then
+          if (col%itype(c) /= icol_road_perv .and. col%itype(c) /= icol_road_tree) then
              qflx_drain(c) = 0._r8
              ! This must be done for roofs and impervious road (walls will be zero)
              qflx_qrgwl(c) = qflx_snwcp_liq(c)

@@ -24,7 +24,7 @@ module column_varcon
   integer, parameter, public :: icol_shadewall   = isturb_MIN*10 + 3
   integer, parameter, public :: icol_road_imperv = isturb_MIN*10 + 4
   integer, parameter, public :: icol_road_perv   = isturb_MIN*10 + 5
-
+  integer, parameter, public :: icol_road_tree   = isturb_MIN*10 + 6
   !
   ! !PUBLIC MEMBER FUNCTIONS:
   public :: is_hydrologically_active   ! returns true if the given column type is hydrologically active
@@ -67,7 +67,7 @@ contains
 
     if (lun_itype == istsoil .or. lun_itype == istcrop) then
        hydrologically_active = .true.
-    else if (col_itype == icol_road_perv) then
+    else if (col_itype == icol_road_perv .or. col_itype == icol_road_tree) then
        hydrologically_active = .true.
     else
        hydrologically_active = .false.
@@ -163,6 +163,7 @@ contains
     call ncd_putatt(ncid, ncd_global, att_prefix // 'urban_shadewall'       , icol_shadewall)
     call ncd_putatt(ncid, ncd_global, att_prefix // 'urban_impervious_road' , icol_road_imperv)
     call ncd_putatt(ncid, ncd_global, att_prefix // 'urban_pervious_road'   , icol_road_perv)
+    call ncd_putatt(ncid, ncd_global, att_prefix // 'urban_tree_road'   , icol_road_tree)
 
   end subroutine write_coltype_metadata
 

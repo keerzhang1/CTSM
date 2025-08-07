@@ -68,7 +68,7 @@ module clm_varpar
   integer, public :: nvegnpool                        ! number of vegetation N pools
 
   integer, public :: maxveg                           ! # of pfts + cfts
-  integer, public :: maxpatch_urb= 5                  ! max number of urban patches (columns) in urban landunit
+  integer, public :: maxpatch_urb= 6                  ! max number of urban patches (columns) in urban landunit
 
   integer, public :: maxsoil_patches                  ! # of pfts + cfts + bare ground; replaces maxpatch_pft, which is obsolete
 
