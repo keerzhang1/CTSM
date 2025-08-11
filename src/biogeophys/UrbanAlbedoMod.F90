@@ -2477,6 +2477,7 @@ contains
 
                tree_a_dir(l)           = (1._r8-alb_tree_dir(l,ib)) * sdir_road(l,ib) 
                tree_r_dir(l)           =     alb_tree_dir(l,ib)  * sdir_road(l,ib) 
+               tree_r_sky_dir(l)       = tree_r_dir(l) * vf_sr(l)
                tree_r_sunwall_dir(l)   = tree_r_dir(l) * vf_wr(l)
                tree_r_shadewall_dir(l) = tree_r_dir(l) * vf_wr(l)
                road_a_dir(l)              = road_a_dir(l) + tree_a_dir(l)*wtroad_tree(l)

@@ -249,7 +249,7 @@ contains
     use clm_varctl      , only : use_vancouver, use_mexicocity
     use clm_varcon      , only : vkc
     use column_varcon   , only : icol_roof, icol_sunwall, icol_shadewall
-    use column_varcon   , only : icol_road_perv, icol_road_imperv,icol_road_tree
+    use column_varcon   , only : icol_road_perv, icol_road_imperv, icol_road_perv, icol_road_tree
     use landunit_varcon , only : isturb_MIN
     !
     ! !ARGUMENTS:
