@@ -126,6 +126,10 @@ contains
     real(r8) :: alb_ar_tree_dir_s  (bounds%begl:bounds%endl, numrad) ! diffuse above-roof tree albedo with snow effects
     real(r8) :: alb_br_tree_dif_s  (bounds%begl:bounds%endl, numrad) ! diffuse below-roof tree albedo with snow effects
     real(r8) :: alb_ar_tree_dif_s  (bounds%begl:bounds%endl, numrad) ! diffuse above-roof tree albedo with snow effects
+    real(r8) :: tran_br_tree_dir_s  (bounds%begl:bounds%endl, numrad) ! diffuse below-roof leaf transmittance with snow effects
+    real(r8) :: tran_ar_tree_dir_s  (bounds%begl:bounds%endl, numrad) ! diffuse above-roof leaf transmittance with snow effects
+    real(r8) :: tran_br_tree_dif_s  (bounds%begl:bounds%endl, numrad) ! diffuse below-roof leaf transmittance with snow effects
+    real(r8) :: tran_ar_tree_dif_s  (bounds%begl:bounds%endl, numrad) ! diffuse above-roof leaf transmittance with snow effects
 
     real(r8) :: sref_roof_dir      (bounds%begl:bounds%endl, numrad) ! direct  solar reflected by roof per unit ground area per unit incident flux   
     real(r8) :: sref_sunwall_dir   (bounds%begl:bounds%endl, numrad) ! direct  solar reflected by sunwall per unit wall area per unit incident flux  
@@ -150,10 +154,18 @@ contains
     real(r8) :: sdir_force     (bounds%begl:bounds%endl, numrad) ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux
     real(r8) :: forc_solad             (bounds%begl:bounds%endl, numrad)         ! forced solar
 
-    real(r8) :: alb_br_tree_dir     (bounds%begl:bounds%endl, numrad) ! direct br tree albedo with snow effects
-    real(r8) :: alb_ar_tree_dir     (bounds%begl:bounds%endl, numrad) ! direct br tree albedo with snow effects
-    real(r8) :: alb_br_tree_dif     (bounds%begl:bounds%endl, numrad) ! diffuse br tree albedowith snow effects  
-    real(r8) :: alb_ar_tree_dif     (bounds%begl:bounds%endl, numrad) ! diffuse br tree albedowith snow effects
+    real(r8) :: alb_br_tree_dir     (bounds%begl:bounds%endl, numrad) ! direct br tree albedo 
+    real(r8) :: alb_ar_tree_dir     (bounds%begl:bounds%endl, numrad) ! direct br tree albedo 
+    real(r8) :: alb_br_tree_dif     (bounds%begl:bounds%endl, numrad) ! diffuse br tree albedo  
+    real(r8) :: alb_ar_tree_dif     (bounds%begl:bounds%endl, numrad) ! diffuse br tree albedo
+    real(r8) :: tran_br_tree_dir    (bounds%begl:bounds%endl, numrad) ! diffuse below-roof leaf transmittance 
+    real(r8) :: tran_ar_tree_dir    (bounds%begl:bounds%endl, numrad) ! diffuse above-roof leaf transmittance 
+    real(r8) :: tran_br_tree_dif    (bounds%begl:bounds%endl, numrad) ! diffuse below-roof leaf transmittance 
+    real(r8) :: tran_ar_tree_dif    (bounds%begl:bounds%endl, numrad) ! diffuse above-roof leaf transmittance
+    real(r8) :: alb_br_tree_dir_eff     (bounds%begl:bounds%endl, numrad) ! effective direct br tree albedo 
+    real(r8) :: alb_ar_tree_dir_eff     (bounds%begl:bounds%endl, numrad) ! effective direct br tree albedo 
+    real(r8) :: alb_br_tree_dif_eff     (bounds%begl:bounds%endl, numrad) ! effective diffuse br tree albedo  
+    real(r8) :: alb_ar_tree_dif_eff     (bounds%begl:bounds%endl, numrad) ! effective diffuse br tree albedo 
     
     integer              :: start_time, end_time, clock_rate    ! Timekeeping variables
     real(r8)            :: elapsed_time                        ! Elapsed time     
@@ -289,6 +301,21 @@ contains
       alb_ar_tree_dir(:,2)=0.35_r8
       alb_ar_tree_dif(:,1)=0.11_r8
       alb_ar_tree_dif(:,2)=0.35_r8      
+
+      tran_br_tree_dir(:,1)=0.05_r8
+      tran_br_tree_dir(:,2)=0.25_r8
+      tran_br_tree_dif(:,1)=0.05_r8
+      tran_br_tree_dif(:,2)=0.25_r8 
+
+      tran_ar_tree_dir(:,1)=0.05_r8
+      tran_ar_tree_dir(:,2)=0.25_r8
+      tran_ar_tree_dif(:,1)=0.05_r8
+      tran_ar_tree_dif(:,2)=0.25_r8  
+
+      alb_br_tree_dir_eff =     alb_br_tree_dir + tran_br_tree_dir
+      alb_ar_tree_dir_eff =     alb_ar_tree_dir + tran_ar_tree_dir
+      alb_br_tree_dif_eff =     alb_br_tree_dif + tran_br_tree_dif
+      alb_ar_tree_dif_eff =     alb_ar_tree_dif + tran_ar_tree_dif   
         
       do fl = 1,num_urbanl
          l = filter_urbanl(fl)
@@ -551,13 +578,13 @@ contains
                   alb_roof_dif_s(l,ib) = alb_roof_dif(l,ib)*(1._r8-frac_sno(c))  &
                        + albsni_roof(l,ib)*frac_sno(c)
                  ! let trees use the roof snow cover for now
-                 alb_br_tree_dir_s(l,ib) = alb_br_tree_dir(l,ib)*(1._r8-frac_sno(c))  &
+                 alb_br_tree_dir_s(l,ib) = alb_br_tree_dir_eff(l,ib)*(1._r8-frac_sno(c))  &
                       + albsnd_roof(l,ib)*frac_sno(c)
-                 alb_br_tree_dif_s(l,ib) = alb_br_tree_dif(l,ib)*(1._r8-frac_sno(c))  &
+                 alb_br_tree_dif_s(l,ib) = alb_br_tree_dif_eff(l,ib)*(1._r8-frac_sno(c))  &
                       + albsni_roof(l,ib)*frac_sno(c)
-                 alb_ar_tree_dir_s(l,ib) = alb_ar_tree_dir(l,ib)*(1._r8-frac_sno(c))  &
+                 alb_ar_tree_dir_s(l,ib) = alb_ar_tree_dir_eff(l,ib)*(1._r8-frac_sno(c))  &
                      + albsnd_roof(l,ib)*frac_sno(c)
-                 alb_ar_tree_dif_s(l,ib) = alb_ar_tree_dif(l,ib)*(1._r8-frac_sno(c))  &
+                 alb_ar_tree_dif_s(l,ib) = alb_ar_tree_dif_eff(l,ib)*(1._r8-frac_sno(c))  &
                      + albsni_roof(l,ib)*frac_sno(c)                        
                else if (ctype(c) == icol_road_imperv) then    
                   alb_improad_dir_s(l,ib) = alb_improad_dir(l,ib)*(1._r8-frac_sno(c))  &
@@ -2184,7 +2211,7 @@ contains
             l = filter_urbanl(fl)
             
             if (l==3) then   
-                debug_write=.true. 
+                debug_write=.false. 
             else 
                 debug_write=.false. 
             end if
@@ -3104,6 +3131,29 @@ contains
         krs1d =>    urbanparams_inst%krs1d_out , & ! Input:  [real(r8) (:,:) ]  Monte carlo view factor from roof to sky [landunit, nzcanm]                 
         krv1d =>    urbanparams_inst%krv1d_out , & ! Input:  [real(r8) (:,:,:) ]  Monte carlo view factor  from roof to vegetation [landunit, nzcanm]              
 
+        fgw1d =>    urbanparams_inst%fgw1d_out  , & ! Input:  [real(r8) (:,:) ]  Monte carlo view factor from ground to  one wall[landunit, nzcanm]    
+        fgv1d =>    urbanparams_inst%fgv1d_out  , & ! Input:  [real(r8) (:,:) ]  Monte carlo view factor from ground to vegetation [landunit, nzcanm]  
+        fts1d =>    urbanparams_inst%fts1d_out ,  & ! Input:  [real(r8) (:) ]  Monte carlo view factor from ground to sky[landunit, nzcanm]    
+
+        fsg1d =>    urbanparams_inst%fsg1d_out   ,& ! Input:  [real(r8) (:) ]    Monte carlo view factor from sky to ground[landunit]               
+        fsw1d =>    urbanparams_inst%fsw1d_out , & ! Input:  [real(r8) (:,:) ]  Monte carlo view factor from sky to wall[landunit, nzcanm]   
+        fsr1d =>    urbanparams_inst%fsr1d_out , & ! Input:  [real(r8) (:,:) ]  Monte carlo view factor from sky to roof[landunit, nzcanm]                      
+        fsv1d =>    urbanparams_inst%fsv1d_out , & ! Input:  [real(r8) (:,:) ]  Monte carlo view factor from sky to vegetation[landunit, nzcanm]      
+                        
+        fwg1d =>    urbanparams_inst%fwg1d_out   ,& ! Input:  [real(r8) (:,:) ]      Monte carlo view factor of from one wall to ground[landunit]  
+        fww1d =>    urbanparams_inst%fww1d_out  , & ! Input:  [real(r8) (:,:,:) ]  Monte carlo view factor from on wall to opposing wall [landunit]  
+        fwv1d =>    urbanparams_inst%fwv1d_out  , & ! Input:  [real(r8) (:,:,:) ]  Monte carlo view factor from on wall to vegetation[landunit]  
+        fws1d =>    urbanparams_inst%fws1d_out  , & ! Input:  [real(r8) (:,:) ]    Monte carlo view factor from on wall to sky[landunit]  
+
+        fvg1d =>    urbanparams_inst%fvg1d_out  , & ! Input:  [real(r8) (:,:) ]      Monte carlo view factor of from vegetation to ground[landunit]  
+        fvw1d =>    urbanparams_inst%fvw1d_out  , & ! Input:  [real(r8) (:,:,:) ]  Monte carlo view factor from vegetation to one wall [landunit]  
+        fvv1d =>    urbanparams_inst%fvv1d_out ,  & ! Input:  [real(r8) (:,:,:) ]  Monte carlo view factor from vegetation to vegetation[landunit]  
+        fvs1d =>    urbanparams_inst%fvs1d_out ,  & ! Input:  [real(r8) (:,:) ]    Monte carlo view factor from vegetation to sky[landunit]  
+        fvr1d =>    urbanparams_inst%fvr1d_out  , & ! Input:  [real(r8) (:,:,:) ]    Monte carlo view factor from ovegetation to roof[landunit]  
+        
+        frs1d =>    urbanparams_inst%frs1d_out , & ! Input:  [real(r8) (:,:) ]  Monte carlo view factor from roof to sky [landunit, nzcanm]                 
+        frv1d =>    urbanparams_inst%frv1d_out , & ! Input:  [real(r8) (:,:,:) ]  Monte carlo view factor  from roof to vegetation [landunit, nzcanm]              
+
         sabs_shaderoof_dir_t   =>    solarabs_inst%sabs_shaderoof_dir_t_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by sunwall per unit wall area per unit incident flux
         sabs_sunwall_dir_t   =>    solarabs_inst%sabs_sunwall_dir_t_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by sunwall per unit wall area per unit incident flux
         sabs_shadewall_dir_t =>    solarabs_inst%sabs_shadewall_dir_t_lun , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by shadewall per unit wall area per unit incident flux
@@ -3163,7 +3213,7 @@ contains
             if (coszen(l) > 0._r8) then
             
                if (l==3) then   
-                   debug_write=.true. 
+                   debug_write=.false. 
                else 
                    debug_write=.false. 
                end if
@@ -3588,7 +3638,7 @@ contains
          do fl = 1,num_urbanl
             l = filter_urbanl(fl)
             if (l==3) then   
-                debug_write=.true. 
+                debug_write=.false. 
             else 
                 debug_write=.false. 
             end if 
@@ -3663,83 +3713,83 @@ contains
                  end if                  
                   ! step (3)
 
-                  improad_r_sky_dir(l)       = improad_r_dir(l) * kts1d(l)
-                  improad_r_sunwall_dir(l)   = improad_r_dir(l) * kgw1d(l,1)
-                  improad_r_shadewall_dir(l) = improad_r_dir(l) * kgw1d(l,1)
-                  improad_r_br_tree_dir(l) = improad_r_dir(l) * kgv1d(l,1)
-                  improad_r_ar_tree_dir(l) = improad_r_dir(l) * kgv1d(l,2)
-                  
+                  improad_r_sky_dir(l)       = improad_r_dir(l) * fts1d(l)
+                  improad_r_sunwall_dir(l)   = improad_r_dir(l) * fgw1d(l,1)
+                  improad_r_shadewall_dir(l) = improad_r_dir(l) * fgw1d(l,1)
+                  improad_r_br_tree_dir(l) = improad_r_dir(l) * fgv1d(l,1)
+                  improad_r_ar_tree_dir(l) = improad_r_dir(l) * fgv1d(l,2)
+                 
                   err_r=improad_r_dir(l) -improad_r_br_tree_dir(l)*A_v1(l)/A_g(l) -improad_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -improad_r_sky_dir(l)-improad_r_sunwall_dir(l)*A_w(l)/A_g(l)-improad_r_shadewall_dir(l)*A_w(l)/A_g(l)
                   if (debug_write) then
                      write(6,*) '-----improad--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if  
-                  
-                  perroad_r_sky_dir(l)       = perroad_r_dir(l) * kts1d(l)
-                  perroad_r_sunwall_dir(l)   = perroad_r_dir(l) * kgw1d(l,1)
-                  perroad_r_shadewall_dir(l) = perroad_r_dir(l) * kgw1d(l,1)
-                  perroad_r_br_tree_dir(l) = perroad_r_dir(l) * kgv1d(l,1)
-                  perroad_r_ar_tree_dir(l) = perroad_r_dir(l) * kgv1d(l,2)
+                 
+                  perroad_r_sky_dir(l)       = perroad_r_dir(l) * fts1d(l)
+                  perroad_r_sunwall_dir(l)   = perroad_r_dir(l) * fgw1d(l,1)
+                  perroad_r_shadewall_dir(l) = perroad_r_dir(l) * fgw1d(l,1)
+                  perroad_r_br_tree_dir(l) = perroad_r_dir(l) * fgv1d(l,1)
+                  perroad_r_ar_tree_dir(l) = perroad_r_dir(l) * fgv1d(l,2)
                   err_r=perroad_r_dir(l) -perroad_r_br_tree_dir(l)*A_v1(l)/A_g(l) -perroad_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -perroad_r_sky_dir(l)-perroad_r_sunwall_dir(l)*A_w(l)/A_g(l)-perroad_r_shadewall_dir(l)*A_w(l)/A_g (l)
                   if (debug_write) then
                      write(6,*) '-----perroad--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if   
-                  road_r_sky_dir(l)          = road_r_dir(l) * kts1d(l)
-                  road_r_sunwall_dir(l)      = road_r_dir(l) * kgw1d(l,1)
-                  road_r_shadewall_dir(l)    = road_r_dir(l) * kgw1d(l,1)
-                  road_r_br_tree_dir(l)    = road_r_dir(l) * kgv1d(l,1)
-                  road_r_ar_tree_dir(l)    = road_r_dir(l) * kgv1d(l,2)
+                  road_r_sky_dir(l)          = road_r_dir(l) * fts1d(l)
+                  road_r_sunwall_dir(l)      = road_r_dir(l) * fgw1d(l,1)
+                  road_r_shadewall_dir(l)    = road_r_dir(l) * fgw1d(l,1)
+                  road_r_br_tree_dir(l)    = road_r_dir(l) * fgv1d(l,1)
+                  road_r_ar_tree_dir(l)    = road_r_dir(l) * fgv1d(l,2)
                   err_r=road_r_dir(l) -road_r_br_tree_dir(l)*A_v1(l)/A_g(l) -road_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -road_r_sky_dir(l)-road_r_sunwall_dir(l)*A_w(l)/A_g(l)-road_r_shadewall_dir(l)*A_w(l)/A_g(l)
                   if (debug_write) then
                      write(6,*) '-----road--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if 
-                  sunwall_r_sky_dir(l)       = sunwall_r_dir(l) * kws1d(l,1)
-                  sunwall_r_road_dir(l)      = sunwall_r_dir(l) * kwg1d(l,1)
-                  sunwall_r_shadewall_dir(l) = sunwall_r_dir(l) * kww1d(l,1,1)
-                  sunwall_r_br_tree_dir(l) = sunwall_r_dir(l) * kwv1d(l,1,1)
-                  sunwall_r_ar_tree_dir(l) = sunwall_r_dir(l) * kwv1d(l,1,2)
+                  sunwall_r_sky_dir(l)       = sunwall_r_dir(l) * fws1d(l,1)
+                  sunwall_r_road_dir(l)      = sunwall_r_dir(l) * fwg1d(l,1)
+                  sunwall_r_shadewall_dir(l) = sunwall_r_dir(l) * fww1d(l,1,1)
+                  sunwall_r_br_tree_dir(l) = sunwall_r_dir(l) * fwv1d(l,1,1)
+                  sunwall_r_ar_tree_dir(l) = sunwall_r_dir(l) * fwv1d(l,1,2)
                   err_r=sunwall_r_dir(l) -sunwall_r_br_tree_dir(l)*A_v1(l)/A_w(l) -sunwall_r_ar_tree_dir(l)*A_v2(l)/A_w(l) -sunwall_r_sky_dir(l)-sunwall_r_road_dir(l)*A_g(l)/A_w(l)-sunwall_r_shadewall_dir(l)*A_w(l)/A_w(l)
                   if (debug_write) then
                      write(6,*) '------sunwall--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if                      
-                  shadewall_r_sky_dir(l)     = shadewall_r_dir(l) * kws1d(l,1)
-                  shadewall_r_road_dir(l)    = shadewall_r_dir(l) * kwg1d(l,1)
-                  shadewall_r_sunwall_dir(l) = shadewall_r_dir(l) * kww1d(l,1,1)
-                  shadewall_r_br_tree_dir(l) = shadewall_r_dir(l) * kwv1d(l,1,1)
-                  shadewall_r_ar_tree_dir(l) = shadewall_r_dir(l) * kwv1d(l,1,2)
+                  shadewall_r_sky_dir(l)     = shadewall_r_dir(l) * fws1d(l,1)
+                  shadewall_r_road_dir(l)    = shadewall_r_dir(l) * fwg1d(l,1)
+                  shadewall_r_sunwall_dir(l) = shadewall_r_dir(l) * fww1d(l,1,1)
+                  shadewall_r_br_tree_dir(l) = shadewall_r_dir(l) * fwv1d(l,1,1)
+                  shadewall_r_ar_tree_dir(l) = shadewall_r_dir(l) * fwv1d(l,1,2)
                   err_r=shadewall_r_dir(l) -shadewall_r_br_tree_dir(l)*A_v1(l)/A_w(l) -shadewall_r_ar_tree_dir(l)*A_v2(l)/A_w(l) -shadewall_r_sky_dir(l)-shadewall_r_road_dir(l)*A_g(l)/A_w(l)-shadewall_r_sunwall_dir(l)*A_w(l)/A_w(l)
                   if (debug_write) then
                      write(6,*) '-----shadewall--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if   
-                  br_tree_r_sky_dir(l)     = br_tree_r_dir(l) * kvs1d(l,1)
-                  br_tree_r_road_dir(l)    = br_tree_r_dir(l) * kvg1d(l,1)
-                  br_tree_r_sunwall_dir(l) = br_tree_r_dir(l) * kvw1d(l,1,1)
-                  br_tree_r_shadewall_dir(l) = br_tree_r_dir(l) * kvw1d(l,1,1)   
-                  br_tree_r_br_tree_dir(l) = br_tree_r_dir(l) * kvv1d(l,1,1)
-                  br_tree_r_ar_tree_dir(l) = br_tree_r_dir(l) * kvv1d(l,1,2)
+                  br_tree_r_sky_dir(l)     = br_tree_r_dir(l) * fvs1d(l,1)
+                  br_tree_r_road_dir(l)    = br_tree_r_dir(l) * fvg1d(l,1)
+                  br_tree_r_sunwall_dir(l) = br_tree_r_dir(l) * fvw1d(l,1,1)
+                  br_tree_r_shadewall_dir(l) = br_tree_r_dir(l) * fvw1d(l,1,1)   
+                  br_tree_r_br_tree_dir(l) = br_tree_r_dir(l) * fvv1d(l,1,1)
+                  br_tree_r_ar_tree_dir(l) = br_tree_r_dir(l) * fvv1d(l,1,2)
                   err_r=br_tree_r_dir(l) -br_tree_r_br_tree_dir(l) -br_tree_r_ar_tree_dir(l)*A_v2(l)/A_v1(l) -br_tree_r_sky_dir(l)-br_tree_r_road_dir(l)*A_g(l)/A_v1(l)-br_tree_r_sunwall_dir(l)*A_w(l)/A_v1(l)-br_tree_r_shadewall_dir(l)*A_w(l)/A_v1(l)
                   if (debug_write) then
                      write(6,*) '-----br_tree-------l=---n=', l,n
                      write(6,*) 'err_r',err_r
                   end if    
-                  ar_tree_r_sky_dir(l)     = ar_tree_r_dir(l) * kvs1d(l,2)
-                  ar_tree_r_road_dir(l)    = ar_tree_r_dir(l) * kvg1d(l,2)
-                  ar_tree_r_sunwall_dir(l) = ar_tree_r_dir(l) * kvw1d(l,2,1)
-                  ar_tree_r_shadewall_dir(l) = ar_tree_r_dir(l) * kvw1d(l,2,1)   
-                  ar_tree_r_shaderoof_dir(l) = ar_tree_r_dir(l) * kvr1d(l,2,2)
-                  ar_tree_r_br_tree_dir(l) = ar_tree_r_dir(l) * kvv1d(l,2,1)
-                  ar_tree_r_ar_tree_dir(l) = ar_tree_r_dir(l) * kvv1d(l,2,2)
+                  ar_tree_r_sky_dir(l)     = ar_tree_r_dir(l) * fvs1d(l,2)
+                  ar_tree_r_road_dir(l)    = ar_tree_r_dir(l) * fvg1d(l,2)
+                  ar_tree_r_sunwall_dir(l) = ar_tree_r_dir(l) * fvw1d(l,2,1)
+                  ar_tree_r_shadewall_dir(l) = ar_tree_r_dir(l) * fvw1d(l,2,1)   
+                  ar_tree_r_shaderoof_dir(l) = ar_tree_r_dir(l) * fvr1d(l,2,2)
+                  ar_tree_r_br_tree_dir(l) = ar_tree_r_dir(l) * fvv1d(l,2,1)
+                  ar_tree_r_ar_tree_dir(l) = ar_tree_r_dir(l) * fvv1d(l,2,2)
                   !err_r=ar_tree_r_dir(l) -ar_tree_r_ar_tree_dir(l) -ar_tree_r_br_tree_dir(l)*A_v1(l)/A_v2(l) -ar_tree_r_sky_dir(l)-ar_tree_r_road_dir(l)*A_g(l)/A_v2(l)-ar_tree_r_sunwall_dir(l)*A_w(l)/A_v2(l)-ar_tree_r_shadewall_dir(l)*A_w(l)/A_v2(l)-ar_tree_r_shaderoof_dir(l)*A_r(l)/A_v2(l)
                   !if (debug_write) then
                   !   write(6,*) '-----ar_tree------l=---n=', l,n
                   !   write(6,*) 'err_r', err_r  
-                  !end if   
-                  shaderoof_r_sky_dir(l)       = shaderoof_r_dir(l) * krs1d(l,2)
-                  shaderoof_r_ar_tree_dir(l) = shaderoof_r_dir(l) * krv1d(l,2,2)
+                  !end if    
+                  shaderoof_r_sky_dir(l)       = shaderoof_r_dir(l) * frs1d(l,2)
+                  shaderoof_r_ar_tree_dir(l) = shaderoof_r_dir(l) * frv1d(l,2,2)
                   
                   err_r=shaderoof_r_dir(l) -shaderoof_r_ar_tree_dir(l)*A_v2(l)/A_r(l) -shaderoof_r_sky_dir(l)
                   if (debug_write) then
@@ -3852,86 +3902,86 @@ contains
                     write(6,*) 'sabs_ar_tree_dif_t =', sabs_ar_tree_dif_t(l,ib)
                     write(6,*) 'sabs_shaderoof_dif_t =', sabs_shaderoof_dif_t(l,ib)
 
-
+                    
                     write(6,*) '----------------------------------------------------------------------------------'
-                 end if                  
+                  end if                  
                   ! step (3)
-
-                  improad_r_sky_dif(l)       = improad_r_dif(l) * kts1d(l)
-                  improad_r_sunwall_dif(l)   = improad_r_dif(l) * kgw1d(l,1)
-                  improad_r_shadewall_dif(l) = improad_r_dif(l) * kgw1d(l,1)
-                  improad_r_br_tree_dif(l) = improad_r_dif(l) * kgv1d(l,1)
-                  improad_r_ar_tree_dif(l) = improad_r_dif(l) * kgv1d(l,2)
+                  
+                  improad_r_sky_dif(l)       = improad_r_dif(l) * fts1d(l)
+                  improad_r_sunwall_dif(l)   = improad_r_dif(l) * fgw1d(l,1)
+                  improad_r_shadewall_dif(l) = improad_r_dif(l) * fgw1d(l,1)
+                  improad_r_br_tree_dif(l) = improad_r_dif(l) * fgv1d(l,1)
+                  improad_r_ar_tree_dif(l) = improad_r_dif(l) * fgv1d(l,2)
                   err_r=improad_r_dif(l) -improad_r_br_tree_dif(l)*A_v1(l)/A_g(l) -improad_r_ar_tree_dif(l)*A_v2(l)/A_g(l) -improad_r_sky_dif(l)-improad_r_sunwall_dif(l)*A_w(l)/A_g(l)-improad_r_shadewall_dif(l)*A_w(l)/A_g(l)
                   if (debug_write) then
                      write(6,*) '-----improad--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if   
-                  perroad_r_sky_dif(l)       = perroad_r_dif(l) * kts1d(l)
-                  perroad_r_sunwall_dif(l)   = perroad_r_dif(l) * kgw1d(l,1)
-                  perroad_r_shadewall_dif(l) = perroad_r_dif(l) * kgw1d(l,1)
-                  perroad_r_br_tree_dif(l) = perroad_r_dif(l) * kgv1d(l,1)
-                  perroad_r_ar_tree_dif(l) = perroad_r_dif(l) * kgv1d(l,2)
+                  perroad_r_sky_dif(l)       = perroad_r_dif(l) * fts1d(l)
+                  perroad_r_sunwall_dif(l)   = perroad_r_dif(l) * fgw1d(l,1)
+                  perroad_r_shadewall_dif(l) = perroad_r_dif(l) * fgw1d(l,1)
+                  perroad_r_br_tree_dif(l) = perroad_r_dif(l) * fgv1d(l,1)
+                  perroad_r_ar_tree_dif(l) = perroad_r_dif(l) * fgv1d(l,2)
                   err_r=perroad_r_dif(l) -perroad_r_br_tree_dif(l)*A_v1(l)/A_g(l) -perroad_r_ar_tree_dif(l)*A_v2(l)/A_g(l) -perroad_r_sky_dif(l)-perroad_r_sunwall_dif(l)*A_w(l)/A_g(l)-perroad_r_shadewall_dif(l)*A_w(l)/A_g (l)
                   if (debug_write) then
                      write(6,*) '-----perroad--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if   
-                  road_r_sky_dif(l)          = road_r_dif(l) * kts1d(l)
-                  road_r_sunwall_dif(l)      = road_r_dif(l) * kgw1d(l,1)
-                  road_r_shadewall_dif(l)    = road_r_dif(l) * kgw1d(l,1)
-                  road_r_br_tree_dif(l)    = road_r_dif(l) * kgv1d(l,1)
-                  road_r_ar_tree_dif(l)    = road_r_dif(l) * kgv1d(l,2)
+                  road_r_sky_dif(l)          = road_r_dif(l) * fts1d(l)
+                  road_r_sunwall_dif(l)      = road_r_dif(l) * fgw1d(l,1)
+                  road_r_shadewall_dif(l)    = road_r_dif(l) * fgw1d(l,1)
+                  road_r_br_tree_dif(l)    = road_r_dif(l) * fgv1d(l,1)
+                  road_r_ar_tree_dif(l)    = road_r_dif(l) * fgv1d(l,2)
                   err_r=road_r_dif(l) -road_r_br_tree_dif(l)*A_v1(l)/A_g(l) -road_r_ar_tree_dif(l)*A_v2(l)/A_g(l) -road_r_sky_dif(l)-road_r_sunwall_dif(l)*A_w(l)/A_g(l)-road_r_shadewall_dif(l)*A_w(l)/A_g(l)
                   if (debug_write) then
                      write(6,*) '-----road--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if 
-                  sunwall_r_sky_dif(l)       = sunwall_r_dif(l) * kws1d(l,1)
-                  sunwall_r_road_dif(l)      = sunwall_r_dif(l) * kwg1d(l,1)
-                  sunwall_r_shadewall_dif(l) = sunwall_r_dif(l) * kww1d(l,1,1)
-                  sunwall_r_br_tree_dif(l) = sunwall_r_dif(l) * kwv1d(l,1,1)
-                  sunwall_r_ar_tree_dif(l) = sunwall_r_dif(l) * kwv1d(l,1,2)
+                  sunwall_r_sky_dif(l)       = sunwall_r_dif(l) * fws1d(l,1)
+                  sunwall_r_road_dif(l)      = sunwall_r_dif(l) * fwg1d(l,1)
+                  sunwall_r_shadewall_dif(l) = sunwall_r_dif(l) * fww1d(l,1,1)
+                  sunwall_r_br_tree_dif(l) = sunwall_r_dif(l) * fwv1d(l,1,1)
+                  sunwall_r_ar_tree_dif(l) = sunwall_r_dif(l) * fwv1d(l,1,2)
                   err_r=sunwall_r_dif(l) -sunwall_r_br_tree_dif(l)*A_v1(l)/A_w(l) -sunwall_r_ar_tree_dif(l)*A_v2(l)/A_w(l) -sunwall_r_sky_dif(l)-sunwall_r_road_dif(l)*A_g(l)/A_w(l)-sunwall_r_shadewall_dif(l)*A_w(l)/A_w(l)
                   if (debug_write) then
                      write(6,*) '------sunwall--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if                     
-                  shadewall_r_sky_dif(l)     = shadewall_r_dif(l) * kws1d(l,1)
-                  shadewall_r_road_dif(l)    = shadewall_r_dif(l) * kwg1d(l,1)
-                  shadewall_r_sunwall_dif(l) = shadewall_r_dif(l) * kww1d(l,1,1)
-                  shadewall_r_br_tree_dif(l) = shadewall_r_dif(l) * kwv1d(l,1,1)
-                  shadewall_r_ar_tree_dif(l) = shadewall_r_dif(l) * kwv1d(l,1,2)
+                  shadewall_r_sky_dif(l)     = shadewall_r_dif(l) * fws1d(l,1)
+                  shadewall_r_road_dif(l)    = shadewall_r_dif(l) * fwg1d(l,1)
+                  shadewall_r_sunwall_dif(l) = shadewall_r_dif(l) * fww1d(l,1,1)
+                  shadewall_r_br_tree_dif(l) = shadewall_r_dif(l) * fwv1d(l,1,1)
+                  shadewall_r_ar_tree_dif(l) = shadewall_r_dif(l) * fwv1d(l,1,2)
                   err_r=shadewall_r_dif(l) -shadewall_r_br_tree_dif(l)*A_v1(l)/A_w(l) -shadewall_r_ar_tree_dif(l)*A_v2(l)/A_w(l) -shadewall_r_sky_dif(l)-shadewall_r_road_dif(l)*A_g(l)/A_w(l)-shadewall_r_sunwall_dif(l)*A_w(l)/A_w(l)
                   if (debug_write) then
                      write(6,*) '-----shadewall--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if   
-                  br_tree_r_sky_dif(l)     = br_tree_r_dif(l) * kvs1d(l,1)
-                  br_tree_r_road_dif(l)    = br_tree_r_dif(l) * kvg1d(l,1)
-                  br_tree_r_sunwall_dif(l) = br_tree_r_dif(l) * kvw1d(l,1,1)
-                  br_tree_r_shadewall_dif(l) = br_tree_r_dif(l) * kvw1d(l,1,1)   
-                  br_tree_r_br_tree_dif(l) = br_tree_r_dif(l) * kvv1d(l,1,1)
-                  br_tree_r_ar_tree_dif(l) = br_tree_r_dif(l) * kvv1d(l,1,2)
+                  br_tree_r_sky_dif(l)     = br_tree_r_dif(l) * fvs1d(l,1)
+                  br_tree_r_road_dif(l)    = br_tree_r_dif(l) * fvg1d(l,1)
+                  br_tree_r_sunwall_dif(l) = br_tree_r_dif(l) * fvw1d(l,1,1)
+                  br_tree_r_shadewall_dif(l) = br_tree_r_dif(l) * fvw1d(l,1,1)   
+                  br_tree_r_br_tree_dif(l) = br_tree_r_dif(l) * fvv1d(l,1,1)
+                  br_tree_r_ar_tree_dif(l) = br_tree_r_dif(l) * fvv1d(l,1,2)
                   err_r=br_tree_r_dif(l) -br_tree_r_br_tree_dif(l) -br_tree_r_ar_tree_dif(l)*A_v2(l)/A_v1(l) -br_tree_r_sky_dif(l)-br_tree_r_road_dif(l)*A_g(l)/A_v1(l)-br_tree_r_sunwall_dif(l)*A_w(l)/A_v1(l)-br_tree_r_shadewall_dif(l)*A_w(l)/A_v1(l)
                   if (debug_write) then
                      write(6,*) '-----br_tree-------l=---n=', l,n
                      write(6,*) 'err_r',err_r
                   end if     
-                  ar_tree_r_sky_dif(l)     = ar_tree_r_dif(l) * kvs1d(l,2)
-                  ar_tree_r_road_dif(l)    = ar_tree_r_dif(l) * kvg1d(l,2)
-                  ar_tree_r_sunwall_dif(l) = ar_tree_r_dif(l) * kvw1d(l,2,1)
-                  ar_tree_r_shadewall_dif(l) = ar_tree_r_dif(l) * kvw1d(l,2,1)   
-                  ar_tree_r_shaderoof_dif(l) = ar_tree_r_dif(l) * kvr1d(l,2,2)
-                  ar_tree_r_br_tree_dif(l) = ar_tree_r_dif(l) * kvv1d(l,2,1)
-                  ar_tree_r_ar_tree_dif(l) = ar_tree_r_dif(l) * kvv1d(l,2,2)
+                  ar_tree_r_sky_dif(l)     = ar_tree_r_dif(l) * fvs1d(l,2)
+                  ar_tree_r_road_dif(l)    = ar_tree_r_dif(l) * fvg1d(l,2)
+                  ar_tree_r_sunwall_dif(l) = ar_tree_r_dif(l) * fvw1d(l,2,1)
+                  ar_tree_r_shadewall_dif(l) = ar_tree_r_dif(l) * fvw1d(l,2,1)   
+                  ar_tree_r_shaderoof_dif(l) = ar_tree_r_dif(l) * fvr1d(l,2,2)
+                  ar_tree_r_br_tree_dif(l) = ar_tree_r_dif(l) * fvv1d(l,2,1)
+                  ar_tree_r_ar_tree_dif(l) = ar_tree_r_dif(l) * fvv1d(l,2,2)
                   !err_r=ar_tree_r_dif(l) -ar_tree_r_ar_tree_dif(l) -ar_tree_r_br_tree_dif(l)*A_v1(l)/A_v2(l) -ar_tree_r_sky_dif(l)-ar_tree_r_road_dif(l)*A_g(l)/A_v2(l)-ar_tree_r_sunwall_dif(l)*A_w(l)/A_v2(l)-ar_tree_r_shadewall_dif(l)*A_w(l)/A_v2(l)-ar_tree_r_shaderoof_dif(l)*A_r(l)/A_v2(l)
                   !if (debug_write) then
                   !   write(6,*) '-----ar_tree------l=---n=', l,n
                   !   write(6,*) 'err_r', err_r  
                   !end if  
-                  shaderoof_r_sky_dif(l)       = shaderoof_r_dif(l) * krs1d(l,2)
-                  shaderoof_r_ar_tree_dif(l) = shaderoof_r_dif(l) * krv1d(l,2,2)
+                  shaderoof_r_sky_dif(l)       = shaderoof_r_dif(l) * frs1d(l,2)
+                  shaderoof_r_ar_tree_dif(l) = shaderoof_r_dif(l) * frv1d(l,2,2)
                   err_r=shaderoof_r_dif(l) -shaderoof_r_ar_tree_dif(l)*A_v2(l)/A_r(l) -shaderoof_r_sky_dif(l)
                   if (debug_write) then
                      write(6,*) '-----shaderoof------l=---n=', l,n
