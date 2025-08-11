@@ -723,17 +723,17 @@ contains
                  (wtuq_roof_unscl(l)/wtq_sum(l))*dqgdT(c)
          else if (ctype(c) == icol_road_perv) then
             cgrnds(p) = forc_rho(g) * cpair * (wtas(l) + wtus_roof(l) +  &
-                 wtus_road_imperv(l) + wtus_sunwall(l) + wtus_shadewall(l)+ wtus_road_tree(l)) * &
+                 wtus_road_imperv(l) + wtus_sunwall(l) + wtus_shadewall(l)) * &
                  (wtus_road_perv_unscl(l)/wts_sum(l))
             cgrndl(p) = forc_rho(g) * (wtaq(l) + wtuq_roof(l) +  &
-                 wtuq_road_imperv(l) + wtuq_sunwall(l) + wtuq_shadewall(l)+ wtuq_road_tree(l)) * &
+                 wtuq_road_imperv(l) + wtuq_sunwall(l) + wtuq_shadewall(l)) * &
                  (wtuq_road_perv_unscl(l)/wtq_sum(l))*dqgdT(c)
          else if (ctype(c) == icol_road_tree) then
             cgrnds(p) = forc_rho(g) * cpair * (wtas(l) + wtus_roof(l) +  &
-                 wtus_road_imperv(l) + wtus_road_perv(l) + wtus_sunwall(l) + wtus_shadewall(l)) * &
+                 wtus_road_imperv(l)+ wtus_sunwall(l) + wtus_shadewall(l)) * &
                  (wtus_road_tree_unscl(l)/wts_sum(l))
             cgrndl(p) = forc_rho(g) * (wtaq(l) + wtuq_roof(l) +  &
-                 wtuq_road_imperv(l) + wtuq_road_perv(l) + wtuq_sunwall(l) + wtuq_shadewall(l)) * &
+                 wtuq_road_imperv(l) + wtuq_sunwall(l) + wtuq_shadewall(l)) * &
                  (wtuq_road_tree_unscl(l)/wtq_sum(l))*dqgdT(c)
          else if (ctype(c) == icol_road_imperv) then
             cgrnds(p) = forc_rho(g) * cpair * (wtas(l) + wtus_roof(l) +  &
