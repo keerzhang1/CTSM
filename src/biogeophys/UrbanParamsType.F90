@@ -26,7 +26,7 @@ module UrbanParamsType
   !
   !-------------------[kz.1]Ray tracing test-------------------------  
   ! PRIVATE MEMBER FUNCTIONS
-  private :: view_factors_v    ! Calculates the view factors between all 'surfaces'  
+  private :: montecarlo_view_factors    ! Calculates the view factors between all 'surfaces'  
   private :: corner_up         ! Determines if a ray strikes the current wall layer or not at the upstream building edge
   private :: corner_dn         ! Determines if a ray strikes a roof or not at the downstream edge of a building
   private :: init_random_seed  ! Initializes the random seed for ray tracing calculations
@@ -80,6 +80,7 @@ module UrbanParamsType
   ! PUBLIC TYPE
   type, public :: urbanparams_type
   !-------------------[kz.2]Ray tracing test-------------------------  
+     ! these output variables are kept for diagnosis purpose for now
      real(r8), pointer :: fww1d_out       (:,:,:) ! Longwave radiation view factor from wall to wall 
      real(r8), pointer :: fvv1d_out       (:,:,:) ! Longwave radiation view factor from vegetation to vegetation 
      real(r8), pointer :: fwv1d_out       (:,:,:) ! Longwave radiation view factor from wall to vegetation 
@@ -204,12 +205,6 @@ module UrbanParamsType
      real(r8), pointer     :: thick_wall          (:)   ! lun total thickness of urban wall (m)
      real(r8), pointer     :: thick_roof          (:)   ! lun total thickness of urban roof (m)
 
-     real(r8), pointer     :: vf_sr               (:)   ! lun view factor of sky for road
-     real(r8), pointer     :: vf_wr               (:)   ! lun view factor of one wall for road
-     real(r8), pointer     :: vf_sw               (:)   ! lun view factor of sky for one wall
-     real(r8), pointer     :: vf_rw               (:)   ! lun view factor of road for one wall
-     real(r8), pointer     :: vf_ww               (:)   ! lun view factor of opposing wall for one wall
-
      real(r8), pointer     :: t_building_min      (:)   ! lun minimum internal building air temperature (K)
      real(r8), pointer     :: eflx_traffic_factor (:)   ! lun multiplicative traffic factor for sensible heat flux from urban traffic (-)
    contains
@@ -261,7 +256,6 @@ contains
     integer             :: nc,fl,ib        ! indices 
     integer             :: dindx           ! urban density type index
     integer             :: ier             ! error status
-    real(r8)            :: sumvf           ! sum of view factors for wall or road
     real(r8), parameter :: alpha = 4.43_r8 ! coefficient used to calculate z_d_town
     real(r8), parameter :: beta = 1.0_r8   ! coefficient used to calculate z_d_town
     real(r8), parameter :: C_d = 1.2_r8    ! drag coefficient as used in Grimmond and Oke (1999)
@@ -408,11 +402,6 @@ contains
     allocate(this%thick_wall          (begl:endl))          ; this%thick_wall          (:)   = nan
     allocate(this%thick_roof          (begl:endl))          ; this%thick_roof          (:)   = nan
     allocate(this%nlev_improad        (begl:endl))          ; this%nlev_improad        (:)   = huge(1)
-    allocate(this%vf_sr               (begl:endl))          ; this%vf_sr               (:)   = nan
-    allocate(this%vf_wr               (begl:endl))          ; this%vf_wr               (:)   = nan
-    allocate(this%vf_sw               (begl:endl))          ; this%vf_sw               (:)   = nan
-    allocate(this%vf_rw               (begl:endl))          ; this%vf_rw               (:)   = nan
-    allocate(this%vf_ww               (begl:endl))          ; this%vf_ww               (:)   = nan
     allocate(this%wind_hgt_canyon     (begl:endl))          ; this%wind_hgt_canyon     (:)   = nan
     allocate(this%em_roof             (begl:endl))          ; this%em_roof             (:)   = nan
     allocate(this%em_improad          (begl:endl))          ; this%em_improad          (:)   = nan
@@ -610,13 +599,13 @@ contains
           dzcan=lun%ht_roof(l)
           wcan=lun%ht_roof(l)/lun%canyon_hwr(l)        
           wbui = lun%ht_roof(l)/(lun%canyon_hwr(l)*(1._r8-lun%wtlunit_roof(l))/lun%wtlunit_roof(l))
-          
-          lad(:)=0.4_r8
+          ! For now, set LAI as a constant read from surface data
+          lad(:)=lun%lai(l)
           ! These are unused but keep for now:
           lads=lad  ! for shortwave calcs (usually equal to "lad")
           ladl=lad  ! lfor longwave calcs (usually equal to "lad")
           
-          ! Specify various h1 and h2 combincations for test
+          ! For now, specify various h1 and h2 combincations for test
           call RANDOM_NUMBER(rnum)
           if (rnum > 0.8_r8) then 
               lun%h1(l)=min(lun%ht_roof(l)*0.6_r8,10.0_r8) ! ca=1
@@ -653,7 +642,7 @@ contains
           h2=lun%h2(l)
           
           ! calculate view factor
-          call view_factors_v(nzcanm,dzcan,wcan,wbui,&
+          call montecarlo_view_factors(nzcanm,dzcan,wcan,wbui,&
                   tree_cov,lad,lads,ladl,omega,ss_in,pb_in,dray,maxind,&
                           maxbhind,nrays,nsky,hsky,h1,h2,&
                           fww1d,fvv1d,fwv1d,fvw1d,fwr1d,frw1d,fvr1d,&
@@ -773,61 +762,6 @@ contains
           end if
 
           !----------------------------------------------------------------------------------
-          ! View factors for road and one wall in urban canyon (depends only on canyon_hwr)
-          ! ---------------------------------------------------------------------------------------
-          !                                                        WALL    |
-          !                  ROAD                                          |
-          !                                                         wall   |
-          !          -----\          /-----   -             -  |\----------/
-          !              | \  vsr   / |       |         r   |  | \  vww   /   s
-          !              |  \      /  |       h         o   w  |  \      /    k
-          !        wall  |   \    /   | wall  |         a   |  |   \    /     y
-          !              |vwr \  / vwr|       |         d   |  |vrw \  / vsw 
-          !              ------\/------       -             -  |-----\/-----
-          !                   road                                  wall   |
-          !              <----- w ---->                                    |
-          !                                                    <---- h --->|
-          !
-          !    vsr = view factor of sky for road          vrw = view factor of road for wall
-          !    vwr = view factor of one wall for road     vww = view factor of opposing wall for wall
-          !                                               vsw = view factor of sky for wall
-          !    vsr + vwr + vwr = 1                        vrw + vww + vsw = 1
-          !
-          ! Source: Masson, V. (2000) A physically-based scheme for the urban energy budget in 
-          ! atmospheric models. Boundary-Layer Meteorology 94:357-397
-          !
-          ! - Calculate urban land unit aerodynamic constants using Macdonald (1998) as used in
-          ! Grimmond and Oke (1999)
-          ! ---------------------------------------------------------------------------------------
-          
-          ! road -- sky view factor -> 1 as building height -> 0 
-          ! and -> 0 as building height -> infinity
-
-          this%vf_sr(l) = sqrt(lun%canyon_hwr(l)**2 + 1._r8) - lun%canyon_hwr(l)
-          this%vf_wr(l) = 0.5_r8 * (1._r8 - this%vf_sr(l))
-
-          ! one wall -- sky view factor -> 0.5 as building height -> 0 
-          ! and -> 0 as building height -> infinity
-
-          this%vf_sw(l) = 0.5_r8 * (lun%canyon_hwr(l) + 1._r8 - sqrt(lun%canyon_hwr(l)**2+1._r8)) / lun%canyon_hwr(l)
-          this%vf_rw(l) = this%vf_sw(l)
-          this%vf_ww(l) = 1._r8 - this%vf_sw(l) - this%vf_rw(l)
-
-          ! error check -- make sure view factor sums to one for road and wall
-          sumvf = this%vf_sr(l) + 2._r8*this%vf_wr(l)
-          if (abs(sumvf-1._r8) > 1.e-06_r8 ) then
-             write (iulog,*) 'urban road view factor error',sumvf
-             write (iulog,*) 'clm model is stopping'
-             call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
-          endif
-          sumvf = this%vf_sw(l) + this%vf_rw(l) + this%vf_ww(l)
-          if (abs(sumvf-1._r8) > 1.e-06_r8 ) then
-             write (iulog,*) 'urban wall view factor error',sumvf
-             write (iulog,*) 'clm model is stopping'
-             call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
-          endif
-
-          !----------------------------------------------------------------------------------
           ! Calculate urban land unit aerodynamic constants using Macdonald (1998) as used in
           ! Grimmond and Oke (1999)
           !----------------------------------------------------------------------------------
@@ -870,11 +804,6 @@ contains
           this%eflx_traffic_factor(l) = spval
           this%t_building_min(l) = spval
 
-          this%vf_sr(l) = spval
-          this%vf_wr(l) = spval
-          this%vf_sw(l) = spval
-          this%vf_rw(l) = spval
-          this%vf_ww(l) = spval
 !-------------------[kz.7]Ray tracing test-------------------------     
           this%fww1d_out(l,:,:)      = spval
           this%fvv1d_out(l,:,:)      = spval
@@ -1415,8 +1344,8 @@ contains
                   urbinp%t_building_min(nl,n)        <= 0._r8 .or. &
                   urbinp%wind_hgt_canyon(nl,n)       <= 0._r8 .or. &
                   urbinp%wtlunit_roof(nl,n)          <= 0._r8 .or. &
-                  urbinp%wtroad_perv(nl,n)           <= 0._r8 .or. &
-                  urbinp%wtroad_tree(nl,n)           <= 0._r8 .or. &
+                  urbinp%wtroad_perv(nl,n)           < 0._r8 .or. &
+                  urbinp%wtroad_tree(nl,n)           < 0._r8 .or. &
                   any(urbinp%alb_improad_dir(nl,n,:) <= 0._r8) .or. &
                   any(urbinp%alb_improad_dif(nl,n,:) <= 0._r8) .or. &
                   any(urbinp%alb_perroad_dir(nl,n,:) <= 0._r8) .or. &
@@ -1498,7 +1427,7 @@ contains
 !-------------------[kz.12]Ray tracing test------------------------- 
 
   !----------------------------------------------------------------------- 
-  subroutine view_factors_v(nzcanm,dzcan,wcan,wbui,&
+  subroutine montecarlo_view_factors(nzcanm,dzcan,wcan,wbui,&
       tree_cov,lad,lads,ladl,omega,ss,pb,dray,maxind,maxbhind,n,nsky,hsky,h1,h2,&
       fww1d,fvv1d,fwv1d,fvw1d,fwr1d,frw1d,fvr1d,frv1d,fwg1d,fgw1d,fgv1d,fsw1d,fvg1d,fsg1d,fsr1d,&
       fsv1d,kww1d,kvv1d,kwv1d,kvw1d,kwr1d,krw1d,kvr1d,krv1d,kwg1d,kgw1d,kgv1d,ksw1d,kvg1d,ksg1d,ksr1d,&
@@ -1730,7 +1659,7 @@ contains
     call system_clock(count_rate=clock_rate)
     call system_clock(start_time)
                                 
-    write(6,*)'calculating view factors...',n
+    !write(6,*)'calculating view factors...',n
     
     debug_write = .false.!.true.!.false.
     
@@ -1854,14 +1783,14 @@ contains
     ! ray strength at which we stop tracking the ray:
     minray=max(0.000001_r8,0.0001_r8*pb(maxbhind))
 
-    write(6,*)'before view factor calcs'
+    !write(6,*)'before view factor calcs'
     
     call system_clock(end_time)        
     ! Calculate elapsed time in seconds
     elapsed_time = real(end_time - start_time,r8) / real(clock_rate,r8)
     
     ! write the elapsed time for each iteration  
-    write(*, '(A, I0, A, F6.3)') 'Preparing stage elapsed time for l = ', l, ': ', elapsed_time, ' seconds'
+    !write(*, '(A, I0, A, F6.3)') 'Preparing stage elapsed time for l = ', l, ': ', elapsed_time, ' seconds'
         
     !-----------------------------------------------------------------------
     !! VIEW FACTOR CALCULATIONS
@@ -1892,12 +1821,12 @@ contains
 
     solar=.true.
     
-    write(6,*)'----------SOLAR VIEW FACTORS----------'
+    !write(6,*)'----------SOLAR VIEW FACTORS----------'
 
 359   continue
 
     if (.not.solar) then
-       write(6,*)'----------LONGWAVE VIEW FACTORS----------'
+       !write(6,*)'----------LONGWAVE VIEW FACTORS----------'
     endif
     
     ! total view factors (diagnostics to see if they add up to 1.0 for each surface)
@@ -1941,12 +1870,12 @@ contains
        vftv(izcan)=0._r8
        vfvt(izcan)=0._r8
 
-       write(6,*)'izcan=',izcan
+       !write(6,*)'izcan=',izcan
        !-----------------------------------------------------
-       write(6,*)'SKY...'
+       !write(6,*)'SKY...'
        ! rays starting from SKY
        ! Use maxind additional rays for the sky relative to other surfaces.
-       write(6,*)'nsrays=',nsrays,xdom,nk,nsky
+       !write(6,*)'nsrays=',nsrays,xdom,nk,nsky
        horiz=.true.
        do ii=1,nsky
           do kk=1,nk
@@ -2016,7 +1945,7 @@ contains
        !-----------------------------------------------------
        ! rays starting from WALLS
        if (izcan <= maxbhind-1) then
-          write(6,*)'WALLS...'
+          !write(6,*)'WALLS...'
           horiz=.false.
           do kk=1,nk
              ! starting at the downstream building edge (upstream edge of the canyon)
@@ -2081,7 +2010,7 @@ contains
        !-----------------------------------------------------
        ! rays starting from VEGETATION in CANOPY COLUMN
        if (lad(izcan) > 0._r8) then
-           write(6,*)'CANOPY VEGETATION...'
+           !write(6,*)'CANOPY VEGETATION...'
            horiz=.true.
            do k=1,n-2
               ! starting at a random location in the vegetation
@@ -2182,7 +2111,7 @@ contains
        !-----------------------------------------------------
        ! rays starting from ROOFS
        if (ss(izcan) > 0._r8) then
-          write(6,*)'ROOFS...'
+          !write(6,*)'ROOFS...'
           horiz=.true.
           do kk=1,nk
              ! starting at a random point on the roof
@@ -2227,9 +2156,9 @@ contains
 
     !-----------------------------------------------------
     enddo  ! end wall/vegetation/roof level (izcan) loop
-    write(6,*)'AFTER IZCAN LOOP'
+    !write(6,*)'AFTER IZCAN LOOP'
     !-----------------------------------------------------------------------
-    write(6,*)'ROAD...'
+    !write(6,*)'ROAD...'
     ! rays starting from ROAD
     horiz=.true.
     do kk=1,nk
@@ -2520,7 +2449,7 @@ contains
     goto 358
    
 348  continue
-  end subroutine view_factors_v 
+  end subroutine montecarlo_view_factors 
 
   !-----------------------------------------------------------------------
   subroutine corner_up(bldfrac,xdom,rayx,rayy,rayyint,zre,strike)
@@ -3059,7 +2988,3 @@ contains
   !-----------------------------------------------------------------------
 
 end module UrbanParamsType
-
-
-
-
