@@ -229,7 +229,7 @@ contains
         num_nourbanc, filter_nourbanc, &
         num_nourbanp, filter_nourbanp, &
         num_urbanc   , filter_urbanc,  &
-        num_urbanp   , filter_urbanp,  &
+        num_urbantreep   , filter_urbantreep,  &
         nextsw_cday  , declinp1,       &
         clm_fates,                     &
         aerosol_inst, canopystate_inst, waterstatebulk_inst, waterdiagnosticbulk_inst, &
@@ -273,8 +273,8 @@ contains
     integer                , intent(in)            :: filter_nourbanp(:) ! patch filter for non-urban points
     integer                , intent(in)            :: num_urbanc         ! number of columns in urban filter
     integer                , intent(in)            :: filter_urbanc(:)   ! column filter for urban points
-    integer                , intent(in)            :: num_urbanp         ! number of patches in urban filter
-    integer                , intent(in)            :: filter_urbanp(:)   ! patch filter for rban points
+    integer                , intent(in)            :: num_urbantreep         ! number of patches in urban filter
+    integer                , intent(in)            :: filter_urbantreep(:)   ! patch filter for rban points
     real(r8)               , intent(in)            :: nextsw_cday        ! calendar day at Greenwich (1.00, ..., days/year)
     real(r8)               , intent(in)            :: declinp1           ! declination angle (radians) for next time step
     type(hlm_fates_interface_type), intent(inout)  :: clm_fates
@@ -290,7 +290,7 @@ contains
     integer  :: i                                                                         ! index for layers [idx]
     integer  :: aer                                                                       ! index for sno_nbr_aer
     real(r8) :: extkn                                                                     ! nitrogen allocation coefficient
-    integer  :: fp,fc,g,c,p,iv                                                            ! indices
+    integer  :: fp,fc,g,c,p,iv,l                                                    ! indices
     integer  :: ib                                                                        ! band index
     integer  :: ic                                                                        ! 0=unit incoming direct; 1=unit incoming diffuse
     real(r8) :: dinc                                                                      ! lai+sai increment for canopy layer
@@ -339,6 +339,8 @@ contains
     !-----------------------------------------------------------------------
 
    associate(&
+          lai                 =>   lun%lai                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+
           rhol          =>    pftcon%rhol                         , & ! Input:  leaf reflectance: 1=vis, 2=nir        
           rhos          =>    pftcon%rhos                         , & ! Input:  stem reflectance: 1=vis, 2=nir        
           taul          =>    pftcon%taul                         , & ! Input:  leaf transmittance: 1=vis, 2=nir      
@@ -906,6 +908,15 @@ contains
     ! nlevcan = 1
 
     dincmax = 0.25_r8
+    ! assign nrad = 1 for all urban tree patches
+    do fp = 1,num_urbantreep
+       p = filter_urbantreep(fp)
+       l = patch%landunit(p)
+       nrad(p) = 1
+       tlai_z(p,1) = lai(l)
+       tsai_z(p,1) = 0.0_r8
+    end do
+           
     do fp = 1,num_nourbanp
        p = filter_nourbanp(fp)
 
@@ -1401,18 +1412,34 @@ contains
        ! 0.001, not on values cosz = 0, since these zero have already been filtered
        ! out in filter_vegsol
        cosz = max(0.001_r8, coszen(p))
-
+       
+       !chil is the departure of leaf angles from a random distribution and equals +1 
+       ! for horizontal leaves, 0 for random leaves, and –1 for vertical leaves.
+       ! Eq. 3.3
+       
        chil(p) = min( max(xl(patch%itype(p)), -0.4_r8), 0.6_r8 )
        if (abs(chil(p)) <= 0.01_r8) chil(p) = 0.01_r8
+       ! Eq. 3.3 
        phi1 = 0.5_r8 - 0.633_r8*chil(p) - 0.330_r8*chil(p)*chil(p)
        phi2 = 0.877_r8 * (1._r8-2._r8*phi1)
+       
+       ! gdir is relative projected area of leaf and stem elements in the direction cos−1 𝜇
        gdir(p) = phi1 + phi2*cosz
+       
+       ! below Eq. 3.2 K=gdir(p)/cosz
+       ! optical depth of direct beam per unit leaf and stem area
        twostext(p) = gdir(p)/cosz
+       
+       !avmu: The average inverse diffuse optical depth per unit leaf and stem area
+       ! Eq. 3.4
        avmu(p) = ( 1._r8 - phi1/phi2 * log((phi1+phi2)/phi1) ) / phi2
+       
        ! Restrict this calculation of temp0. We have seen cases where small temp0
        ! can cause unrealistic single scattering albedo (asu) associated with the
        ! log calculation in temp2 below, thereby eventually causing a negative soil albedo
        ! See bugzilla bug 2431: http://bugs.cgd.ucar.edu/show_bug.cgi?id=2431
+       ! temp0 temp1 Eq. 3.16 denominator
+       ! temp 2 Eq. 3.16 term
        temp0(p) = max(gdir(p) + phi2*cosz,1.e-6_r8)
        temp1 = phi1*cosz
        temp2(p) = ( 1._r8 - temp1/temp0(p) * log((temp1+temp0(p))/temp1) )
@@ -1457,10 +1484,14 @@ contains
           ! because the product omega*betai, omega*betad is used in solution.
           ! Also, the transmittances and reflectances (tau, rho) are linear
           ! weights of leaf and stem values.
-
+          
+          ! bewteen Eq. 3.10 and 3.11 
           omegal = rho(p,ib) + tau(p,ib)
+          ! Eq. 3.16 whole term
           asu = 0.5_r8*omegal*gdir(p)/temp0(p) *temp2(p)
+          ! the beta in Eq. 3.15
           betadl = (1._r8+avmu(p)*twostext(p))/(omegal*avmu(p)*twostext(p))*asu
+          ! combinding Eq. 3.14 + 3.13; The beta in Eq. 3.13
           betail = 0.5_r8 * ((rho(p,ib)+tau(p,ib)) + (rho(p,ib)-tau(p,ib)) &
                  * ((1._r8+chil(p))/2._r8)**2) / omegal
 
@@ -1489,26 +1520,26 @@ contains
 
           ! Common terms
 
-          b = 1._r8 - omega(p,ib) + omega(p,ib)*betai
-          c1 = omega(p,ib)*betai
-          tmp0 = avmu(p)*twostext(p)
-          d = tmp0 * omega(p,ib)*betad
-          f = tmp0 * omega(p,ib)*(1._r8-betad)
-          tmp1 = b*b - c1*c1
-          h = sqrt(tmp1) / avmu(p)
-          sigma = tmp0*tmp0 - tmp1
-          p1 = b + avmu(p)*h
-          p2 = b - avmu(p)*h
-          p3 = b + tmp0
-          p4 = b - tmp0
+          b = 1._r8 - omega(p,ib) + omega(p,ib)*betai !Eq. 3.31
+          c1 = omega(p,ib)*betai !Eq. 3.32
+          tmp0 = avmu(p)*twostext(p) ! mu K
+          d = tmp0 * omega(p,ib)*betad !Eq. 3.33
+          f = tmp0 * omega(p,ib)*(1._r8-betad) !Eq. 3.34
+          tmp1 = b*b - c1*c1 !part of Eq. 3.35
+          h = sqrt(tmp1) / avmu(p) ! Eq. 3.35
+          sigma = tmp0*tmp0 - tmp1 !Eq. 3.36
+          p1 = b + avmu(p)*h !Eq. 3.42
+          p2 = b - avmu(p)*h !Eq. 3.43
+          p3 = b + tmp0       !Eq. 3.44
+          p4 = b - tmp0 !Eq. 3.45
 
           ! Absorbed, reflected, transmitted fluxes per unit incoming radiation
           ! for full canopy
 
-          t1 = min(h*(elai(p)+esai(p)), 40._r8)
-          s1 = exp(-t1)
-          t1 = min(twostext(p)*(elai(p)+esai(p)), 40._r8)
-          s2 = exp(-t1)
+          t1 = min(h*(elai(p)+esai(p)), 40._r8) !part of Eq. 3.40
+          s1 = exp(-t1)!Eq. 3.40
+          t1 = min(twostext(p)*(elai(p)+esai(p)), 40._r8) !part of Eq. 3.41
+          s2 = exp(-t1)!Eq. 3.41
 
           ! Direct beam
           if ( .not. lSFonly )then
@@ -1518,52 +1549,56 @@ contains
           else
              ! Snow Free (SF) only 
              ! albsod instead of albgrd here:
-             u1 = b - c1/albsod(c,ib)
-             u2 = b - c1*albsod(c,ib)
-             u3 = f + c1*albsod(c,ib)
+             u1 = b - c1/albsod(c,ib) !Eq. 3.37
+             u2 = b - c1*albsod(c,ib) !Eq. 3.38
+             u3 = f + c1*albsod(c,ib) !Eq. 3.39
           end if
-          tmp2 = u1 - avmu(p)*h
-          tmp3 = u1 + avmu(p)*h
-          d1 = p1*tmp2/s1 - p2*tmp3*s1
-          tmp4 = u2 + avmu(p)*h
-          tmp5 = u2 - avmu(p)*h
-          d2 = tmp4/s1 - tmp5*s1
-          h1 = -d*p4 - c1*f
+          tmp2 = u1 - avmu(p)*h !part of Eq. 3.46
+          tmp3 = u1 + avmu(p)*h !part of Eq. 3.46
+          d1 = p1*tmp2/s1 - p2*tmp3*s1 !Eq. 3.46
+          tmp4 = u2 + avmu(p)*h !part of Eq. 3.47
+          tmp5 = u2 - avmu(p)*h !part of Eq. 3.47
+          d2 = tmp4/s1 - tmp5*s1 !Eq. 3.47
+          h1 = -d*p4 - c1*f !Eq. 3.48
           tmp6 = d - h1*p3/sigma
           tmp7 = ( d - c1 - h1/sigma*(u1+tmp0) ) * s2
-          h2 = ( tmp6*tmp2/s1 - p2*tmp7 ) / d1
-          h3 = - ( tmp6*tmp3*s1 - p1*tmp7 ) / d1
-          h4 = -f*p3 - c1*d
-          tmp8 = h4/sigma
+          h2 = ( tmp6*tmp2/s1 - p2*tmp7 ) / d1 !Eq. 3.49
+          h3 = - ( tmp6*tmp3*s1 - p1*tmp7 ) / d1 !Eq. 3.50
+          h4 = -f*p3 - c1*d !Eq. 3.51
+          tmp8 = h4/sigma 
           tmp9 = ( u3 - tmp8*(u2-tmp0) ) * s2
-          h5 = - ( tmp8*tmp4/s1 + tmp9 ) / d2
-          h6 = ( tmp8*tmp5*s1 + tmp9 ) / d2
+          h5 = - ( tmp8*tmp4/s1 + tmp9 ) / d2 !Eq. 3.52
+          h6 = ( tmp8*tmp5*s1 + tmp9 ) / d2 !Eq. 3.53
           if ( .not. lSFonly )then
-            albd(p,ib) = h1/sigma + h2 + h3
-            ftid(p,ib) = h4*s2/sigma + h5*s1 + h6/s1
-            ftdd(p,ib) = s2
+            albd(p,ib) = h1/sigma + h2 + h3 !surface albedo (direct)
+            ftid(p,ib) = h4*s2/sigma + h5*s1 + h6/s1 !down diffuse flux below canopy per unit direct flx
+            ftdd(p,ib) = s2 !down direct flux below canopy per unit direct flx
+            !flux absorbed by canopy per unit direct flux
             fabd(p,ib) = 1._r8 - albd(p,ib) - (1._r8-albgrd(c,ib))*ftdd(p,ib) - (1._r8-albgri(c,ib))*ftid(p,ib)
           else
-            albdSF(p,ib) = h1/sigma + h2 + h3
+            albdSF(p,ib) = h1/sigma + h2 + h3 !Snow Free surface albedo (direct)
           end if
           
-
+          ! Eq. 3.25
           a1 = h1 / sigma * (1._r8 - s2*s2) / (2._r8 * twostext(p)) &
              + h2         * (1._r8 - s2*s1) / (twostext(p) + h) &
              + h3         * (1._r8 - s2/s1) / (twostext(p) - h)
-
+             
+          ! Eq. 3.26
           a2 = h4 / sigma * (1._r8 - s2*s2) / (2._r8 * twostext(p)) &
              + h5         * (1._r8 - s2*s1) / (twostext(p) + h) &
              + h6         * (1._r8 - s2/s1) / (twostext(p) - h)
           if ( .not. lSFonly )then
+            !flux absorbed by sunlit canopy per unit direct flux
+            !flux absorbed by shaded canopy per unit direct flux
             fabd_sun(p,ib) = (1._r8 - omega(p,ib)) * ( 1._r8 - s2 + 1._r8 / avmu(p) * (a1 + a2) )
             fabd_sha(p,ib) = fabd(p,ib) - fabd_sun(p,ib)
           end if
 
           ! Diffuse
           if ( .not. lSFonly )then
-            u1 = b - c1/albgri(c,ib)
-            u2 = b - c1*albgri(c,ib)
+            u1 = b - c1/albgri(c,ib) !Eq. 3.37
+            u2 = b - c1*albgri(c,ib) !Eq. 3.38
           else
              ! Snow Free (SF) only 
              ! albsoi instead of albgri here:
@@ -1572,14 +1607,14 @@ contains
           end if
           tmp2 = u1 - avmu(p)*h
           tmp3 = u1 + avmu(p)*h
-          d1 = p1*tmp2/s1 - p2*tmp3*s1
+          d1 = p1*tmp2/s1 - p2*tmp3*s1 !Eq 3.46
           tmp4 = u2 + avmu(p)*h
           tmp5 = u2 - avmu(p)*h
-          d2 = tmp4/s1 - tmp5*s1
-          h7 = (c1*tmp2) / (d1*s1)
-          h8 = (-c1*tmp3*s1) / d1
-          h9 = tmp4 / (d2*s1)
-          h10 = (-tmp5*s1) / d2
+          d2 = tmp4/s1 - tmp5*s1 !Eq 3.47
+          h7 = (c1*tmp2) / (d1*s1) !Eq 3.54
+          h8 = (-c1*tmp3*s1) / d1 !Eq 3.55
+          h9 = tmp4 / (d2*s1) !Eq 3.56
+          h10 = (-tmp5*s1) / d2 !Eq 3.57
 
   
           ! Final Snow Free albedo
@@ -1590,7 +1625,7 @@ contains
             albi(p,ib) = h7 + h8
             ftii(p,ib) = h9*s1 + h10/s1
             fabi(p,ib) = 1._r8 - albi(p,ib) - (1._r8-albgri(c,ib))*ftii(p,ib)
-
+            !Eq 3.29 3.30
             a1 = h7 * (1._r8 - s2*s1) / (twostext(p) + h) +  h8 * (1._r8 - s2/s1) / (twostext(p) - h)
             a2 = h9 * (1._r8 - s2*s1) / (twostext(p) + h) + h10 * (1._r8 - s2/s1) / (twostext(p) - h)
 

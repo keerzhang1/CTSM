@@ -344,7 +344,7 @@ contains
   end subroutine InitCold
 
 
-  subroutine CanopySunShadeFracs(filter_nourbanp, num_nourbanp,  &
+  subroutine CanopySunShadeFracs(filter_nourbanwtreep, num_nourbanwtreep,  &
                                  atm2lnd_inst, surfalb_inst,     &
                                  canopystate_inst, solarabs_inst)
 
@@ -365,14 +365,15 @@ contains
     ! subroutine as well and consider if any new information related to these types of
     ! variables also needs to be augmented in that routine as well.
     ! ------------------------------------------------------------------------------------
-
+    ! USES
+    use column_varcon       , only : icol_road_tree
 
     implicit none
-
+    
     ! Arguments (in)
 
-    integer, intent(in),dimension(:)      :: filter_nourbanp    ! patch filter for non-urban points
-    integer, intent(in)                   :: num_nourbanp       ! size of the nonurban filter
+    integer, intent(in),dimension(:)      :: filter_nourbanwtreep    ! patch filter for non-urban points
+    integer, intent(in)                   :: num_nourbanwtreep       ! size of the nonurban filter
     type(atm2lnd_type), intent(in)        :: atm2lnd_inst
     type(surfalb_type), intent(in)        :: surfalb_inst
 
@@ -385,30 +386,37 @@ contains
     integer           :: p                          ! patch index
     integer           :: c                          ! column index
     integer           :: g                          ! gridcell index
+    integer           :: l                          ! landunit index
     integer           :: iv                         ! canopy layer index
     integer,parameter :: ipar = 1                   ! The band index for PAR
 
-    associate( tlai_z  => surfalb_inst%tlai_z_patch, &    ! tlai increment for canopy layer
-          fsun_z      => surfalb_inst%fsun_z_patch, &     ! sunlit fraction of canopy layer
-          elai        => canopystate_inst%elai_patch, &   ! one-sided leaf area index
-          forc_solad_col  => atm2lnd_inst%forc_solad_downscaled_col, &   ! direct beam radiation, column (W/m**2)
-          forc_solai  => atm2lnd_inst%forc_solai_grc, &   ! diffuse radiation (W/m**2)
-          fabd_sun_z  => surfalb_inst%fabd_sun_z_patch, & ! absorbed sunlit leaf direct PAR
-          fabd_sha_z  => surfalb_inst%fabd_sha_z_patch, & ! absorbed shaded leaf direct PAR
-          fabi_sun_z  => surfalb_inst%fabi_sun_z_patch, & ! absorbed sunlit leaf diffuse PAR
-          fabi_sha_z  => surfalb_inst%fabi_sha_z_patch, & ! absorbed shaded leaf diffuse PAR
-          nrad        => surfalb_inst%nrad_patch, &       ! number of canopy layers
-          parsun_z    => solarabs_inst%parsun_z_patch, &  ! absorbed PAR for sunlit leaves
-          parsha_z    => solarabs_inst%parsha_z_patch, &  ! absorbed PAR for shaded leaves
-          laisun      => canopystate_inst%laisun_patch, & ! sunlit leaf area
-          laisha      => canopystate_inst%laisha_patch, & ! shaded  leaf area
-          laisun_z    => canopystate_inst%laisun_z_patch, & ! sunlit leaf area for canopy layer
-          laisha_z    => canopystate_inst%laisha_z_patch, & ! shaded leaf area for canopy layer
-          fsun        => canopystate_inst%fsun_patch)       ! sunlit fraction of canopy
+    associate( tlai_z  => surfalb_inst%tlai_z_patch, &    ! Input: [real(r8) (:)   ] tlai increment for canopy layer
+          fsun_z      => surfalb_inst%fsun_z_patch, &     ! Input: [real(r8) (:)   ]sunlit fraction of canopy layer
+          elai        => canopystate_inst%elai_patch, &   ! Input: [real(r8) (:)   ]one-sided leaf area index
+          lai                 =>   lun%lai                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+          sabs_tree_dif      =>    solarabs_inst%sabs_tree_dif_lun      , & ! Input: [real(r8) (:,:) ]  diffuse solar absorbed  by above-roof treeetation per unit treeetation area per unit incident flux
+          sabs_tree_dir      =>    solarabs_inst%sabs_tree_dir_lun      , & ! Input: [real(r8) (:,:) ]  direct  solar absorbed  by above-roof treeetation per unit treeetation area per unit incident flux
 
-     do fp = 1,num_nourbanp
+          forc_solad_col  => atm2lnd_inst%forc_solad_downscaled_col, &   ! Input: [real(r8) (:)   ]direct beam radiation, column (W/m**2)
+          forc_solai  => atm2lnd_inst%forc_solai_grc, &   ! Input: [real(r8) (:)   ]diffuse radiation (W/m**2)
+          fabd_sun_z  => surfalb_inst%fabd_sun_z_patch, & ! Input: [real(r8) (:)   ]absorbed sunlit leaf direct PAR
+          fabd_sha_z  => surfalb_inst%fabd_sha_z_patch, & ! Input: [real(r8) (:)   ]absorbed shaded leaf direct PAR
+          fabi_sun_z  => surfalb_inst%fabi_sun_z_patch, & ! Input: [real(r8) (:)   ]absorbed sunlit leaf diffuse PAR
+          fabi_sha_z  => surfalb_inst%fabi_sha_z_patch, & ! Input: [real(r8) (:)   ]absorbed shaded leaf diffuse PAR
+          nrad        => surfalb_inst%nrad_patch, &       ! Input: [real(r8) (:)   ]number of canopy layers
+          parsun_z    => solarabs_inst%parsun_z_patch, &  ! Output: [real(r8) (:)   ]absorbed PAR for sunlit leaves
+          parsha_z    => solarabs_inst%parsha_z_patch, &  ! Output: [real(r8) (:)   ]absorbed PAR for shaded leaves
+          laisun      => canopystate_inst%laisun_patch, & ! Output: [real(r8) (:)   ]sunlit leaf area
+          laisha      => canopystate_inst%laisha_patch, & ! Output: [real(r8) (:)   ]shaded  leaf area
+          laisun_z    => canopystate_inst%laisun_z_patch, & ! Output: [real(r8) (:)   ]sunlit leaf area for canopy layer
+          laisha_z    => canopystate_inst%laisha_z_patch, & ! Output: [real(r8) (:)   ]shaded leaf area for canopy layer
+          fsun        => canopystate_inst%fsun_patch)       ! Output: [real(r8) (:)   ] sunlit fraction of canopy
 
-        p = filter_nourbanp(fp)
+     do fp = 1,num_nourbanwtreep
+
+        p = filter_nourbanwtreep(fp)
+        c = patch%column(p)
+        l = patch%landunit(p)
 
         do iv = 1, nrad(p)
            parsun_z(p,iv) = 0._r8
@@ -431,7 +439,11 @@ contains
            laisha(p) = laisha(p) + laisha_z(p,iv)
         end do
         if (elai(p) > 0._r8) then
-           fsun(p) = laisun(p) / elai(p)
+           if (col%itype(c) == icol_road_tree) then 
+             fsun(p) = laisun(p) / lai(l)
+           else 
+             fsun(p) = laisun(p) / elai(p)
+           end if 
         else
            fsun(p) = 0._r8
         end if
@@ -441,14 +453,30 @@ contains
         ! are canopy integrated so that layer values equal big leaf values.
 
         g = patch%gridcell(p)
-        c = patch%column(p)
-
         do iv = 1, nrad(p)
-           parsun_z(p,iv) = forc_solad_col(c,ipar)*fabd_sun_z(p,iv) + forc_solai(g,ipar)*fabi_sun_z(p,iv)
-           parsha_z(p,iv) = forc_solad_col(c,ipar)*fabd_sha_z(p,iv) + forc_solai(g,ipar)*fabi_sha_z(p,iv)
+          write (6,'(A,I5)') '-------------------(p):before parsun_z------------------- ', p
+          write (6,'(A,I5)') '-------------------iv---------------- ', iv
+          write (6,'(A,1X,*(F10.5,1X))') 'forc_solad_col(c,ipar),forc_solai(g,ipar) ', forc_solad_col(c,ipar),forc_solai(g,ipar)
+          write (6,'(A,1X,*(F10.5,1X))') 'sabs_tree_dif(l,ipar),sabs_tree_dir(l,ipar) ',sabs_tree_dif(l,ipar),sabs_tree_dir(l,ipar)
+          write (6,'(A,1X,*(F10.5,1X))') 'fabd_sun_z(p,iv),fabd_sha_z(p,iv)', fabd_sun_z(p,iv),fabd_sha_z(p,iv)
+          write (6,'(A,1X,*(F10.5,1X))') 'fabi_sun_z(p,iv),fabi_sha_z(p,iv)', fabi_sun_z(p,iv),fabi_sha_z(p,iv)
         end do
-
-     end do ! end of fp = 1,num_nourbanp loop
+        do iv = 1, nrad(p)
+           if (col%itype(c) == icol_road_tree) then 
+             parsun_z(p,iv) = forc_solad_col(c,ipar)*fabd_sun_z(p,iv)*sabs_tree_dir(l,ipar) + forc_solai(g,ipar)*fabi_sun_z(p,iv)*sabs_tree_dif(l,ipar)
+             parsha_z(p,iv) = forc_solad_col(c,ipar)*fabd_sha_z(p,iv)*sabs_tree_dir(l,ipar) + forc_solai(g,ipar)*fabi_sha_z(p,iv)*sabs_tree_dif(l,ipar)
+           else 
+             parsun_z(p,iv) = forc_solad_col(c,ipar)*fabd_sun_z(p,iv) + forc_solai(g,ipar)*fabi_sun_z(p,iv)
+             parsha_z(p,iv) = forc_solad_col(c,ipar)*fabd_sha_z(p,iv) + forc_solai(g,ipar)*fabi_sha_z(p,iv)
+           end if 
+        end do
+        
+        do iv = 1, nrad(p)
+          write (6,'(A,I5)') '-------------------(p):after parsun_z------------------- ', p
+          write (6,'(A,I5)') '-------------------iv---------------- ', iv
+          write (6,'(A,1X,*(F10.5,1X))') 'parsun_z(p,iv),parsha_z(p,iv)', parsun_z(p,iv),parsha_z(p,iv)
+        end do
+     end do ! end of fp = 1,num_nourbanwtreep loop
    end associate
    return
  end subroutine CanopySunShadeFracs

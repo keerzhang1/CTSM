@@ -288,7 +288,7 @@ contains
        ! are valid over inactive as well as active points.
 
        call t_startf("decomp_vert")
-       call active_layer_inst%alt_calc(filter_inactive_and_active(nc)%num_soilc, filter_inactive_and_active(nc)%soilc, &
+       call active_layer_inst%alt_calc(filter_inactive_and_active(nc)%num_soil_urbtreec, filter_inactive_and_active(nc)%soil_urbtreec, &
             temperature_inst)
 
        ! Filter bgc_soilc operates on all non-sp soil columns
@@ -607,7 +607,7 @@ contains
        if(use_fates) then
           call clm_fates%wrap_sunfrac(nc,atm2lnd_inst, canopystate_inst)
        else
-          call CanopySunShadeFracs(filter(nc)%nourbanp,filter(nc)%num_nourbanp,     &
+          call CanopySunShadeFracs(filter(nc)%nourbanwtreep,filter(nc)%num_nourbanwtreep,     &
                                    atm2lnd_inst, surfalb_inst, canopystate_inst,    &
                                    solarabs_inst)
        end if
@@ -654,7 +654,8 @@ contains
 
        call ozone_inst%CalcOzoneStress(bounds_clump, &
             filter(nc)%num_exposedvegp, filter(nc)%exposedvegp, &
-            filter(nc)%num_noexposedvegp, filter(nc)%noexposedvegp)
+            filter(nc)%num_noexposedvegp, filter(nc)%noexposedvegp, &
+            filter(nc)%num_urbantreep, filter(nc)%urbantreep)
 
        ! TODO(wjs, 2019-10-02) I'd like to keep moving this down until it is below
        ! LakeFluxes... I'll probably leave it in place there.
@@ -727,7 +728,7 @@ contains
             leafn_patch = leafn_patch(bounds_clump%begp:bounds_clump%endp), &
             froot_carbon = froot_carbon(bounds_clump%begp:bounds_clump%endp), &
             croot_carbon = croot_carbon(bounds_clump%begp:bounds_clump%endp))
-       deallocate(downreg_patch, leafn_patch, froot_carbon, croot_carbon)
+       deallocate(downreg_patch, froot_carbon, croot_carbon)
        call t_stopf('canflux')
 
        ! Fluxes for all urban landunits
@@ -738,10 +739,17 @@ contains
             filter(nc)%num_urbanl, filter(nc)%urbanl,                         &
             filter(nc)%num_urbanc, filter(nc)%urbanc,                         &
             filter(nc)%num_urbanp, filter(nc)%urbanp,                         &
+            filter(nc)%num_urbantreep, filter(nc)%urbantreep,                         &
+            filter(nc)%num_urbantreec, filter(nc)%urbantreec,                         &
             atm2lnd_inst, urbanparams_inst, soilstate_inst, temperature_inst,   &
             water_inst%waterstatebulk_inst, water_inst%waterdiagnosticbulk_inst, &
             frictionvel_inst, energyflux_inst, water_inst%waterfluxbulk_inst, &
-            water_inst%wateratm2lndbulk_inst, humanindex_inst)
+            water_inst%wateratm2lndbulk_inst, humanindex_inst,active_layer_inst,&
+            photosyns_inst,surfalb_inst,solarabs_inst,canopystate_inst,&
+            ozone_inst,soil_water_retention_curve,&
+            leafn_patch = leafn_patch(bounds_clump%begp:bounds_clump%endp))
+            
+            deallocate(leafn_patch)
        call t_stopf('uflux')
 
        ! Fluxes for all lake landunits
@@ -1236,8 +1244,8 @@ contains
                filter_inactive_and_active(nc)%nourbanp,         &
                filter_inactive_and_active(nc)%num_urbanc,       &
                filter_inactive_and_active(nc)%urbanc,           &
-               filter_inactive_and_active(nc)%num_urbanp,       &
-               filter_inactive_and_active(nc)%urbanp,           &
+               filter_inactive_and_active(nc)%num_urbantreep,       &
+               filter_inactive_and_active(nc)%urbantreep,           &
                nextsw_cday, declinp1,                           &
                clm_fates,                                       &
                aerosol_inst, canopystate_inst, &
@@ -1257,10 +1265,13 @@ contains
                   filter_inactive_and_active(nc)%urbanc,     &
                   filter_inactive_and_active(nc)%num_urbanp, &
                   filter_inactive_and_active(nc)%urbanp,     &
+                  filter_inactive_and_active(nc)%num_urbantreep, &
+                  filter_inactive_and_active(nc)%urbantreep,     &
                   water_inst%waterstatebulk_inst, &
                   water_inst%waterdiagnosticbulk_inst, &
                   urbanparams_inst,         &
-                  solarabs_inst, surfalb_inst,atm2lnd_inst)
+                  solarabs_inst, surfalb_inst,atm2lnd_inst&
+                  ,canopystate_inst,temperature_inst)
              call t_stopf('urbalb')
           end if
 

@@ -23,7 +23,8 @@ module OzoneMod
   use abortutils  , only : endrun
   use PatchType   , only : patch
   use pftconMod   , only : pftcon
-
+  use ColumnType           , only : col  
+  
   implicit none
   save
   private
@@ -358,7 +359,11 @@ contains
     !
     ! !DESCRIPTION:
     ! Calculate ozone uptake.
-    !
+    
+    ! USES
+    use column_varcon       , only : icol_road_tree
+    use LandunitType         , only : lun  
+
     ! !ARGUMENTS:
     class(ozone_type)      , intent(inout) :: this
     type(bounds_type)      , intent(in)    :: bounds
@@ -377,6 +382,7 @@ contains
     integer  :: fp             ! filter index
     integer  :: p              ! patch index
     integer  :: c              ! column index
+    integer  :: l              ! landunit index
     integer  :: g              ! gridcell index
 
     character(len=*), parameter :: subname = 'CalcOzoneUptake'
@@ -393,6 +399,7 @@ contains
     SHR_ASSERT_ALL_FL((ubound(tlai) == (/bounds%endp/)), sourcefile, __LINE__)
 
     associate( &
+         lai                 =>   lun%lai                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
          o3uptakesha => this%o3uptakesha_patch                , & ! Output: [real(r8) (:)] ozone dose
          o3uptakesun => this%o3uptakesun_patch                , & ! Output: [real(r8) (:)] ozone dose
          tlai_old    => this%tlai_old_patch                     & ! Output: [real(r8) (:)] tlai from last time step
@@ -401,22 +408,38 @@ contains
       do fp = 1, num_exposedvegp
          p = filter_exposedvegp(fp)
          c = patch%column(p)
+         l = patch%landunit(p)
          g = patch%gridcell(p)
+         
+         if (col%itype(c)== icol_road_tree) then 
+           ! Ozone uptake for shaded leaves
+           call CalcOzoneUptakeOnePoint( &
+                forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
+                rs=rssha(p), rb=rb(p), ram=ram(p), &
+                tlai=lai(l), tlai_old=lai(l), pft_type=5, &
+                o3uptake=o3uptakesha(p))
 
-         ! Ozone uptake for shaded leaves
-         call CalcOzoneUptakeOnePoint( &
-              forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
-              rs=rssha(p), rb=rb(p), ram=ram(p), &
-              tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
-              o3uptake=o3uptakesha(p))
+           ! Ozone uptake for sunlit leaves
+           call CalcOzoneUptakeOnePoint( &
+                forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
+                rs=rssun(p), rb=rb(p), ram=ram(p), &
+                tlai=lai(l), tlai_old=lai(l), pft_type=5, &
+                o3uptake=o3uptakesun(p))     
+         else 
+           ! Ozone uptake for shaded leaves
+           call CalcOzoneUptakeOnePoint( &
+                forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
+                rs=rssha(p), rb=rb(p), ram=ram(p), &
+                tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
+                o3uptake=o3uptakesha(p))
 
-         ! Ozone uptake for sunlit leaves
-         call CalcOzoneUptakeOnePoint( &
-              forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
-              rs=rssun(p), rb=rb(p), ram=ram(p), &
-              tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
-              o3uptake=o3uptakesun(p))
-
+           ! Ozone uptake for sunlit leaves
+           call CalcOzoneUptakeOnePoint( &
+                forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
+                rs=rssun(p), rb=rb(p), ram=ram(p), &
+                tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
+                o3uptake=o3uptakesun(p))
+         end if 
          tlai_old(p) = tlai(p)
 
       end do
@@ -513,7 +536,8 @@ contains
   !-----------------------------------------------------------------------
   subroutine CalcOzoneStress(this, bounds, &
        num_exposedvegp, filter_exposedvegp, &
-       num_noexposedvegp, filter_noexposedvegp)
+       num_noexposedvegp, filter_noexposedvegp, &
+       num_urbantreep, filter_urbantreep)
     !
     ! !DESCRIPTION:
     ! Calculate ozone stress.
@@ -525,6 +549,8 @@ contains
     integer , intent(in) :: filter_exposedvegp(:)   ! patch filter for non-snow-covered veg
     integer , intent(in) :: num_noexposedvegp       ! number of points in filter_noexposedvegp
     integer , intent(in) :: filter_noexposedvegp(:) ! patch filter for veg where frac_veg_nosno is 0
+    integer , intent(in) :: num_urbantreep       ! number of points in filter_noexposedvegp
+    integer , intent(in) :: filter_urbantreep(:) ! patch filter for veg where frac_veg_nosno is 0
     !
     ! !LOCAL VARIABLES:
 
@@ -535,11 +561,13 @@ contains
     case (stress_method_lombardozzi2015)
        call this%CalcOzoneStressLombardozzi2015(bounds, &
             num_exposedvegp, filter_exposedvegp, &
-            num_noexposedvegp, filter_noexposedvegp)
+            num_noexposedvegp, filter_noexposedvegp,&
+            num_urbantreep, filter_urbantreep)
     case (stress_method_falk)
        call this%CalcOzoneStressFalk(bounds, &
             num_exposedvegp, filter_exposedvegp, &
-            num_noexposedvegp, filter_noexposedvegp)
+            num_noexposedvegp, filter_noexposedvegp,&
+            num_urbantreep, filter_urbantreep)
     case default
        write(iulog,*) 'ERROR: unknown ozone stress method: ', this%stress_method
        call endrun('Unknown ozone stress method')
@@ -550,7 +578,8 @@ contains
   !-----------------------------------------------------------------------
   subroutine CalcOzoneStressLombardozzi2015(this, bounds, &
        num_exposedvegp, filter_exposedvegp, &
-       num_noexposedvegp, filter_noexposedvegp)
+       num_noexposedvegp, filter_noexposedvegp,&
+       num_urbantreep, filter_urbantreep)
     !
     ! !DESCRIPTION:
     ! Calculate ozone stress.
@@ -564,6 +593,8 @@ contains
     integer , intent(in) :: filter_exposedvegp(:)   ! patch filter for non-snow-covered veg
     integer , intent(in) :: num_noexposedvegp       ! number of points in filter_noexposedvegp
     integer , intent(in) :: filter_noexposedvegp(:) ! patch filter for veg where frac_veg_nosno is 0
+    integer , intent(in) :: num_urbantreep       ! number of points in filter_noexposedvegp
+    integer , intent(in) :: filter_urbantreep(:) ! patch filter for veg where frac_veg_nosno is 0
     !
     ! !LOCAL VARIABLES:
     integer  :: fp             ! filter index
@@ -606,6 +637,20 @@ contains
          o3coefgsun(p) = 1._r8
       end do
 
+      do fp = 1, num_urbantreep
+         p = filter_urbantreep(fp)
+
+         ! Ozone stress for shaded leaves
+         call CalcOzoneStressLombardozzi2015OnePoint( &
+              pft_type=5, o3uptake=o3uptakesha(p), &
+              o3coefv=o3coefvsha(p), o3coefg=o3coefgsha(p))
+
+         ! Ozone stress for sunlit leaves
+         call CalcOzoneStressLombardozzi2015OnePoint( &
+              pft_type=5, o3uptake=o3uptakesun(p), &
+              o3coefv=o3coefvsun(p), o3coefg=o3coefgsun(p))
+      end do
+      
     end associate
 
   end subroutine CalcOzoneStressLombardozzi2015
@@ -674,7 +719,8 @@ contains
   !-----------------------------------------------------------------------
   subroutine CalcOzoneStressFalk(this, bounds, &
        num_exposedvegp, filter_exposedvegp, &
-       num_noexposedvegp, filter_noexposedvegp)
+       num_noexposedvegp, filter_noexposedvegp,&
+       num_urbantreep, filter_urbantreep)
     !
     ! !DESCRIPTION:
     ! Calculate ozone stress.
@@ -691,6 +737,8 @@ contains
     integer , intent(in) :: filter_exposedvegp(:)   ! patch filter for non-snow-covered veg
     integer , intent(in) :: num_noexposedvegp       ! number of points in filter_noexposedvegp
     integer , intent(in) :: filter_noexposedvegp(:) ! patch filter for veg where frac_veg_nosno is 0
+    integer , intent(in) :: num_urbantreep       ! number of points in filter_noexposedvegp
+    integer , intent(in) :: filter_urbantreep(:) ! patch filter for veg where frac_veg_nosno is 0
     !
     ! !LOCAL VARIABLES:
     integer  :: fp             ! filter index
@@ -732,6 +780,21 @@ contains
          o3coefjmaxsun(p) = 1._r8
       end do
 
+      do fp = 1, num_urbantreep
+         p = filter_urbantreep(fp)
+         
+         ! Ozone stress for shaded leaves
+          call CalcOzoneStressFalkOnePoint( &
+            pft_type=7, o3uptake=o3uptakesha(p), &
+            o3coefjmax=o3coefjmaxsha(p))
+
+         ! Ozone stress for sunlit leaves
+         call CalcOzoneStressFalkOnePoint( &
+            pft_type=7, o3uptake=o3uptakesun(p), &
+            o3coefjmax=o3coefjmaxsun(p))
+
+      end do
+      
       end associate
 
    end if

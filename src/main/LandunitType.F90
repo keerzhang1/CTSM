@@ -53,6 +53,7 @@ module LandunitType
      real(r8), pointer :: wtroad_tree  (:) ! urban landunit weight of road tree column to total road (-)
      real(r8), pointer :: wtlunit_roof (:) ! weight of roof with respect to urban landunit (-)
      real(r8), pointer :: ht_roof      (:) ! height of urban roof (m)
+     real(r8), pointer :: ht_can_eff      (:) ! height of urban roof (m)
      real(r8), pointer :: z_0_town     (:) ! urban landunit momentum roughness length (m)
      real(r8), pointer :: z_d_town     (:) ! urban landunit displacement height (m)
      real(r8), pointer :: h1     (:) ! urban landunit canyon height to width ratio (-)   
@@ -117,6 +118,7 @@ contains
     allocate(this%wtroad_perv  (begl:endl)); this%wtroad_perv  (:) = nan
     allocate(this%wtroad_tree  (begl:endl)); this%wtroad_tree  (:) = nan
     allocate(this%ht_roof      (begl:endl)); this%ht_roof      (:) = nan
+    allocate(this%ht_can_eff      (begl:endl)); this%ht_can_eff      (:) = nan
     allocate(this%wtlunit_roof (begl:endl)); this%wtlunit_roof (:) = nan
     allocate(this%z_0_town     (begl:endl)); this%z_0_town     (:) = nan
     allocate(this%z_d_town     (begl:endl)); this%z_d_town     (:) = nan
@@ -170,6 +172,7 @@ contains
     deallocate(this%wtroad_perv  )
     deallocate(this%wtroad_tree  )
     deallocate(this%ht_roof      )
+    deallocate(this%ht_can_eff      )
     deallocate(this%wtlunit_roof )
     deallocate(this%z_0_town     )
     deallocate(this%z_d_town     )

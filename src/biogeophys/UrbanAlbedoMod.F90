@@ -24,7 +24,14 @@ module UrbanAlbedoMod
   use ColumnType        , only : col                
   use PatchType         , only : patch  
   use GridcellType      , only : grc    
-  use atm2lndType       , only : atm2lnd_type          
+  use atm2lndType       , only : atm2lnd_type     
+  use CanopyStateType   , only : canopystate_type   
+  use TemperatureType   , only : temperature_type
+  use CanopyStateType     , only : canopystate_type
+  use WaterDiagnosticBulkType      , only : waterdiagnosticbulk_type
+  use SurfaceAlbedoType   , only : surfalb_type
+  use clm_time_manager   , only : get_nstep
+
   !
   ! !PUBLIC TYPES:
   implicit none
@@ -49,8 +56,9 @@ contains
 
   !-----------------------------------------------------------------------
   subroutine UrbanAlbedo (bounds, num_urbanl, filter_urbanl, &
-       num_urbanc, filter_urbanc, num_urbanp, filter_urbanp, &
-       waterstatebulk_inst, waterdiagnosticbulk_inst, urbanparams_inst, solarabs_inst, surfalb_inst,atm2lnd_inst) 
+       num_urbanc, filter_urbanc, num_urbanp, filter_urbanp,num_urbantreep, filter_urbantreep, &
+       waterstatebulk_inst, waterdiagnosticbulk_inst, urbanparams_inst, solarabs_inst, surfalb_inst,&
+       atm2lnd_inst,canopystate_inst,temperature_inst) 
     !
     ! !DESCRIPTION: 
     ! Determine urban landunit component albedos
@@ -74,12 +82,17 @@ contains
     integer                , intent(in)    :: filter_urbanc(:) ! urban column filter
     integer                , intent(in)    :: num_urbanp       ! number of urban patches in clump
     integer                , intent(in)    :: filter_urbanp(:) ! urban pft filter
+    integer                , intent(in)    :: num_urbantreep       ! number of urban patches in clump
+    integer                , intent(in)    :: filter_urbantreep(:) ! urban pft filter
     type(waterstatebulk_type)  , intent(in)    :: waterstatebulk_inst
     type(waterdiagnosticbulk_type)  , intent(in)    :: waterdiagnosticbulk_inst
     type(urbanparams_type) , intent(inout) :: urbanparams_inst
     type(solarabs_type)    , intent(inout) :: solarabs_inst
     type(surfalb_type)     , intent(inout) :: surfalb_inst
+    
     type(atm2lnd_type), intent(in)        :: atm2lnd_inst
+    type(canopystate_type)     , intent(inout) :: canopystate_inst
+    type(temperature_type) , intent(in)            :: temperature_inst
     
     !
     ! !LOCAL VARIABLES:
@@ -121,11 +134,7 @@ contains
     real(r8) :: alb_ar_tree_dir_s  (bounds%begl:bounds%endl, numrad) ! diffuse above-roof tree albedo with snow effects
     real(r8) :: alb_br_tree_dif_s  (bounds%begl:bounds%endl, numrad) ! diffuse below-roof tree albedo with snow effects
     real(r8) :: alb_ar_tree_dif_s  (bounds%begl:bounds%endl, numrad) ! diffuse above-roof tree albedo with snow effects
-    real(r8) :: tran_br_tree_dir_s  (bounds%begl:bounds%endl, numrad) ! diffuse below-roof leaf transmittance with snow effects
-    real(r8) :: tran_ar_tree_dir_s  (bounds%begl:bounds%endl, numrad) ! diffuse above-roof leaf transmittance with snow effects
-    real(r8) :: tran_br_tree_dif_s  (bounds%begl:bounds%endl, numrad) ! diffuse below-roof leaf transmittance with snow effects
-    real(r8) :: tran_ar_tree_dif_s  (bounds%begl:bounds%endl, numrad) ! diffuse above-roof leaf transmittance with snow effects
-    
+
     real(r8) :: forc_solad             (bounds%begl:bounds%endl, numrad)         ! forced solar
     ! For now, the albedo of tree is hard coded; I need to read them from surface data 
     real(r8) :: alb_br_tree_dir     (bounds%begl:bounds%endl, numrad) ! direct br tree albedo 
@@ -140,12 +149,26 @@ contains
     real(r8) :: alb_ar_tree_dir_eff     (bounds%begl:bounds%endl, numrad) ! effective direct br tree albedo 
     real(r8) :: alb_br_tree_dif_eff     (bounds%begl:bounds%endl, numrad) ! effective diffuse br tree albedo  
     real(r8) :: alb_ar_tree_dif_eff     (bounds%begl:bounds%endl, numrad) ! effective diffuse br tree albedo 
-        
+
+    real(r8) :: rho_urbtree            (bounds%begp:bounds%endp, numrad) ! effective diffuse br tree albedo  
+    real(r8) :: tau_urbtree     (bounds%begp:bounds%endp, numrad) ! effective diffuse br tree albedo 
+    real(r8) :: coszen_patch    (bounds%begp:bounds%endp)             
+
     integer              :: start_time, end_time, clock_rate    ! Timekeeping variables
-    real(r8)            :: elapsed_time                        ! Elapsed time     
+    real(r8)            :: elapsed_time                        ! Elapsed time   
+    real(r8)           :: extkn        
+    integer  :: num_urbtreesol                                                                ! number of vegetated patches where coszen>0
+    integer  :: num_nourbtreesol                                                              ! number of vegetated patches where coszen>0
+    integer  :: filter_urbtreesol   (bounds%endp-bounds%begp+1)                               ! patch filter where vegetated and coszen>0
+    integer  :: filter_nourbtreesol (bounds%endp-bounds%begp+1)                               ! patch filter where vegetated and coszen>0                                                   ! nitrogen allocation coefficient  
     !-----------------------------------------------------------------------
 
     associate(                                                        &
+         lai                 =>   lun%lai                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+         vcmaxcintsun  =>    surfalb_inst%vcmaxcintsun_patch     , & ! Output:  [real(r8) (:)   ]  leaf to canopy scaling coefficient, sunlit leaf vcmax
+         vcmaxcintsha  =>    surfalb_inst%vcmaxcintsha_patch     , & ! Output:  [real(r8) (:)   ]  leaf to canopy scaling coefficient, shaded leaf vcmax
+         
+         tlai       => canopystate_inst%tlai_patch           , & ! Output:  [real(r8)(:)    ]  one-sided leaf area index, no burying by snow  
          ctype              => col%itype                            , & ! Input:  [integer (:)    ]  column type                                        
          coli               => lun%coli                             , & ! Input:  [integer (:)    ]  beginning column index for landunit                
          canyon_hwr         => lun%canyon_hwr                       , & ! Input:  [real(r8) (:)   ]  ratio of building height to street width          
@@ -261,7 +284,7 @@ contains
       alb_ar_tree_dir(:,2)=0.35_r8
       alb_ar_tree_dif(:,1)=0.11_r8
       alb_ar_tree_dif(:,2)=0.35_r8      
-    
+
       tran_br_tree_dir(:,1)=0.05_r8
       tran_br_tree_dir(:,2)=0.25_r8
       tran_br_tree_dif(:,1)=0.05_r8
@@ -275,7 +298,7 @@ contains
       alb_br_tree_dir_eff =     alb_br_tree_dir + tran_br_tree_dir
       alb_ar_tree_dir_eff =     alb_ar_tree_dir + tran_ar_tree_dir
       alb_br_tree_dif_eff =     alb_br_tree_dif + tran_br_tree_dif
-      alb_ar_tree_dif_eff =     alb_ar_tree_dif + tran_ar_tree_dif 
+      alb_ar_tree_dif_eff =     alb_ar_tree_dif + tran_ar_tree_dif   
       
       do fl = 1,num_urbanl
          l = filter_urbanl(fl)
@@ -287,6 +310,54 @@ contains
          zen(l)    = acos(coszen(l))
       end do
 
+      do fp = 1,num_urbantreep
+         p = filter_urbantreep(fp)
+         l = patch%landunit(p)
+         tlai(p) = lai(l)
+         rho_urbtree(p,:) = alb_br_tree_dir(l,:)
+         tau_urbtree(p,:) = tran_br_tree_dir(l,:)
+      end do
+
+
+      !------------------------------------------------------------------------
+      ! Create solar-urbantree filter, filter_urbtreesol and filter_nourbtreesol
+      ! Referred to how filter_vegsol is created in SurfaceAlbedoMod
+      !------------------------------------------------------------------------
+      num_urbtreesol = 0
+      num_nourbtreesol = 0
+      do fp = 1,num_urbantreep
+         p = filter_urbantreep(fp)
+         l = patch%landunit(p)
+            if (coszen_patch(p) > 0._r8) then
+               if ((lun%itype(patch%column(p)) == icol_road_tree) &
+                   .and. (lai(l) > 0._r8)) then
+                      num_urbtreesol = num_urbtreesol + 1
+                      filter_urbtreesol(num_urbtreesol) = p
+               else
+                  num_nourbtreesol = num_nourbtreesol + 1
+                  filter_nourbtreesol(num_nourbtreesol) = p
+               end if
+            end if
+      end do
+      !------------------------------------------------------------------------
+      ! Compute default leaf to canopy scaling coefficients vcmaxcintsun, vcmaxcintsha, used when coszen <= 0.
+      ! The vcmaxcintsun, vcmaxcintsha are also computed in TwoStream later
+      !------------------------------------------------------------------------
+      extkn = 0.30_r8
+      do fp = 1,num_urbantreep
+         p = filter_urbantreep(fp)
+         l = patch%landunit(p)
+
+         vcmaxcintsun(p) = 0._r8
+         vcmaxcintsha(p) = (1._r8 - exp(-extkn*lai(l))) / extkn
+         if (lai(l) > 0._r8) then
+            vcmaxcintsha(p) = vcmaxcintsha(p) / lai(l)
+         else
+            vcmaxcintsha(p) = 0._r8
+         end if
+
+      end do
+      
        ! Initialize output because solar radiation only done if coszen > 0
 
       do ib = 1, numrad
@@ -517,13 +588,13 @@ contains
                        + albsni_perroad(l,ib)*frac_sno(c)   
                else if (ctype(c) == icol_road_tree) then    
                   alb_br_tree_dir_s(l,ib) = alb_br_tree_dir_eff(l,ib)*(1._r8-frac_sno(c))  &
-                      + albsnd_roof(l,ib)*frac_sno(c)
+                      + albsnd_tree(l,ib)*frac_sno(c)
                   alb_br_tree_dif_s(l,ib) = alb_br_tree_dif_eff(l,ib)*(1._r8-frac_sno(c))  &
-                      + albsni_roof(l,ib)*frac_sno(c)
+                      + albsni_tree(l,ib)*frac_sno(c)
                   alb_ar_tree_dir_s(l,ib) = alb_ar_tree_dir_eff(l,ib)*(1._r8-frac_sno(c))  &
-                     + albsnd_roof(l,ib)*frac_sno(c)
+                     + albsnd_tree(l,ib)*frac_sno(c)
                   alb_ar_tree_dif_s(l,ib) = alb_ar_tree_dif_eff(l,ib)*(1._r8-frac_sno(c))  &
-                     + albsni_roof(l,ib)*frac_sno(c)                        
+                     + albsni_tree(l,ib)*frac_sno(c)                        
                                   
                end if
             end do
@@ -625,8 +696,36 @@ contains
 ! end add new snicar
             end do
          end do
-      end if
+    
+         do fp = 1, num_urbantreep
+            p = filter_urbantreep(fp)
+            c = patch%column(p)
+            coszen_patch(p) = surfalb_inst%coszen_col(c)
+         end do
 
+         do ib = 1, numrad
+            do fp = 1,num_urbantreep
+               p = filter_urbantreep(fp)
+               c = patch%column(p)
+               l = patch%landunit(p)
+               
+               !write (6,'(A,I5)') '-------------------(l):before twostream------------------- ', l
+               !write (6,'(A,I5)') '-------------------time step----------------- ', get_nstep()
+               !write (6,'(A,I5)') '-------------------ib----------------- ', ib
+               !write (6,'(A,1X,*(F10.5,1X))') 'albgrd(c,ib) ', albgrd(c,ib)
+               !write (6,'(A,1X,*(F10.5,1X))') 'albgri(c,ib) ', albgri(c,ib)
+               
+             end do 
+         end do
+         
+         call TwoStream (bounds, filter_urbantreep, num_urbantreep, &
+              coszen_patch(bounds%begp:bounds%endp), &
+              rho_urbtree(bounds%begp:bounds%endp, :), &
+              tau_urbtree(bounds%begp:bounds%endp, :), &
+              canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst)
+  
+      end if
+      
     end associate
     call system_clock(end_time)        
     ! Calculate elapsed time in seconds
@@ -2192,7 +2291,7 @@ contains
         fvr1d =>    urbanparams_inst%fvr1d_out  , & ! Input:  [real(r8) (:,:,:) ]    Monte carlo view factor from ovegetation to roof[landunit]  
 
         frs1d =>    urbanparams_inst%frs1d_out , & ! Input:  [real(r8) (:,:) ]  Monte carlo view factor from roof to sky [landunit, nzcanm]                 
-        frv1d =>    urbanparams_inst%frv1d_out , & ! Input:  [real(r8) (:,:,:) ]  Monte carlo view factor  from roof to vegetation [landunit, nzcanm]
+        frv1d =>    urbanparams_inst%frv1d_out , & ! Input:  [real(r8) (:,:,:) ]  Monte carlo view factor  from roof to vegetation [landunit, nzcanm]              
 
         sabs_roof_dir   =>    solarabs_inst%sabs_roof_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by sunwall per unit wall area per unit incident flux
         sabs_sunwall_dir   =>    solarabs_inst%sabs_sunwall_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by sunwall per unit wall area per unit incident flux
@@ -2758,7 +2857,7 @@ contains
                   improad_r_shadewall_dir(l) = improad_r_dir(l) * fgw1d(l,1)
                   improad_r_br_tree_dir(l) = improad_r_dir(l) * fgv1d(l,1)
                   improad_r_ar_tree_dir(l) = improad_r_dir(l) * fgv1d(l,2)
-                                    
+                  
                   err_r=improad_r_dir(l) -improad_r_br_tree_dir(l)*A_v1(l)/A_g(l) -improad_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -improad_r_sky_dir(l)-improad_r_sunwall_dir(l)*A_w(l)/A_g(l)-improad_r_shadewall_dir(l)*A_w(l)/A_g(l)
                   if (debug_write) then
                      write(6,*) '-----improad--------l=---n=', l,n
@@ -2771,19 +2870,16 @@ contains
                   perroad_r_shadewall_dir(l) = perroad_r_dir(l) * fgw1d(l,1)
                   perroad_r_br_tree_dir(l) = perroad_r_dir(l) * fgv1d(l,1)
                   perroad_r_ar_tree_dir(l) = perroad_r_dir(l) * fgv1d(l,2)
-                  
                   err_r=perroad_r_dir(l) -perroad_r_br_tree_dir(l)*A_v1(l)/A_g(l) -perroad_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -perroad_r_sky_dir(l)-perroad_r_sunwall_dir(l)*A_w(l)/A_g(l)-perroad_r_shadewall_dir(l)*A_w(l)/A_g (l)
                   if (debug_write) then
                      write(6,*) '-----perroad--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if   
-                  
                   road_r_sky_dir(l)          = road_r_dir(l) * fts1d(l)
                   road_r_sunwall_dir(l)      = road_r_dir(l) * fgw1d(l,1)
                   road_r_shadewall_dir(l)    = road_r_dir(l) * fgw1d(l,1)
                   road_r_br_tree_dir(l)    = road_r_dir(l) * fgv1d(l,1)
                   road_r_ar_tree_dir(l)    = road_r_dir(l) * fgv1d(l,2)
-                  
                   err_r=road_r_dir(l) -road_r_br_tree_dir(l)*A_v1(l)/A_g(l) -road_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -road_r_sky_dir(l)-road_r_sunwall_dir(l)*A_w(l)/A_g(l)-road_r_shadewall_dir(l)*A_w(l)/A_g(l)
                   if (debug_write) then
                      write(6,*) '-----road--------l=---n=', l,n
@@ -2793,13 +2889,12 @@ contains
                   sunwall_r_road_dir(l)      = sunwall_r_dir(l) * fwg1d(l,1)
                   sunwall_r_shadewall_dir(l) = sunwall_r_dir(l) * fww1d(l,1,1)
                   sunwall_r_br_tree_dir(l) = sunwall_r_dir(l) * fwv1d(l,1,1)
-                  sunwall_r_ar_tree_dir(l) = sunwall_r_dir(l) * fwv1d(l,1,2)            
+                  sunwall_r_ar_tree_dir(l) = sunwall_r_dir(l) * fwv1d(l,1,2)
                   err_r=sunwall_r_dir(l) -sunwall_r_br_tree_dir(l)*A_v1(l)/A_w(l) -sunwall_r_ar_tree_dir(l)*A_v2(l)/A_w(l) -sunwall_r_sky_dir(l)-sunwall_r_road_dir(l)*A_g(l)/A_w(l)-sunwall_r_shadewall_dir(l)*A_w(l)/A_w(l)
                   if (debug_write) then
                      write(6,*) '------sunwall--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if                      
-
                   shadewall_r_sky_dir(l)     = shadewall_r_dir(l) * fws1d(l,1)
                   shadewall_r_road_dir(l)    = shadewall_r_dir(l) * fwg1d(l,1)
                   shadewall_r_sunwall_dir(l) = shadewall_r_dir(l) * fww1d(l,1,1)
@@ -3003,6 +3098,7 @@ contains
                      write(6,*) '-----shadewall--------l=---n=', l,n
                      write(6,*) 'err_r', err_r
                   end if   
+                  
                   br_tree_r_sky_dif(l)     = br_tree_r_dif(l) * fvs1d(l,1)
                   br_tree_r_road_dif(l)    = br_tree_r_dif(l) * fvg1d(l,1)
                   br_tree_r_sunwall_dif(l) = br_tree_r_dif(l) * fvw1d(l,1,1)
@@ -3197,5 +3293,564 @@ contains
 
   end subroutine net_solar
 
+  !-----------------------------------------------------------------------
+  subroutine TwoStream (bounds, &
+       filter, num, &
+       coszen, rho, tau, &
+       canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst, &
+       SFonly)
+    !
+    ! !DESCRIPTION:
+    ! Two-stream fluxes for canopy radiative transfer
+    ! Use two-stream approximation of Dickinson (1983) Adv Geophysics
+    ! 25:305-353 and Sellers (1985) Int J Remote Sensing 6:1335-1372
+    ! to calculate fluxes absorbed by vegetation, reflected by vegetation,
+    ! and transmitted through vegetation for unit incoming direct or diffuse
+    ! flux given an underlying surface with known albedo.
+    ! Calculate sunlit and shaded fluxes as described by
+    ! Bonan et al (2011) JGR, 116, doi:10.1029/2010JG001593 and extended to
+    ! a multi-layer canopy to calculate APAR profile
+    !
+    ! !USES:
+    use clm_varpar, only : numrad, nlevcan
+    use clm_varcon, only : omegas, tfrz, betads, betais
+    use clm_varctl, only : iulog
+    use pftconMod         , only : pftcon
+    !
+    ! !ARGUMENTS:
+    type(bounds_type)      , intent(in)    :: bounds           
+    integer                , intent(in)    :: filter (:)        ! filter for vegetated patches with coszen>0
+    integer                , intent(in)    :: num               ! number of vegetated patches where coszen>0
+    real(r8), intent(in)  :: coszen( bounds%begp: )   ! cosine solar zenith angle for next time step [pft]
+    real(r8), intent(in)  :: rho( bounds%begp: , 1: ) ! leaf/stem refl weighted by fraction LAI and SAI [pft, numrad]
+    real(r8), intent(in)  :: tau( bounds%begp: , 1: ) ! leaf/stem tran weighted by fraction LAI and SAI [pft, numrad]
+    type(canopystate_type) , intent(in)    :: canopystate_inst
+    type(temperature_type) , intent(in)    :: temperature_inst
+    type(waterdiagnosticbulk_type)  , intent(in)    :: waterdiagnosticbulk_inst
+    type(surfalb_type)     , intent(inout) :: surfalb_inst
+    logical, optional      , intent(in)    :: SFonly                              ! If should just calculate the Snow Free albedos
+    !
+    ! !LOCAL VARIABLES:
+    integer  :: fp,p,c,iv,l        ! array indices
+    integer  :: ib               ! waveband number
+    real(r8) :: cosz             ! 0.001 <= coszen <= 1.000
+    real(r8) :: asu              ! single scattering albedo
+    real(r8) :: chil(bounds%begp:bounds%endp)    ! -0.4 <= xl <= 0.6
+    real(r8) :: gdir(bounds%begp:bounds%endp)    ! leaf projection in solar direction (0 to 1)
+    real(r8) :: twostext(bounds%begp:bounds%endp)! optical depth of direct beam per unit leaf area
+    real(r8) :: avmu(bounds%begp:bounds%endp)    ! average diffuse optical depth
+    real(r8) :: omega(bounds%begp:bounds%endp,numrad)   ! fraction of intercepted radiation that is scattered (0 to 1)
+    real(r8) :: omegal           ! omega for leaves
+    real(r8) :: betai            ! upscatter parameter for diffuse radiation
+    real(r8) :: betail           ! betai for leaves
+    real(r8) :: betad            ! upscatter parameter for direct beam radiation
+    real(r8) :: betadl           ! betad for leaves
+    real(r8) :: tmp0,tmp1,tmp2,tmp3,tmp4,tmp5,tmp6,tmp7,tmp8,tmp9 ! temporary
+    real(r8) :: p1,p2,p3,p4,s1,s2,u1,u2,u3                        ! temporary
+    real(r8) :: b,c1,d,d1,d2,f,h,h1,h2,h3,h4,h5,h6,h7,h8,h9,h10   ! temporary
+    real(r8) :: phi1,phi2,sigma                                   ! temporary
+    real(r8) :: temp1                                             ! temporary
+    real(r8) :: temp0    (bounds%begp:bounds%endp)                ! temporary
+    real(r8) :: temp2(bounds%begp:bounds%endp)                    ! temporary
+    real(r8) :: t1                                                ! temporary
+    real(r8) :: a1,a2                                             ! parameter for sunlit/shaded leaf radiation absorption
+    real(r8) :: v,dv,u,du                                         ! temporary for flux derivatives
+    real(r8) :: dh2,dh3,dh5,dh6,dh7,dh8,dh9,dh10                  ! temporary for flux derivatives
+    real(r8) :: da1,da2                                           ! temporary for flux derivatives
+    real(r8) :: d_ftid,d_ftii                                     ! ftid, ftii derivative with respect to lai+sai
+    real(r8) :: d_fabd,d_fabi                                     ! fabd, fabi derivative with respect to lai+sai
+    real(r8) :: d_fabd_sun,d_fabd_sha                             ! fabd_sun, fabd_sha derivative with respect to lai+sai
+    real(r8) :: d_fabi_sun,d_fabi_sha                             ! fabi_sun, fabi_sha derivative with respect to lai+sai
+    real(r8) :: laisum                                            ! cumulative lai+sai for canopy layer (at middle of layer)
+    real(r8) :: extkb                                             ! direct beam extinction coefficient
+    real(r8) :: extkn                                             ! nitrogen allocation coefficient
+    logical  :: lSFonly                                           ! Local version of SFonly (Snow Free) flag
+
+    real(r8) :: fwet(bounds%begp:bounds%endp)                                             ! nitrogen allocation coefficient
+    real(r8) :: fcansno(bounds%begp:bounds%endp)                                             ! nitrogen allocation coefficient
+    real(r8) :: tlai_z(bounds%begp:bounds%endp,nlevcan)                                             ! nitrogen allocation coefficient
+    real(r8) :: tsai_z(bounds%begp:bounds%endp,nlevcan)                                             ! nitrogen allocation coefficient
+    logical  :: snowveg_affects_radiation = .true. ! Whether snow on the vegetation canopy affects the radiation/albedo calculations
+
+    !-----------------------------------------------------------------------
+
+    ! Enforce expected array sizes
+    SHR_ASSERT_ALL_FL((ubound(coszen) == (/bounds%endp/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(rho)    == (/bounds%endp, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(tau)    == (/bounds%endp, numrad/)), sourcefile, __LINE__)
+
+    if ( present(SFonly) )then
+       lSFonly = SFonly
+    else
+       lSFonly = .false.
+    end if
+
+  associate(&
+         xl           =>    pftcon%xl                           , & ! Input:  ecophys const - leaf/stem orientation index
+         !t_veg        =>    temperature_inst%t_veg_patch        , & ! Input:  [real(r8) (:)   ]  vegetation temperature (Kelvin)         
+         t_grnd              =>   temperature_inst%t_grnd_col               , & ! Input:  [real(r8) (:)   ]  ground surface temperature (K)                    
+
+         !fwet         =>    waterdiagnosticbulk_inst%fwet_patch          , & ! Input:  [real(r8) (:)   ]  fraction of canopy that is wet (0 to 1) 
+         !fcansno      =>    waterdiagnosticbulk_inst%fcansno_patch       , & ! Input:  [real(r8) (:)   ]  fraction of canopy that is snow-covered (0 to 1) 
+
+         !elai         =>    canopystate_inst%elai_patch         , & ! Input:  [real(r8) (:)   ]  one-sided leaf area index with burying by snow
+         !esai         =>    canopystate_inst%esai_patch         , & ! Input:  [real(r8) (:)   ]  one-sided stem area index with burying by snow
+         lai                 =>   lun%lai                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+
+         !tlai_z       =>    surfalb_inst%tlai_z_patch           , & ! Input:  [real(r8) (:,:) ]  tlai increment for canopy layer       
+         !tsai_z       =>    surfalb_inst%tsai_z_patch           , & ! Input:  [real(r8) (:,:) ]  tsai increment for canopy layer       
+         nrad         =>    surfalb_inst%nrad_patch             , & ! Input:  [integer  (:)   ]  number of canopy layers, above snow for radiative transfer
+         albgrd       =>    surfalb_inst%albgrd_col             , & ! Input:  [real(r8) (:,:) ]  ground albedo (direct) (column-level) 
+         albgri       =>    surfalb_inst%albgri_col             , & ! Input:  [real(r8) (:,:) ]  ground albedo (diffuse)(column-level) 
+
+         ! For non-Snow Free
+         fsun_z       =>    surfalb_inst%fsun_z_patch           , & ! Output: [real(r8) (:,:) ]  sunlit fraction of canopy layer       
+         vcmaxcintsun =>    surfalb_inst%vcmaxcintsun_patch     , & ! Output: [real(r8) (:)   ]  leaf to canopy scaling coefficient, sunlit leaf vcmax
+         vcmaxcintsha =>    surfalb_inst%vcmaxcintsha_patch     , & ! Output: [real(r8) (:)   ]  leaf to canopy scaling coefficient, shaded leaf vcmax
+         fabd_sun_z   =>    surfalb_inst%fabd_sun_z_patch       , & ! Output: [real(r8) (:,:) ]  absorbed sunlit leaf direct  PAR (per unit lai+sai) for each canopy layer
+         fabd_sha_z   =>    surfalb_inst%fabd_sha_z_patch       , & ! Output: [real(r8) (:,:) ]  absorbed shaded leaf direct  PAR (per unit lai+sai) for each canopy layer
+         fabi_sun_z   =>    surfalb_inst%fabi_sun_z_patch       , & ! Output: [real(r8) (:,:) ]  absorbed sunlit leaf diffuse PAR (per unit lai+sai) for each canopy layer
+         fabi_sha_z   =>    surfalb_inst%fabi_sha_z_patch       , & ! Output: [real(r8) (:,:) ]  absorbed shaded leaf diffuse PAR (per unit lai+sai) for each canopy layer
+         albd         =>    surfalb_inst%albd_patch             , & ! Output: [real(r8) (:,:) ]  surface albedo (direct)               
+         albi         =>    surfalb_inst%albi_patch             , & ! Output: [real(r8) (:,:) ]  surface albedo (diffuse)              
+         fabd         =>    surfalb_inst%fabd_patch             , & ! Output: [real(r8) (:,:) ]  flux absorbed by canopy per unit direct flux
+         fabd_sun     =>    surfalb_inst%fabd_sun_patch         , & ! Output: [real(r8) (:,:) ]  flux absorbed by sunlit canopy per unit direct flux
+         fabd_sha     =>    surfalb_inst%fabd_sha_patch         , & ! Output: [real(r8) (:,:) ]  flux absorbed by shaded canopy per unit direct flux
+         fabi         =>    surfalb_inst%fabi_patch             , & ! Output: [real(r8) (:,:) ]  flux absorbed by canopy per unit diffuse flux
+         fabi_sun     =>    surfalb_inst%fabi_sun_patch         , & ! Output: [real(r8) (:,:) ]  flux absorbed by sunlit canopy per unit diffuse flux
+         fabi_sha     =>    surfalb_inst%fabi_sha_patch         , & ! Output: [real(r8) (:,:) ]  flux absorbed by shaded canopy per unit diffuse flux
+         ftdd         =>    surfalb_inst%ftdd_patch             , & ! Output: [real(r8) (:,:) ]  down direct flux below canopy per unit direct flx
+         ftid         =>    surfalb_inst%ftid_patch             , & ! Output: [real(r8) (:,:) ]  down diffuse flux below canopy per unit direct flx
+         ftii         =>    surfalb_inst%ftii_patch             , & ! Output: [real(r8) (:,:) ]  down diffuse flux below canopy per unit diffuse flx
+
+         ! Needed for SF Snow free case
+         !albsod       =>    surfalb_inst%albsod_col             , & ! Input: [real(r8)  (:,:) ]  soil albedo (direct)
+         !albsoi       =>    surfalb_inst%albsoi_col             , & ! Input: [real(r8)  (:,:) ]  soil albedo (diffuse)
+         albdSF       =>    surfalb_inst%albdSF_patch           , & ! Output: [real(r8) (:,:) ]  Snow Free surface albedo (direct)
+         albiSF       =>    surfalb_inst%albiSF_patch             & ! Output: [real(r8) (:,:) ]  Snow Free surface albedo (diffuse)
+  )
+
+   ! hard-coded veg properties
+   tlai_z = 0.0_r8
+   tlai_z(:,1) = 3.0_r8
+   fwet = 0.0_r8
+   fcansno = 0.0_r8
+   
+   ! Calculate two-stream parameters that are independent of waveband:
+   ! chil, gdir, twostext, avmu, and temp0 and temp2 (used for asu)
+
+   do fp = 1,num
+      p = filter(fp)
+
+      ! note that the following limit only acts on cosz values > 0 and less than
+      ! 0.001, not on values cosz = 0, since these zero have already been filtered
+      ! out in filter_vegsol
+      cosz = max(0.001_r8, coszen(p))
+      
+      !chil is the departure of leaf angles from a random distribution and equals +1 
+      ! for horizontal leaves, 0 for random leaves, and –1 for vertical leaves.
+      ! Eq. 3.3
+      
+      chil(p) = min( max(xl(5), -0.4_r8), 0.6_r8 )
+      if (abs(chil(p)) <= 0.01_r8) chil(p) = 0.01_r8
+      ! Eq. 3.3 
+      phi1 = 0.5_r8 - 0.633_r8*chil(p) - 0.330_r8*chil(p)*chil(p)
+      phi2 = 0.877_r8 * (1._r8-2._r8*phi1)
+      
+      ! gdir is relative projected area of leaf and stem elements in the direction cos−1 𝜇
+      gdir(p) = phi1 + phi2*cosz
+      
+      ! below Eq. 3.2 K=gdir(p)/cosz
+      ! optical depth of direct beam per unit leaf and stem area
+      twostext(p) = gdir(p)/cosz
+      
+      !avmu: The average inverse diffuse optical depth per unit leaf and stem area
+      ! Eq. 3.4
+      avmu(p) = ( 1._r8 - phi1/phi2 * log((phi1+phi2)/phi1) ) / phi2
+      
+      ! Restrict this calculation of temp0. We have seen cases where small temp0
+      ! can cause unrealistic single scattering albedo (asu) associated with the
+      ! log calculation in temp2 below, thereby eventually causing a negative soil albedo
+      ! See bugzilla bug 2431: http://bugs.cgd.ucar.edu/show_bug.cgi?id=2431
+      ! temp0 temp1 Eq. 3.16 denominator
+      ! temp 2 Eq. 3.16 term
+      temp0(p) = max(gdir(p) + phi2*cosz,1.e-6_r8)
+      temp1 = phi1*cosz
+      temp2(p) = ( 1._r8 - temp1/temp0(p) * log((temp1+temp0(p))/temp1) )
+   end do
+
+  ! Loop over all wavebands to calculate for the full canopy the scattered fluxes
+  ! reflected upward and transmitted downward by the canopy and the flux absorbed by the
+  ! canopy for a unit incoming direct beam and diffuse flux at the top of the canopy given
+  ! an underlying surface of known albedo.
+  !
+  ! Output:
+  ! ------------------
+  ! Direct beam fluxes
+  ! ------------------
+  ! albd       - Upward scattered flux above canopy (per unit direct beam flux)
+  ! ftid       - Downward scattered flux below canopy (per unit direct beam flux)
+  ! ftdd       - Transmitted direct beam flux below canopy (per unit direct beam flux)
+  ! fabd       - Flux absorbed by canopy (per unit direct beam flux)
+  ! fabd_sun   - Sunlit portion of fabd
+  ! fabd_sha   - Shaded portion of fabd
+  ! fabd_sun_z - absorbed sunlit leaf direct PAR (per unit sunlit lai+sai) for each canopy layer
+  ! fabd_sha_z - absorbed shaded leaf direct PAR (per unit shaded lai+sai) for each canopy layer
+  ! ------------------
+  ! Diffuse fluxes
+  ! ------------------
+  ! albi       - Upward scattered flux above canopy (per unit diffuse flux)
+  ! ftii       - Downward scattered flux below canopy (per unit diffuse flux)
+  ! fabi       - Flux absorbed by canopy (per unit diffuse flux)
+  ! fabi_sun   - Sunlit portion of fabi
+  ! fabi_sha   - Shaded portion of fabi
+  ! fabi_sun_z - absorbed sunlit leaf diffuse PAR (per unit sunlit lai+sai) for each canopy layer
+  ! fabi_sha_z - absorbed shaded leaf diffuse PAR (per unit shaded lai+sai) for each canopy layer
+
+   do ib = 1, numrad
+      do fp = 1,num
+         p = filter(fp)
+         c = patch%column(p)
+         l = patch%landunit(p)
+
+         ! Calculate two-stream parameters omega, betad, and betai.
+         ! Omega, betad, betai are adjusted for snow. Values for omega*betad
+         ! and omega*betai are calculated and then divided by the new omega
+         ! because the product omega*betai, omega*betad is used in solution.
+         ! Also, the transmittances and reflectances (tau, rho) are linear
+         ! weights of leaf and stem values.
+         
+         ! bewteen Eq. 3.10 and 3.11 
+         omegal = rho(p,ib) + tau(p,ib)
+         ! Eq. 3.16 whole term
+         asu = 0.5_r8*omegal*gdir(p)/temp0(p) *temp2(p)
+         ! the beta in Eq. 3.15
+         betadl = (1._r8+avmu(p)*twostext(p))/(omegal*avmu(p)*twostext(p))*asu
+         ! combinding Eq. 3.14 + 3.13; The beta in Eq. 3.13
+         betail = 0.5_r8 * ((rho(p,ib)+tau(p,ib)) + (rho(p,ib)-tau(p,ib)) &
+                * ((1._r8+chil(p))/2._r8)**2) / omegal
+
+         if ( lSFonly .or. ( (.not. snowveg_affects_radiation) .and. (t_grnd(c) > tfrz) ) ) then
+            ! Keep omega, betad, and betai as they are (for Snow free case or
+            ! when there is no snow
+            tmp0 = omegal
+            tmp1 = betadl
+            tmp2 = betail
+         else
+            ! Adjust omega, betad, and betai for intercepted snow
+            if (snowveg_affects_radiation) then
+               tmp0 =   (1._r8-fcansno(p))*omegal        + fcansno(p)*omegas(ib)
+               tmp1 = ( (1._r8-fcansno(p))*omegal*betadl + fcansno(p)*omegas(ib)*betads ) / tmp0
+               tmp2 = ( (1._r8-fcansno(p))*omegal*betail + fcansno(p)*omegas(ib)*betais ) / tmp0
+            else
+               tmp0 =   (1._r8-fwet(p))*omegal        + fwet(p)*omegas(ib)
+               tmp1 = ( (1._r8-fwet(p))*omegal*betadl + fwet(p)*omegas(ib)*betads ) / tmp0
+               tmp2 = ( (1._r8-fwet(p))*omegal*betail + fwet(p)*omegas(ib)*betais ) / tmp0
+            end if
+         end if  ! end Snow free
+
+         omega(p,ib) = tmp0
+         betad = tmp1
+         betai = tmp2
+
+         ! Common terms
+
+         b = 1._r8 - omega(p,ib) + omega(p,ib)*betai !Eq. 3.31
+         c1 = omega(p,ib)*betai !Eq. 3.32
+         tmp0 = avmu(p)*twostext(p) ! mu K
+         d = tmp0 * omega(p,ib)*betad !Eq. 3.33
+         f = tmp0 * omega(p,ib)*(1._r8-betad) !Eq. 3.34
+         tmp1 = b*b - c1*c1 !part of Eq. 3.35
+         h = sqrt(tmp1) / avmu(p) ! Eq. 3.35
+         sigma = tmp0*tmp0 - tmp1 !Eq. 3.36
+         p1 = b + avmu(p)*h !Eq. 3.42
+         p2 = b - avmu(p)*h !Eq. 3.43
+         p3 = b + tmp0       !Eq. 3.44
+         p4 = b - tmp0 !Eq. 3.45
+
+         ! Absorbed, reflected, transmitted fluxes per unit incoming radiation
+         ! for full canopy
+
+         t1 = min(h*(lai(l)), 40._r8) !part of Eq. 3.40
+         s1 = exp(-t1)!Eq. 3.40
+         t1 = min(twostext(p)*(lai(l)), 40._r8) !part of Eq. 3.41
+         s2 = exp(-t1)!Eq. 3.41
+
+         ! Direct beam
+         if ( .not. lSFonly )then
+            u1 = b - c1/albgrd(c,ib)
+            u2 = b - c1*albgrd(c,ib)
+            u3 = f + c1*albgrd(c,ib)
+         else
+            ! Snow Free (SF) only 
+            ! albsod instead of albgrd here:
+            !u1 = b - c1/albsod(c,ib) !Eq. 3.37
+            !u2 = b - c1*albsod(c,ib) !Eq. 3.38
+            !u3 = f + c1*albsod(c,ib) !Eq. 3.39
+            u1 = b - c1/albgrd(c,ib)
+            u2 = b - c1*albgrd(c,ib)
+            u3 = f + c1*albgrd(c,ib)
+         end if
+         tmp2 = u1 - avmu(p)*h !part of Eq. 3.46
+         tmp3 = u1 + avmu(p)*h !part of Eq. 3.46
+         d1 = p1*tmp2/s1 - p2*tmp3*s1 !Eq. 3.46
+         tmp4 = u2 + avmu(p)*h !part of Eq. 3.47
+         tmp5 = u2 - avmu(p)*h !part of Eq. 3.47
+         d2 = tmp4/s1 - tmp5*s1 !Eq. 3.47
+         h1 = -d*p4 - c1*f !Eq. 3.48
+         tmp6 = d - h1*p3/sigma
+         tmp7 = ( d - c1 - h1/sigma*(u1+tmp0) ) * s2
+         h2 = ( tmp6*tmp2/s1 - p2*tmp7 ) / d1 !Eq. 3.49
+         h3 = - ( tmp6*tmp3*s1 - p1*tmp7 ) / d1 !Eq. 3.50
+         h4 = -f*p3 - c1*d !Eq. 3.51
+         tmp8 = h4/sigma 
+         tmp9 = ( u3 - tmp8*(u2-tmp0) ) * s2
+         h5 = - ( tmp8*tmp4/s1 + tmp9 ) / d2 !Eq. 3.52
+         h6 = ( tmp8*tmp5*s1 + tmp9 ) / d2 !Eq. 3.53
+         if ( .not. lSFonly )then
+           albd(p,ib) = h1/sigma + h2 + h3 !surface albedo (direct)
+           ftid(p,ib) = h4*s2/sigma + h5*s1 + h6/s1 !down diffuse flux below canopy per unit direct flx
+           ftdd(p,ib) = s2 !down direct flux below canopy per unit direct flx
+           !flux absorbed by canopy per unit direct flux
+           fabd(p,ib) = 1._r8 - albd(p,ib) - (1._r8-albgrd(c,ib))*ftdd(p,ib) - (1._r8-albgri(c,ib))*ftid(p,ib)
+         else
+           albdSF(p,ib) = h1/sigma + h2 + h3 !Snow Free surface albedo (direct)
+         end if
+         
+         ! Eq. 3.25
+         a1 = h1 / sigma * (1._r8 - s2*s2) / (2._r8 * twostext(p)) &
+            + h2         * (1._r8 - s2*s1) / (twostext(p) + h) &
+            + h3         * (1._r8 - s2/s1) / (twostext(p) - h)
+            
+         ! Eq. 3.26
+         a2 = h4 / sigma * (1._r8 - s2*s2) / (2._r8 * twostext(p)) &
+            + h5         * (1._r8 - s2*s1) / (twostext(p) + h) &
+            + h6         * (1._r8 - s2/s1) / (twostext(p) - h)
+         if ( .not. lSFonly )then
+           !flux absorbed by sunlit canopy per unit direct flux
+           !flux absorbed by shaded canopy per unit direct flux
+           fabd_sun(p,ib) = (1._r8 - omega(p,ib)) * ( 1._r8 - s2 + 1._r8 / avmu(p) * (a1 + a2) )
+           fabd_sha(p,ib) = fabd(p,ib) - fabd_sun(p,ib)
+         end if
+
+         ! Diffuse
+         if ( .not. lSFonly )then
+           u1 = b - c1/albgri(c,ib) !Eq. 3.37
+           u2 = b - c1*albgri(c,ib) !Eq. 3.38
+         else
+            ! Snow Free (SF) only 
+            ! albsoi instead of albgri here:
+           !u1 = b - c1/albsoi(c,ib)
+           !u2 = b - c1*albsoi(c,ib)
+           u1 = b - c1/albgri(c,ib) !Eq. 3.37
+           u2 = b - c1*albgri(c,ib) !Eq. 3.38
+         end if
+         tmp2 = u1 - avmu(p)*h
+         tmp3 = u1 + avmu(p)*h
+         d1 = p1*tmp2/s1 - p2*tmp3*s1 !Eq 3.46
+         tmp4 = u2 + avmu(p)*h
+         tmp5 = u2 - avmu(p)*h
+         d2 = tmp4/s1 - tmp5*s1 !Eq 3.47
+         h7 = (c1*tmp2) / (d1*s1) !Eq 3.54
+         h8 = (-c1*tmp3*s1) / d1 !Eq 3.55
+         h9 = tmp4 / (d2*s1) !Eq 3.56
+         h10 = (-tmp5*s1) / d2 !Eq 3.57
+
+ 
+         ! Final Snow Free albedo
+         if ( lSFonly )then
+           albiSF(p,ib) = h7 + h8
+         else
+           ! For non snow Free case, adjustments continue
+           albi(p,ib) = h7 + h8
+           ftii(p,ib) = h9*s1 + h10/s1
+           fabi(p,ib) = 1._r8 - albi(p,ib) - (1._r8-albgri(c,ib))*ftii(p,ib)
+           !Eq 3.29 3.30
+           a1 = h7 * (1._r8 - s2*s1) / (twostext(p) + h) +  h8 * (1._r8 - s2/s1) / (twostext(p) - h)
+           a2 = h9 * (1._r8 - s2*s1) / (twostext(p) + h) + h10 * (1._r8 - s2/s1) / (twostext(p) - h)
+
+           fabi_sun(p,ib) = (1._r8 - omega(p,ib)) / avmu(p) * (a1 + a2)
+           fabi_sha(p,ib) = fabi(p,ib) - fabi_sun(p,ib)
+ 
+           ! Repeat two-stream calculations for each canopy layer to calculate derivatives.
+           ! tlai_z and tsai_z are the leaf+stem area increment for a layer. Derivatives are
+           ! calculated at the center of the layer. Derivatives are needed only for the
+           ! visible waveband to calculate absorbed PAR (per unit lai+sai) for each canopy layer.
+           ! Derivatives are calculated first per unit lai+sai and then normalized for sunlit
+           ! or shaded fraction of canopy layer.
+ 
+           ! Sun/shade big leaf code uses only one layer, with canopy integrated values from above
+           ! and also canopy-integrated scaling coefficients
+ 
+           if (ib == 1) then
+              if (nlevcan == 1) then
+ 
+                 ! sunlit fraction of canopy
+                 fsun_z(p,1) = (1._r8 - s2) / t1
+ 
+                 ! absorbed PAR (per unit sun/shade lai+sai)
+                 laisum = lai(l)
+                 fabd_sun_z(p,1) = fabd_sun(p,ib) / (fsun_z(p,1)*laisum)
+                 fabi_sun_z(p,1) = fabi_sun(p,ib) / (fsun_z(p,1)*laisum)
+                 fabd_sha_z(p,1) = fabd_sha(p,ib) / ((1._r8 - fsun_z(p,1))*laisum)
+                 fabi_sha_z(p,1) = fabi_sha(p,ib) / ((1._r8 - fsun_z(p,1))*laisum)
+ 
+                 ! leaf to canopy scaling coefficients
+                 extkn = 0.30_r8
+                 extkb = twostext(p)
+                 vcmaxcintsun(p) = (1._r8 - exp(-(extkn+extkb)*lai(l))) / (extkn + extkb)
+                 vcmaxcintsha(p) = (1._r8 - exp(-extkn*lai(l))) / extkn - vcmaxcintsun(p)
+                 if (lai(l)  >  0._r8) then
+                   vcmaxcintsun(p) = vcmaxcintsun(p) / (fsun_z(p,1)*lai(l))
+                   vcmaxcintsha(p) = vcmaxcintsha(p) / ((1._r8 - fsun_z(p,1))*lai(l))
+                 else
+                   vcmaxcintsun(p) = 0._r8
+                   vcmaxcintsha(p) = 0._r8
+                 end if
+ 
+              else if (nlevcan > 1)then
+                 do iv = 1, nrad(p)
+ 
+                    ! Cumulative lai+sai at center of layer
+ 
+                    if (iv == 1) then
+                       laisum = 0.5_r8 * (tlai_z(p,iv)+tsai_z(p,iv))
+                    else
+                       laisum = laisum + 0.5_r8 * ((tlai_z(p,iv-1)+tsai_z(p,iv-1))+(tlai_z(p,iv)+tsai_z(p,iv)))
+                    end if
+ 
+                    ! Coefficients s1 and s2 depend on cumulative lai+sai. s2 is the sunlit fraction
+    
+                    t1 = min(h*laisum, 40._r8)
+                    s1 = exp(-t1)
+                    t1 = min(twostext(p)*laisum, 40._r8)
+                    s2 = exp(-t1)
+                    fsun_z(p,iv) = s2
+ 
+                    ! ===============
+                    ! Direct beam
+                    ! ===============
+ 
+                    ! Coefficients h1-h6 and a1,a2 depend of cumulative lai+sai
+ 
+                    u1 = b - c1/albgrd(c,ib)
+                    u2 = b - c1*albgrd(c,ib)
+                    u3 = f + c1*albgrd(c,ib)
+ 
+                    ! Derivatives for h2, h3, h5, h6 and a1, a2
+ 
+                    v = d1
+                    dv = h * p1 * tmp2 / s1 + h * p2 * tmp3 * s1
+ 
+                    u = tmp6 * tmp2 / s1 - p2 * tmp7
+                    du = h * tmp6 * tmp2 / s1 + twostext(p) * p2 * tmp7
+                    dh2 = (v * du - u * dv) / (v * v)
+ 
+                    u = -tmp6 * tmp3 * s1 + p1 * tmp7
+                    du = h * tmp6 * tmp3 * s1 - twostext(p) * p1 * tmp7
+                    dh3 = (v * du - u * dv) / (v * v)
+ 
+                    v = d2
+                    dv = h * tmp4 / s1 + h * tmp5 * s1
+    
+                    u = -h4/sigma * tmp4 / s1 - tmp9
+                    du = -h * h4/sigma * tmp4 / s1 + twostext(p) * tmp9
+                    dh5 = (v * du - u * dv) / (v * v)
+ 
+                    u = h4/sigma * tmp5 * s1 + tmp9
+                    du = -h * h4/sigma * tmp5 * s1 - twostext(p) * tmp9
+                    dh6 = (v * du - u * dv) / (v * v)
+ 
+                    da1 = h1/sigma * s2*s2 + h2 * s2*s1 + h3 * s2/s1 &
+                        + (1._r8 - s2*s1) / (twostext(p) + h) * dh2 &
+                        + (1._r8 - s2/s1) / (twostext(p) - h) * dh3
+                    da2 = h4/sigma * s2*s2 + h5 * s2*s1 + h6 * s2/s1 &
+                        + (1._r8 - s2*s1) / (twostext(p) + h) * dh5 &
+                        + (1._r8 - s2/s1) / (twostext(p) - h) * dh6
+ 
+                    ! Flux derivatives
+    
+                    d_ftid = -twostext(p)*h4/sigma*s2 - h*h5*s1 + h*h6/s1 + dh5*s1 + dh6/s1
+                    d_fabd = -(dh2+dh3) + (1._r8-albgrd(c,ib))*twostext(p)*s2 - (1._r8-albgri(c,ib))*d_ftid
+                    d_fabd_sun = (1._r8 - omega(p,ib)) * (twostext(p)*s2 + 1._r8 / avmu(p) * (da1 + da2))
+                    d_fabd_sha = d_fabd - d_fabd_sun
+ 
+                    fabd_sun_z(p,iv) = max(d_fabd_sun, 0._r8)
+                    fabd_sha_z(p,iv) = max(d_fabd_sha, 0._r8)
+ 
+                    ! Flux derivatives are APARsun and APARsha per unit (LAI+SAI). Need
+                    ! to normalize derivatives by sunlit or shaded fraction to get
+                    ! APARsun per unit (LAI+SAI)sun and APARsha per unit (LAI+SAI)sha
+ 
+                    fabd_sun_z(p,iv) = fabd_sun_z(p,iv) / fsun_z(p,iv)
+                    fabd_sha_z(p,iv) = fabd_sha_z(p,iv) / (1._r8 - fsun_z(p,iv))
+ 
+                    ! ===============
+                    ! Diffuse
+                    ! ===============
+ 
+                    ! Coefficients h7-h10 and a1,a2 depend of cumulative lai+sai
+ 
+                    u1 = b - c1/albgri(c,ib)
+                    u2 = b - c1*albgri(c,ib)
+
+                    a1 = h7 * (1._r8 - s2*s1) / (twostext(p) + h) +  h8 * (1._r8 - s2/s1) / (twostext(p) - h)
+                    a2 = h9 * (1._r8 - s2*s1) / (twostext(p) + h) + h10 * (1._r8 - s2/s1) / (twostext(p) - h)
+    
+                    ! Derivatives for h7, h8, h9, h10 and a1, a2
+ 
+                    v = d1
+                    dv = h * p1 * tmp2 / s1 + h * p2 * tmp3 * s1
+    
+                    u = c1 * tmp2 / s1
+                    du = h * c1 * tmp2 / s1
+                    dh7 = (v * du - u * dv) / (v * v)
+ 
+                    u = -c1 * tmp3 * s1
+                    du = h * c1 * tmp3 * s1
+                    dh8 = (v * du - u * dv) / (v * v)
+ 
+                    v = d2
+                    dv = h * tmp4 / s1 + h * tmp5 * s1
+ 
+                    u = tmp4 / s1
+                    du = h * tmp4 / s1
+                    dh9 = (v * du - u * dv) / (v * v)
+ 
+                    u = -tmp5 * s1
+                    du = h * tmp5 * s1
+                    dh10 = (v * du - u * dv) / (v * v)
+ 
+                    da1 = h7*s2*s1 +  h8*s2/s1 + (1._r8-s2*s1)/(twostext(p)+h)*dh7 + (1._r8-s2/s1)/(twostext(p)-h)*dh8
+                    da2 = h9*s2*s1 + h10*s2/s1 + (1._r8-s2*s1)/(twostext(p)+h)*dh9 + (1._r8-s2/s1)/(twostext(p)-h)*dh10
+ 
+                    ! Flux derivatives
+ 
+                    d_ftii = -h * h9 * s1 + h * h10 / s1 + dh9 * s1 + dh10 / s1
+                    d_fabi = -(dh7+dh8) - (1._r8-albgri(c,ib))*d_ftii
+                    d_fabi_sun = (1._r8 - omega(p,ib)) / avmu(p) * (da1 + da2)
+                    d_fabi_sha = d_fabi - d_fabi_sun
+ 
+                    fabi_sun_z(p,iv) = max(d_fabi_sun, 0._r8)
+                    fabi_sha_z(p,iv) = max(d_fabi_sha, 0._r8)
+ 
+                    ! Flux derivatives are APARsun and APARsha per unit (LAI+SAI). Need
+                    ! to normalize derivatives by sunlit or shaded fraction to get
+                    ! APARsun per unit (LAI+SAI)sun and APARsha per unit (LAI+SAI)sha
+ 
+                    fabi_sun_z(p,iv) = fabi_sun_z(p,iv) / fsun_z(p,iv)
+                    fabi_sha_z(p,iv) = fabi_sha_z(p,iv) / (1._r8 - fsun_z(p,iv))
+ 
+                 end do ! end of iv loop
+              end if ! nlevcan
+           end if   ! first band
+         end if  ! NOT lSFonly
+
+      end do   ! end of pft loop
+   end do   ! end of radiation band loop
+
+    end associate 
+
+end subroutine TwoStream
   
 end module UrbanAlbedoMod

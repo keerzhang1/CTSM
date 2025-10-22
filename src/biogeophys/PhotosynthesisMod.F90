@@ -33,7 +33,10 @@ module  PhotosynthesisMod
   use OzoneBaseMod        , only : ozone_base_type
   use LandunitType        , only : lun
   use PatchType           , only : patch
+  use ColumnType        , only : col
   use GridcellType        , only : grc
+
+
   !
   implicit none
   private
@@ -1235,7 +1238,9 @@ contains
     use clm_varctl     , only : cnallocate_carbon_only
     use clm_varctl     , only : lnc_opt, reduce_dayl_factor, vcmax_opt    
     use pftconMod      , only : nbrdlf_dcd_tmp_shrub, npcropmin
-
+    use LandunitType      , only : lun 
+    use landunit_varcon , only : isturb_tbd, isturb_hd, isturb_md
+    use column_varcon       , only : icol_road_tree
     !
     ! !ARGUMENTS:
     type(bounds_type)      , intent(in)    :: bounds
@@ -1291,7 +1296,7 @@ contains
     real(r8) :: lmrc           ! scaling factor for high temperature inhibition (25 C = 1.0)
 
     ! Other
-    integer  :: f,p,c,iv          ! indices
+    integer  :: f,p,c,iv,l          ! indices
     real(r8) :: cf                ! s m**2/umol -> s/m
     real(r8) :: rsmax0            ! maximum stomatal resistance [s/m]
     real(r8) :: gb                ! leaf boundary layer conductance (m/s)
@@ -1356,6 +1361,8 @@ contains
 
     real(r8) :: dtime                           ! land model time step (sec)
     integer  :: g                               ! index
+    real(r8) :: tveg_tgrnd     
+    integer  :: veg_type             ! iteration loop index         
     !------------------------------------------------------------------------------
 
     ! Temperature and soil water response functions
@@ -1395,9 +1402,12 @@ contains
          t10        => temperature_inst%t_a10_patch          , & ! Input:  [real(r8) (:)   ]  10-day running mean of the 2 m temperature (K)
          tgcm       => temperature_inst%thm_patch            , & ! Input:  [real(r8) (:)   ]  air temperature at agcm reference height (kelvin)
 
+         t_grnd              =>   temperature_inst%t_grnd_col               , & ! Input:  [real(r8) (:)   ]  ground surface temperature (K)                    
+
          nrad       => surfalb_inst%nrad_patch               , & ! Input:  [integer  (:)   ]  pft number of canopy layers, above snow for radiative transfer
          tlai_z     => surfalb_inst%tlai_z_patch             , & ! Input:  [real(r8) (:,:) ]  pft total leaf area index for canopy layer
-         tlai       => canopystate_inst%tlai_patch           , & ! Input:  [real(r8)(:)    ]  one-sided leaf area index, no burying by snow  
+         lai                 =>   lun%lai                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+         tlai       => canopystate_inst%tlai_patch           , & ! Input/Output:  [real(r8)(:)    ]  one-sided leaf area index, no burying by snow  
          c3flag     => photosyns_inst%c3flag_patch           , & ! Output: [logical  (:)   ]  true if C3 and false if C4
          ac         => photosyns_inst%ac_patch               , & ! Output: [real(r8) (:,:) ]  Rubisco-limited gross photosynthesis (umol CO2/m**2/s)
          aj         => photosyns_inst%aj_patch               , & ! Output: [real(r8) (:,:) ]  RuBP-limited gross photosynthesis (umol CO2/m**2/s)
@@ -1433,7 +1443,9 @@ contains
          par_z     =>    solarabs_inst%parsun_z_patch        ! Input:  [real(r8) (:,:) ]  par absorbed per unit lai for canopy layer (w/m**2)
          lai_z     =>    canopystate_inst%laisun_z_patch     ! Input:  [real(r8) (:,:) ]  leaf area index for canopy layer, sunlit or shaded
          vcmaxcint =>    surfalb_inst%vcmaxcintsun_patch     ! Input:  [real(r8) (:)   ]  leaf to canopy scaling coefficient
+         ! alphapsn is an output?
          alphapsn  =>    photosyns_inst%alphapsnsun_patch    ! Input:  [real(r8) (:)   ]  13C fractionation factor for PSN ()
+         ! here
          o3coefv   =>    ozone_inst%o3coefvsun_patch         ! Input:  [real(r8) (:)   ]  O3 coefficient used in photosynthesis calculation
          o3coefg   =>    ozone_inst%o3coefgsun_patch         ! Input:  [real(r8) (:)   ]  O3 coefficient used in rs calculation
          ci_z      =>    photosyns_inst%cisun_z_patch        ! Output: [real(r8) (:,:) ]  intracellular leaf CO2 (Pa)
@@ -1465,12 +1477,14 @@ contains
          psn_wp    =>    photosyns_inst%psnsha_wp_patch      ! Output: [real(r8) (:)   ]  product-limited foliage photosynthesis (umol co2 /m**2/ s) [always +]
       end if
 
+
       !==============================================================================!
       ! Photosynthesis and stomatal conductance parameters, from:
       ! Bonan et al (2011) JGR, 116, doi:10.1029/2010JG001593
       !==============================================================================!
 
       ! Determine seconds of current time step
+
 
       dtime = get_step_size_real()
 
@@ -1490,12 +1504,25 @@ contains
       do f = 1, fn
          p = filterp(f)
          c = patch%column(p)
+         l = patch%landunit(p)
+
+         if ((lun%itype(l) == isturb_tbd) .or. (lun%itype(l) == isturb_hd) .or. (lun%itype(l) == isturb_md)) then
+           tveg_tgrnd = t_grnd(c)
+           tlai(p) = lai(l)
+           veg_type=5
+         else
+           tveg_tgrnd = t_veg(p)
+           veg_type=patch%itype(p)
+         end if
+         
+         write (6,'(A,I5)') '-------------------(p):par_z(p,iv)------------------- ', p
+         write (6,'(A,1X,*(F10.5,1X))') 'par_z(p,:)', par_z(p,:)
 
          ! C3 or C4 photosynthesis logical variable
 
-         if (nint(c3psn(patch%itype(p))) == 1) then
+         if (nint(c3psn(veg_type)) == 1) then
             c3flag(p) = .true.
-         else if (nint(c3psn(patch%itype(p))) == 0) then
+         else if (nint(c3psn(veg_type)) == 0) then
             c3flag(p) = .false.
          end if
 
@@ -1513,7 +1540,7 @@ contains
 
          if ( stomatalcond_mtd == stomatalcond_mtd_bb1987 ) then
             bbb(p) = max (bbbopt(p)*btran(p), 1._r8)
-            mbb(p) = mbbopt(patch%itype(p))
+            mbb(p) = mbbopt(veg_type)
          end if
 
          ! kc, ko, cp, from: Bernacchi et al (2001) Plant, Cell and Environment 24:253-259
@@ -1530,11 +1557,11 @@ contains
          ko25 = params_inst%ko25_coef * forc_pbot(c)
          sco  = 0.5_r8 * 0.209_r8 / params_inst%cp25_yr2000
          cp25 = 0.5_r8 * oair(p) / sco
+         
 
-         kc(p) = kc25 * ft(t_veg(p), params_inst%kcha)
-         ko(p) = ko25 * ft(t_veg(p), params_inst%koha)
-         cp(p) = cp25 * ft(t_veg(p), params_inst%cpha)
-
+         kc(p) = kc25 * ft(tveg_tgrnd, params_inst%kcha)
+         ko(p) = ko25 * ft(tveg_tgrnd, params_inst%koha)
+         cp(p) = cp25 * ft(tveg_tgrnd, params_inst%cpha)
       end do
 
       ! Multi-layer parameters scaled by leaf nitrogen profile.
@@ -1547,10 +1574,10 @@ contains
          if (lnc_opt .eqv. .false.) then     
             ! Leaf nitrogen concentration at the top of the canopy (g N leaf / m**2 leaf)
             
-           if ( (slatop(patch%itype(p)) *leafcn(patch%itype(p))) .le. 0.0_r8)then
+           if ( (slatop(veg_type) *leafcn(veg_type)) .le. 0.0_r8)then
               call endrun(subgrid_index=p, subgrid_level=subgrid_level_patch, msg="ERROR: slatop or leafcn is zero")
            end if
-           lnc(p) = 1._r8 / (slatop(patch%itype(p)) * leafcn(patch%itype(p)))
+           lnc(p) = 1._r8 / (slatop(veg_type) * leafcn(veg_type))
          end if   
 
          ! Using the actual nitrogen allocated to the leaf after
@@ -1607,23 +1634,23 @@ contains
          ! Default
          if (vcmax_opt == 0) then                                                   
             ! vcmax25 at canopy top, as in CN but using lnc at top of the canopy
-            vcmax25top = lnc(p) * flnr(patch%itype(p)) * params_inst%fnr * params_inst%act25 * dayl_factor(p)
+            vcmax25top = lnc(p) * flnr(veg_type) * params_inst%fnr * params_inst%act25 * dayl_factor(p)
             if (.not. use_cn) then
-               vcmax25top = vcmax25top * fnitr(patch%itype(p))
+               vcmax25top = vcmax25top * fnitr(veg_type)
             else
-               if ( CNAllocate_Carbon_only() ) vcmax25top = vcmax25top * fnitr(patch%itype(p))
+               if ( CNAllocate_Carbon_only() ) vcmax25top = vcmax25top * fnitr(veg_type)
             end if
          else if (vcmax_opt == 3) then                                                                   
-            vcmax25top = ( i_vcad(patch%itype(p)) + s_vcad(patch%itype(p)) * lnc(p) ) * dayl_factor(p)  
+            vcmax25top = ( i_vcad(veg_type) + s_vcad(veg_type) * lnc(p) ) * dayl_factor(p)  
          else if (vcmax_opt == 4) then                                                                   
             nptreemax = 9  ! is this number correct? check later 
-            if (patch%itype(p) >= nptreemax) then   ! if not tree 
+            if (veg_type >= nptreemax) then   ! if not tree 
                ! for shrubs and herbs 
-               vcmax25top = lnc(p) * ( i_flnr(patch%itype(p)) + s_flnr(patch%itype(p)) * lnc(p) ) * params_inst%fnr * params_inst%act25 * &
+               vcmax25top = lnc(p) * ( i_flnr(veg_type) + s_flnr(veg_type) * lnc(p) ) * params_inst%fnr * params_inst%act25 * &
                     dayl_factor(p)
             else
                ! if tree 
-               vcmax25top = lnc(p) * ( i_flnr(patch%itype(p)) * exp(s_flnr(patch%itype(p)) * lnc(p)) ) * params_inst%fnr * params_inst%act25 * &
+               vcmax25top = lnc(p) * ( i_flnr(veg_type) * exp(s_flnr(veg_type) * lnc(p)) ) * params_inst%fnr * params_inst%act25 * &
                     dayl_factor(p)
                ! for trees 
             end if     
@@ -1718,19 +1745,23 @@ contains
 
             lmr25 = lmr25top * nscaler
 
-            if(use_luna.and.c3flag(p).and.crop(patch%itype(p))== 0) then
+            if(use_luna.and.c3flag(p).and.crop(veg_type)== 0) then
                 if(.not.use_cn)then ! If CN is on, use leaf N to predict respiration (above). Otherwise, use Vcmax term from LUNA.  RF
                   lmr25 = leaf_mr_vcm * photosyns_inst%vcmx25_z_patch(p,iv)
                 endif
             endif
           
             if (c3flag(p)) then
-               lmr_z(p,iv) = lmr25 * ft(t_veg(p), params_inst%lmrha) * fth(t_veg(p), params_inst%lmrhd, &
+               lmr_z(p,iv) = lmr25 * ft(tveg_tgrnd, params_inst%lmrha) * fth(tveg_tgrnd, params_inst%lmrhd, &
                     params_inst%lmrse, lmrc)
             else
-               lmr_z(p,iv) = lmr25 * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
-               lmr_z(p,iv) = lmr_z(p,iv) / (1._r8 + exp( 1.3_r8*(t_veg(p)-(tfrz+55._r8)) ))
+               lmr_z(p,iv) = lmr25 * 2._r8**((tveg_tgrnd-(tfrz+25._r8))/10._r8)
+               lmr_z(p,iv) = lmr_z(p,iv) / (1._r8 + exp( 1.3_r8*(tveg_tgrnd-(tfrz+55._r8)) ))
             end if
+            
+            write (6,'(A,I5)') '-------------------(p):par_z(p,iv)------------------- ', p
+            write (6,'(A,I5)') '-------------------iv---------------- ', iv
+            write (6,'(A,1X,*(F10.5,1X))') 'par_z(p,iv)', par_z(p,iv)
 
             if (par_z(p,iv) <= 0._r8) then           ! night time
 
@@ -1745,7 +1776,7 @@ contains
 
             else                                     ! day time
 
-               if(use_luna.and.c3flag(p).and.crop(patch%itype(p))== 0)then
+               if(use_luna.and.c3flag(p).and.crop(veg_type)== 0)then
                   vcmax25 = photosyns_inst%vcmx25_z_patch(p,iv)
                   jmax25 = photosyns_inst%jmx25_z_patch(p,iv)
                   tpu25 = params_inst%tpu25ratio * vcmax25 
@@ -1771,20 +1802,19 @@ contains
                vcmaxc = fth25 (params_inst%vcmaxhd, vcmaxse)
                jmaxc  = fth25 (params_inst%jmaxhd, jmaxse)
                tpuc   = fth25 (params_inst%tpuhd, tpuse)
-               vcmax_z(p,iv) = vcmax25 * ft(t_veg(p), params_inst%vcmaxha) * fth(t_veg(p), &
+               vcmax_z(p,iv) = vcmax25 * ft(tveg_tgrnd, params_inst%vcmaxha) * fth(tveg_tgrnd, &
                     params_inst%vcmaxhd, vcmaxse, vcmaxc)
-               jmax_z(p,iv) = jmax25 * ft(t_veg(p), params_inst%jmaxha) * fth(t_veg(p), &
+               jmax_z(p,iv) = jmax25 * ft(tveg_tgrnd, params_inst%jmaxha) * fth(tveg_tgrnd, &
                     params_inst%jmaxhd, jmaxse, jmaxc)
-               tpu_z(p,iv) = tpu25 * ft(t_veg(p), params_inst%tpuha) * fth(t_veg(p), params_inst%tpuhd, tpuse, tpuc)
+               tpu_z(p,iv) = tpu25 * ft(tveg_tgrnd, params_inst%tpuha) * fth(tveg_tgrnd, params_inst%tpuhd, tpuse, tpuc)
 
                if (.not. c3flag(p)) then
-                  vcmax_z(p,iv) = vcmax25 * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
-                  vcmax_z(p,iv) = vcmax_z(p,iv) / (1._r8 + exp( 0.2_r8*((tfrz+15._r8)-t_veg(p)) ))
-                  vcmax_z(p,iv) = vcmax_z(p,iv) / (1._r8 + exp( 0.3_r8*(t_veg(p)-(tfrz+40._r8)) ))
+                  vcmax_z(p,iv) = vcmax25 * 2._r8**((tveg_tgrnd-(tfrz+25._r8))/10._r8)
+                  vcmax_z(p,iv) = vcmax_z(p,iv) / (1._r8 + exp( 0.2_r8*((tfrz+15._r8)-tveg_tgrnd) ))
+                  vcmax_z(p,iv) = vcmax_z(p,iv) / (1._r8 + exp( 0.3_r8*(tveg_tgrnd-(tfrz+40._r8)) ))
                end if
 
-               kp_z(p,iv) = kp25 * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
-
+               kp_z(p,iv) = kp25 * 2._r8**((tveg_tgrnd-(tfrz+25._r8))/10._r8)
             end if
 
             ! Adjust for soil water
@@ -1837,7 +1867,11 @@ contains
                if (      stomatalcond_mtd == stomatalcond_mtd_bb1987 )then
                   rs_z(p,iv) = min(rsmax0, 1._r8/bbb(p) * cf)
                else if ( stomatalcond_mtd == stomatalcond_mtd_medlyn2011 )then
-                  rs_z(p,iv) = min(rsmax0, 1._r8/medlynintercept(patch%itype(p)) * cf)
+                  if (col%itype(c) == icol_road_tree) then
+                      rs_z(p,iv) = min(rsmax0, 1._r8/medlynintercept(5) * cf)
+                  else 
+                      rs_z(p,iv) = min(rsmax0, 1._r8/medlynintercept(veg_type) * cf)
+                  end if
                end if
                ci_z(p,iv) = 0._r8
                rh_leaf(p) = 0._r8
@@ -1893,7 +1927,7 @@ contains
                   if (stomatalcond_mtd == stomatalcond_mtd_bb1987) then
                      gs_mol(p,iv) = bbb(p)
                   else if ( stomatalcond_mtd == stomatalcond_mtd_medlyn2011 )then
-                     gs_mol(p,iv) = medlynintercept(patch%itype(p))
+                     gs_mol(p,iv) = medlynintercept(veg_type)
                   end if
                end if
 
@@ -2025,6 +2059,7 @@ contains
     end associate
 
   end subroutine Photosynthesis
+
 
   !------------------------------------------------------------------------------
   subroutine PhotosynthesisTotal (fn, filterp, &
@@ -2266,6 +2301,7 @@ contains
     real(r8), intent(in) :: cair               ! Atmospheric CO2 partial pressure (Pa)
     real(r8), intent(in) :: oair               ! Atmospheric O2 partial pressure (Pa)
     integer,  intent(in) :: p, iv, c           ! pft, c3/c4, and column index
+
     ! gs_mol is "inout" rather than "out" to
     ! prevent returning nan when the code returns from this subroutine
     ! before assigning a value to this variable
@@ -2563,6 +2599,8 @@ contains
     ! photosynthesis model, I have decided to add these relevant variables to
     ! the relevant data types.
     !
+    use column_varcon       , only : icol_road_tree
+    
     !!ARGUMENTS:
     real(r8)             , intent(in)    :: ci       ! intracellular leaf CO2 (Pa)
     real(r8)             , intent(in)    :: lmr_z    ! canopy layer: leaf maintenance respiration rate (umol CO2/m**2/s)
@@ -2587,6 +2625,7 @@ contains
     real(r8) :: term                 ! intermediate in Medlyn stomatal model
     real(r8) :: aquad, bquad, cquad  ! terms for quadratic equations
     real(r8) :: r1, r2               ! roots of quadratic equation
+    integer  :: c2
     !------------------------------------------------------------------------------
 
     associate(&
@@ -2636,8 +2675,13 @@ contains
       end if
 
       ! Gross photosynthesis. First co-limit ac and aj. Then co-limit ap
-
-      aquad = params_inst%theta_cj(ivt(p))
+      c2=patch%column(p)
+      
+      if (col%itype(c2) == icol_road_tree) then
+          aquad = params_inst%theta_cj(5)
+      else 
+          aquad = params_inst%theta_cj(ivt(p))
+      end if
       bquad = -(ac(p,iv) + aj(p,iv))
       cquad = ac(p,iv) * aj(p,iv)
       call quadratic (aquad, bquad, cquad, r1, r2)
@@ -3050,6 +3094,10 @@ contains
       do f = 1, fn
          p = filterp(f)
          c = patch%column(p)
+         
+         write (6,'(A,I5)') '-------------------(p):par_z_sunsha(p,iv)------------------- ', p
+         write (6,'(A,1X,*(F10.5,1X))') 'par_z_sun(p,:)', par_z_sun(p,:)
+         write (6,'(A,1X,*(F10.5,1X))') 'par_z_sha(p,:)', par_z_sha(p,:)
          
          do j = 1,nlevsoi
 

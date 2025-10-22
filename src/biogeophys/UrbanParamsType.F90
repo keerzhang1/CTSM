@@ -12,6 +12,7 @@ module UrbanParamsType
   use clm_varctl   , only : iulog, fsurdat
   use clm_varcon   , only : grlnd, spval
   use LandunitType , only : lun   
+  use clm_time_manager  , only : get_nstep  
   !
   implicit none
   save
@@ -58,6 +59,7 @@ module UrbanParamsType
      real(r8), pointer :: alb_wall_dir    (:,:,:)  
      real(r8), pointer :: alb_wall_dif    (:,:,:)  
      real(r8), pointer :: ht_roof         (:,:)
+     real(r8), pointer :: ht_can_eff         (:,:)
      real(r8), pointer :: wind_hgt_canyon (:,:)
      real(r8), pointer :: tk_wall         (:,:,:)
      real(r8), pointer :: tk_roof         (:,:,:)
@@ -381,6 +383,22 @@ contains
     real(r8)            :: svfv_k(nzcanm)             ! Unweighted shortwave sky view factor for vegetation
     real(r8)            :: svfr_k(nzcanm)             ! Unweighted shortwave sky view factor for roof
     real(r8)            :: rnum                                   ! A temporary random number to generate various tree geometry for test purpose
+
+    real(r8)            :: k_opt   ! canopy light extinction parameter
+    real(r8)            :: p_2d    ! optical porosity (direct beam transmission through canopy)
+    real(r8)            :: p_3d    ! volumetric/aerodynamic porosity
+    real(r8)            :: A_pv    ! tree plan area
+    real(r8)            :: A_pb    ! building plan area
+    real(r8)            :: A_tot    ! total plan area
+    real(r8)            :: r_tree  ! tree radius
+    real(r8)            :: ht_tree  ! tree height
+    real(r8)            :: bv_drag_ratio    ! total plan area
+    real(r8)            :: frontal_b_unsh ! tree radius
+    real(r8)            :: frontal_v_unsh ! tree height
+    real(r8)            :: frontal_b ! tree radius
+    real(r8)            :: frontal_v ! tree height
+    real(r8)            :: plan_ai_eff ! tree height
+
 !-------------------[kz.3]Ray tracing test-------------------------   
     
     begp = bounds%begp; endp = bounds%endp
@@ -580,6 +598,7 @@ contains
           lun%wtroad_perv(l)  = urbinp%wtroad_perv(g,dindx)
           lun%wtroad_tree(l)  = urbinp%wtroad_tree(g,dindx)
           lun%ht_roof(l)      = urbinp%ht_roof(g,dindx)
+          lun%ht_can_eff(l)      = urbinp%ht_roof(g,dindx)
           lun%wtlunit_roof(l) = urbinp%wtlunit_roof(g,dindx)
 
           this%tk_wall(l,:)      = urbinp%tk_wall(g,dindx,:)
@@ -785,7 +804,34 @@ contains
           else if (use_mexicocity) then
              lun%z_d_town(l) = 10.9_r8
           else
-             lun%z_d_town(l) = (1._r8 + alpha**(-plan_ai) * (plan_ai - 1._r8)) * lun%ht_roof(l)
+             ! hard-coded tree parameters
+             r_tree=0.25_r8*lun%tree_cov(l)*lun%ht_roof(l)/lun%canyon_hwr(l)
+             ht_tree=10.0_r8
+             k_opt=0.5_r8
+ 
+             p_2d=exp(-k_opt*lun%lai(l))
+             p_3d=p_2d**0.4_r8
+             A_pv=4.0_r8*r_tree
+             A_pb=lun%ht_roof(l)/lun%canyon_hwr(l)*lun%wtlunit_roof(l)/(1-lun%wtlunit_roof(l))
+             A_tot=A_pb+lun%ht_roof(l)/lun%canyon_hwr(l)
+             bv_drag_ratio = (-1.251_r8*p_3d**2_r8+0.489_r8*p_3d+0.803_r8)/C_d
+             lun%ht_can_eff(l) = (lun%wtlunit_roof(l)*A_pb+ht_tree*(1.0_r8-p_3d)*A_pv)/(A_pb+(1.0_r8-p_3d)*A_pv)
+
+             frontal_b_unsh = lun%wtlunit_roof(l)
+             frontal_v_unsh = 2_r8 * r_tree
+             
+             !write (6,'(A,I5)') '-------------------(l):before frontal_b------------------- ', l
+             !write (6,'(A,I5)') '-------------------time step----------------- ', get_nstep()
+             !write (6,'(A,1X,*(F12.5,1X))') 'A_pb, bv_drag_ratio ', A_pb, bv_drag_ratio
+             !write (6,'(A,1X,*(F12.5,1X))') 'ht_tree, A_pv ', ht_tree, A_pv
+             !write (6,'(A,1X,*(F12.5,1X))') 'lun%wtlunit_roof(l), A_pb ', lun%wtlunit_roof(l), A_pb
+             !write (6,'(A,1X,*(F12.5,1X))') 'frontal_b_unsh, frontal_v_unsh ', frontal_b_unsh, frontal_v_unsh
+             !write (6,'(A,1X,*(F12.5,1X))') 'lun%ht_can_eff(l), lun%z_d_town(l) ', lun%ht_can_eff(l), lun%z_d_town(l)
+
+             plan_ai_eff = (A_pb+(1.0_r8-p_3d)*A_pv)/A_tot
+             lun%z_d_town(l) = (1._r8 + alpha**(-plan_ai_eff) * (plan_ai_eff - 1._r8)) * lun%ht_can_eff(l)
+             frontal_b = frontal_b_unsh * (lun%ht_can_eff(l)/(lun%ht_can_eff(l) - lun%z_d_town(l)))
+             frontal_v = frontal_v_unsh * (lun%ht_can_eff(l)/(lun%ht_can_eff(l) - lun%z_d_town(l)))                       
           end if
 
           ! Calculate the roughness length
@@ -794,9 +840,8 @@ contains
           else if (use_mexicocity) then
              lun%z_0_town(l) = 2.2_r8
           else
-             lun%z_0_town(l) = lun%ht_roof(l) * (1._r8 - lun%z_d_town(l) / lun%ht_roof(l)) * &
-                  exp(-1.0_r8 * (0.5_r8 * beta * C_d / vkc**2 * &
-                  (1 - lun%z_d_town(l) / lun%ht_roof(l)) * frontal_ai)**(-0.5_r8))
+             lun%z_0_town(l) = lun%ht_can_eff(l) * (1._r8 - lun%z_d_town(l) / lun%ht_can_eff(l)) * &
+                  exp(-(1/(vkc**2)*0.5_r8*beta*C_d*(1.0_r8 - lun%z_d_town(l)/lun%ht_can_eff(l))*(frontal_b+bv_drag_ratio*frontal_v)/A_tot)**(-0.5_r8))
           end if
 
        else ! Not urban point 

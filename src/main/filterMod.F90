@@ -61,6 +61,10 @@ module filterMod
 
      integer, pointer :: soilc(:)        ! soil filter (columns)
      integer :: num_soilc                ! number of columns in soil filter
+     
+     integer, pointer :: soil_urbtreec(:)        ! soil+urban tree filter (columns)
+     integer :: num_soil_urbtreec                ! number of columns in soil+urban tree filter
+
      integer, pointer :: soilp(:)        ! soil filter (patches)
      integer :: num_soilp                ! number of patches in soil filter
 
@@ -89,13 +93,23 @@ module filterMod
 
      integer, pointer :: urbanc(:)       ! urban filter (columns)
      integer :: num_urbanc               ! number of columns in urban filter
+     integer, pointer :: urbantreec(:)       ! urban tree filter (columns)
+     integer :: num_urbantreec               ! number of columns in urban tree filter
+
      integer, pointer :: nourbanc(:)     ! non-urban filter (columns)
      integer :: num_nourbanc             ! number of columns in non-urban filter
 
      integer, pointer :: urbanp(:)       ! urban filter (patches)
      integer :: num_urbanp               ! number of patches in urban filter
+     
+     integer, pointer :: urbantreep(:)       ! urban tree filter (patches)
+     integer :: num_urbantreep               ! number of patches in urban tree filter
+     
      integer, pointer :: nourbanp(:)     ! non-urban filter (patches)
      integer :: num_nourbanp             ! number of patches in non-urban filter
+
+     integer, pointer :: nourbanwtreep(:)     ! non-urban filter (patches)
+     integer :: num_nourbanwtreep             ! number of patches in non-urban filter
 
      integer, pointer :: nolakeurbanp(:) ! non-lake, non-urban filter (patches)
      integer :: num_nolakeurbanp         ! number of patches in non-lake, non-urban filter
@@ -219,6 +233,7 @@ contains
        allocate(this_filter(nc)%nolakec(bounds%endc-bounds%begc+1))
 
        allocate(this_filter(nc)%soilc(bounds%endc-bounds%begc+1))
+       allocate(this_filter(nc)%soil_urbtreec(bounds%endc-bounds%begc+1))
        allocate(this_filter(nc)%soilp(bounds%endp-bounds%begp+1))
 
        allocate(this_filter(nc)%bgc_soilc(bounds%endc-bounds%begc+1))
@@ -239,8 +254,12 @@ contains
 
        allocate(this_filter(nc)%urbanp(bounds%endp-bounds%begp+1))
        allocate(this_filter(nc)%nourbanp(bounds%endp-bounds%begp+1))
+       allocate(this_filter(nc)%nourbanwtreep(bounds%endp-bounds%begp+1))
+
+       allocate(this_filter(nc)%urbantreep(bounds%endp-bounds%begp+1))
 
        allocate(this_filter(nc)%urbanc(bounds%endc-bounds%begc+1))
+       allocate(this_filter(nc)%urbantreec(bounds%endc-bounds%begc+1))
        allocate(this_filter(nc)%nourbanc(bounds%endc-bounds%begc+1))
 
        allocate(this_filter(nc)%urbanl(bounds%endl-bounds%begl+1))
@@ -318,6 +337,8 @@ contains
     use decompMod       , only : bounds_level_clump
     use pftconMod       , only : npcropmin
     use landunit_varcon , only : istsoil, istcrop, istice
+    use column_varcon       , only : icol_road_tree,icol_road_perv
+
     !
     ! !ARGUMENTS:
     type(bounds_type)       , intent(in)    :: bounds
@@ -332,6 +353,7 @@ contains
     integer :: fnl,fnlu    ! non-lake filter index
     integer :: fs          ! soil filter index
     integer :: f, fn       ! general indices
+    integer :: ft          ! urban tree indices
     integer :: g           !gridcell index
     !------------------------------------------------------------------------
 
@@ -429,6 +451,7 @@ contains
     ! Create soil filter at column-level
 
     fs = 0
+    ft = 0
     do c = bounds%begc,bounds%endc
        if (col%active(c) .or. include_inactive) then
           l =col%landunit(c)
@@ -436,9 +459,14 @@ contains
              fs = fs + 1
              this_filter(nc)%soilc(fs) = c
           end if
+          if (lun%itype(l) == istsoil .or. lun%itype(l) == istcrop .or. col%itype(c) == icol_road_tree .or. col%itype(c) == icol_road_perv) then
+             ft = ft + 1
+             this_filter(nc)%soil_urbtreec(ft) = c
+          end if
        end if
     end do
     this_filter(nc)%num_soilc = fs
+    this_filter(nc)%num_soil_urbtreec = ft
 
 
     
@@ -517,12 +545,17 @@ contains
 
     f = 0
     fn = 0
+    ft = 0
     do c = bounds%begc,bounds%endc
        if (col%active(c) .or. include_inactive) then
           l = col%landunit(c)
           if (lun%urbpoi(l)) then
              f = f + 1
              this_filter(nc)%urbanc(f) = c
+             if (col%itype(c) == icol_road_tree) then
+                 ft = ft +1
+                 this_filter(nc)%urbantreec(ft) = c
+             end if
           else
              fn = fn + 1
              this_filter(nc)%nourbanc(fn) = c
@@ -530,18 +563,25 @@ contains
        end if
     end do
     this_filter(nc)%num_urbanc = f
+    this_filter(nc)%num_urbantreec = ft
     this_filter(nc)%num_nourbanc = fn
 
     ! Create patch-level urban and non-urban filters
 
     f = 0
     fn = 0
+    ft = 0
     do p = bounds%begp,bounds%endp
        if (patch%active(p) .or. include_inactive) then
           l = patch%landunit(p)
+          c = patch%column(p)
           if (lun%urbpoi(l)) then
              f = f + 1
              this_filter(nc)%urbanp(f) = p
+             if (col%itype(c) == icol_road_tree) then
+                ft = ft + 1
+                this_filter(nc)%urbantreep(ft) = p
+             end if
           else
              fn = fn + 1
              this_filter(nc)%nourbanp(fn) = p
@@ -550,7 +590,26 @@ contains
     end do
     this_filter(nc)%num_urbanp = f
     this_filter(nc)%num_nourbanp = fn
+    this_filter(nc)%num_urbantreep = ft
 
+    ft = 0
+    do p = bounds%begp,bounds%endp
+       if (patch%active(p) .or. include_inactive) then
+          l = patch%landunit(p)
+          c = patch%column(p)
+          if (lun%urbpoi(l)) then
+             if (col%itype(c) == icol_road_tree) then
+                ft = ft + 1
+                this_filter(nc)%nourbanwtreep(ft) = p
+             end if
+          else
+            ft = ft + 1
+            this_filter(nc)%nourbanwtreep(ft) = p
+          end if
+       end if
+    end do
+    this_filter(nc)%num_nourbanwtreep = ft
+    
     f = 0
     do c = bounds%begc,bounds%endc
        if (col%active(c) .or. include_inactive) then

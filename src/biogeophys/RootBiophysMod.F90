@@ -118,7 +118,8 @@ contains
     use decompMod      , only : bounds_type
     use abortutils     , only : endrun         
     use ColumnType            , only : col                
-    use PatchType             , only : patch                
+    use PatchType             , only : patch    
+              
         !
     ! !ARGUMENTS:
     type(bounds_type), intent(in) :: bounds                     ! bounds
@@ -184,6 +185,7 @@ contains
     use pftconMod      , only : pftcon
     use PatchType      , only : patch
     use ColumnType     , only : col
+    use column_varcon       , only : icol_road_tree  
     !
     ! !ARGUMENTS:
     type(bounds_type) , intent(in)    :: bounds                  ! bounds
@@ -206,15 +208,29 @@ contains
        if (.not. patch%is_fates(p)) then
           c = patch%column(p)
           do lev = 1, ubj-1
-             rootfr(p,lev) = .5_r8*( &
-                    exp(-pftcon%roota_par(patch%itype(p)) * col%zi(c,lev-1))  &
-                  + exp(-pftcon%rootb_par(patch%itype(p)) * col%zi(c,lev-1))  &
-                  - exp(-pftcon%roota_par(patch%itype(p)) * col%zi(c,lev  ))  &
-                  - exp(-pftcon%rootb_par(patch%itype(p)) * col%zi(c,lev  )) )
+             if (col%itype(c)== icol_road_tree) then
+                rootfr(p,lev) = .5_r8*( &
+                        exp(-pftcon%roota_par(5) * col%zi(c,lev-1))  &
+                      + exp(-pftcon%rootb_par(5) * col%zi(c,lev-1))  &
+                      - exp(-pftcon%roota_par(5) * col%zi(c,lev  ))  &
+                      - exp(-pftcon%rootb_par(5) * col%zi(c,lev  )) )   
+              else         
+                 rootfr(p,lev) = .5_r8*( &
+                        exp(-pftcon%roota_par(patch%itype(p)) * col%zi(c,lev-1))  &
+                      + exp(-pftcon%rootb_par(patch%itype(p)) * col%zi(c,lev-1))  &
+                      - exp(-pftcon%roota_par(patch%itype(p)) * col%zi(c,lev  ))  &
+                      - exp(-pftcon%rootb_par(patch%itype(p)) * col%zi(c,lev  )) )
+              end if
           end do
-          rootfr(p,ubj) = .5_r8*( &
-                 exp(-pftcon%roota_par(patch%itype(p)) * col%zi(c,ubj-1))  &
-               + exp(-pftcon%rootb_par(patch%itype(p)) * col%zi(c,ubj-1)) )
+          if (col%itype(c)== icol_road_tree) then
+            rootfr(p,ubj) = .5_r8*( &
+                   exp(-pftcon%roota_par(5) * col%zi(c,ubj-1))  &
+                 + exp(-pftcon%rootb_par(5) * col%zi(c,ubj-1)) )
+          else 
+            rootfr(p,ubj) = .5_r8*( &
+                   exp(-pftcon%roota_par(patch%itype(p)) * col%zi(c,ubj-1))  &
+                 + exp(-pftcon%rootb_par(patch%itype(p)) * col%zi(c,ubj-1)) )
+          end if
 
        else
           rootfr(p,1:ubj) = 0._r8
@@ -239,6 +255,8 @@ contains
     use pftconMod      , only : pftcon
     use PatchType      , only : patch
     use ColumnType     , only : col
+    use column_varcon       , only : icol_road_tree  
+  
     !
     ! !ARGUMENTS:
     type(bounds_type) , intent(in)    :: bounds                  ! bounds
@@ -262,7 +280,11 @@ contains
     do p = bounds%begp,bounds%endp   
        c = patch%column(p)       
        if (.not.patch%is_fates(p)) then
-          beta = pftcon%rootprof_beta(patch%itype(p),varindx)
+          if (col%itype(c)== icol_road_tree) then
+            beta = pftcon%rootprof_beta(5,varindx)
+          else
+            beta = pftcon%rootprof_beta(patch%itype(p),varindx)
+          end if
           do lev = 1, ubj
              rootfr(p,lev) = ( &
                   beta ** (col%zi(c,lev-1)*m_to_cm) - &

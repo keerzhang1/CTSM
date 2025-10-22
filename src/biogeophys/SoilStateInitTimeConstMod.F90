@@ -274,7 +274,7 @@ contains
                /real(col%nbedrock(c))
           soilstate_inst%rootfr_road_perv_col(c,col%nbedrock(c)+1:nlevsoi) = 0._r8
        end if
-       
+       ! how to modify the rootfr for urban tree?
        if (lun%urbpoi(l) .and. col%itype(c) == icol_road_tree) then 
           do lev = 1, nlevgrnd
              soilstate_inst%rootfr_road_tree_col(c,lev) = 0._r8
@@ -664,7 +664,8 @@ contains
              soilstate_inst%sucsat_col(c,lev) = 10._r8 * ( 10._r8**(1.88_r8-0.0131_r8*sand) )
 
              bd = (1._r8-soilstate_inst%watsat_col(c,lev))*params_inst%pd
-
+             
+             ! consider how to add urban road tree into this calculation
              ! do not allow watsat_sf to push watsat above 0.93
              soilstate_inst%watsat_col(c,lev) = min(params_inst%watsat_sf * ( (1._r8 - om_frac) * &
                     soilstate_inst%watsat_col(c,lev) + om_watsat_lake * om_frac), 0.93_r8)
