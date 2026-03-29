@@ -371,7 +371,7 @@ contains
 
          btran         => energyflux_inst%btran_patch       , & ! Output: [real(r8) (:)   ]  transpiration wetness factor (0 to 1) (integrated soil water stress)
          rresis        => energyflux_inst%rresis_patch      , & ! Output: [real(r8) (:,:) ]  root soil water stress (resistance) by layer (0-1)  (nlevgrnd)                          
-
+         
          h2osoi_vol    => waterstatebulk_inst%h2osoi_vol_col    , & ! Input:  [real(r8) (:,:) ]  volumetric soil water (0<=h2osoi_vol<=watsat) [m3/m3]
          h2osoi_liqvol => waterdiagnosticbulk_inst%h2osoi_liqvol_col   & ! Output: [real(r8) (:,:) ]  liquid volumetric moisture, will be used for BeTR
          ) 

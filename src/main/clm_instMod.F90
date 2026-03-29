@@ -317,7 +317,7 @@ contains
          em_wall_lun=urbanparams_inst%em_wall(begl:endl),    &
          em_improad_lun=urbanparams_inst%em_improad(begl:endl), &
          em_perroad_lun=urbanparams_inst%em_perroad(begl:endl), &
-         em_tree_lun=urbanparams_inst%em_tree(begl:endl), &
+         em_tree_urb_lun=urbanparams_inst%em_tree_urb(begl:endl), &
          is_simple_buildtemp=IsSimpleBuildTemp(), is_prog_buildtemp=IsProgBuildTemp(), &
          exice_init_conc_col=exice_init_conc_col(bounds%begc:bounds%endc) , NLFileName=NLFilename)
 

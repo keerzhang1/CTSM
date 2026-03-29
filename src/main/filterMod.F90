@@ -108,8 +108,8 @@ module filterMod
      integer, pointer :: nourbanp(:)     ! non-urban filter (patches)
      integer :: num_nourbanp             ! number of patches in non-urban filter
 
-     integer, pointer :: nourbanwtreep(:)     ! non-urban filter (patches)
-     integer :: num_nourbanwtreep             ! number of patches in non-urban filter
+     integer, pointer :: nourbanwtreep(:)     ! non-urban plus urban tree filter (patches)
+     integer :: num_nourbanwtreep             ! number of patches in non-urban plus urban tree filter
 
      integer, pointer :: nolakeurbanp(:) ! non-lake, non-urban filter (patches)
      integer :: num_nolakeurbanp         ! number of patches in non-lake, non-urban filter

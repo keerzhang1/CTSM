@@ -37,15 +37,17 @@ module UrbanParamsType
   ! !PRIVATE TYPE
   type urbinp_type
      real(r8), pointer :: canyon_hwr      (:,:)  
-     real(r8), pointer :: lai             (:,:)  
-     real(r8), pointer :: tree_cov        (:,:)      
+     real(r8), pointer :: tree_lai_urb    (:,:)  
+     real(r8), pointer :: wtroad_tree    (:,:)      
+     real(r8), pointer :: tree_bht_urb     (:,:)  
+     real(r8), pointer :: tree_tht_urb     (:,:)      
      real(r8), pointer :: wtlunit_roof    (:,:)  
      real(r8), pointer :: wtroad_perv     (:,:)  
-     real(r8), pointer :: wtroad_tree     (:,:)  
+     real(r8), pointer :: wall_to_plan_area_ratio (:,:)
      real(r8), pointer :: em_roof         (:,:)   
      real(r8), pointer :: em_improad      (:,:)  
      real(r8), pointer :: em_perroad      (:,:)  
-     real(r8), pointer :: em_tree      (:,:)  
+     real(r8), pointer :: em_tree_urb      (:,:)  
      real(r8), pointer :: em_wall         (:,:)  
      real(r8), pointer :: alb_roof_dir    (:,:,:)  
      real(r8), pointer :: alb_roof_dif    (:,:,:)  
@@ -53,8 +55,10 @@ module UrbanParamsType
      real(r8), pointer :: alb_improad_dif (:,:,:)  
      real(r8), pointer :: alb_perroad_dir (:,:,:)  
      real(r8), pointer :: alb_perroad_dif (:,:,:)  
-     real(r8), pointer :: alb_tree_dir (:,:,:)  
-     real(r8), pointer :: alb_tree_dif (:,:,:)  
+     real(r8), pointer :: alb_tree_urb_dir (:,:,:)  
+     real(r8), pointer :: alb_tree_urb_dif (:,:,:)  
+     real(r8), pointer :: tran_tree_urb_dir (:,:,:)  
+     real(r8), pointer :: tran_tree_urb_dif (:,:,:)  
 
      real(r8), pointer :: alb_wall_dir    (:,:,:)  
      real(r8), pointer :: alb_wall_dif    (:,:,:)  
@@ -73,8 +77,7 @@ module UrbanParamsType
      real(r8), pointer :: t_building_min  (:,:)
      real(r8), pointer :: A_v1  (:,:)
      real(r8), pointer :: A_v2  (:,:)
-     real(r8), pointer :: h1  (:,:)
-     real(r8), pointer :: h2  (:,:)
+
      
   end type urbinp_type
   type (urbinp_type), public :: urbinp   ! urban input derived type
@@ -178,13 +181,15 @@ module UrbanParamsType
      real(r8), pointer :: A_v2      (:)      ! Unweighted shortwave sky view factor for ground  
      real(r8), pointer :: h1      (:)      ! Unweighted shortwave view factor from sky to ground  
      real(r8), pointer :: h2      (:)      ! Unweighted shortwave sky view factor for ground  
-     
-  !-------------------[kz.2]Ray tracing test-------------------------  
+     !K real(r8), pointer :: frontal_ai_out      (:)      ! Unweighted shortwave sky view factor for ground  
+     !K real(r8), pointer :: plan_ai_out      (:)      ! Unweighted shortwave sky view factor for ground  
+       !K real(r8), pointer :: plan_ai_out      (:)      ! Unweighted shortwave sky view factor for ground  
+  ! ------------------[kz.2]Ray tracing test-------------------------  
      real(r8), allocatable :: wind_hgt_canyon     (:)   ! lun height above road at which wind in canyon is to be computed (m)
      real(r8), allocatable :: em_roof             (:)   ! lun roof emissivity
      real(r8), allocatable :: em_improad          (:)   ! lun impervious road emissivity
      real(r8), allocatable :: em_perroad          (:)   ! lun pervious road emissivity
-     real(r8), allocatable :: em_tree          (:)   ! lun pervious road emissivity
+     real(r8), allocatable :: em_tree_urb          (:)   ! lun pervious road emissivity
      real(r8), allocatable :: em_wall             (:)   ! lun wall emissivity
      real(r8), allocatable :: alb_roof_dir        (:,:) ! lun direct  roof albedo
      real(r8), allocatable :: alb_roof_dif        (:,:) ! lun diffuse roof albedo
@@ -192,8 +197,10 @@ module UrbanParamsType
      real(r8), allocatable :: alb_improad_dif     (:,:) ! lun diffuse impervious road albedo
      real(r8), allocatable :: alb_perroad_dir     (:,:) ! lun direct  pervious road albedo
      real(r8), allocatable :: alb_perroad_dif     (:,:) ! lun diffuse pervious road albedo
-     real(r8), allocatable :: alb_tree_dir     (:,:) ! lun direct road tree albedo
-     real(r8), allocatable :: alb_tree_dif     (:,:) ! lun diffuse road tree albedo
+     real(r8), allocatable :: alb_tree_urb_dir     (:,:) ! lun direct road tree albedo
+     real(r8), allocatable :: alb_tree_urb_dif     (:,:) ! lun diffuse road tree albedo
+     real(r8), allocatable :: tran_tree_urb_dif     (:,:) ! lun diffuse road tree transmittance
+     real(r8), allocatable :: tran_tree_urb_dir     (:,:) ! lun direct road tree transmittance
      real(r8), allocatable :: alb_wall_dir        (:,:) ! lun direct  wall albedo
      real(r8), allocatable :: alb_wall_dif        (:,:) ! lun diffuse wall albedo
 
@@ -248,6 +255,7 @@ contains
     use column_varcon   , only : icol_roof, icol_sunwall, icol_shadewall
     use column_varcon   , only : icol_road_perv, icol_road_imperv, icol_road_perv, icol_road_tree
     use landunit_varcon , only : isturb_MIN
+    use clm_varcon        , only : rpi
     !
     ! !ARGUMENTS:
     class(urbanparams_type) :: this
@@ -263,7 +271,7 @@ contains
     real(r8), parameter :: C_d = 1.2_r8    ! drag coefficient as used in Grimmond and Oke (1999)
     real(r8)            :: plan_ai         ! plan area index - ratio building area to plan area (-)
     real(r8)            :: frontal_ai      ! frontal area index of buildings (-)
-    real(r8)            :: build_lw_ratio  ! building short/long side ratio (-)
+    real(r8)            :: wall_to_plan_area_ratio  ! provided by PLUMBER site input data
     integer		:: begl, endl
     integer		:: begc, endc
     integer		:: begp, endp
@@ -283,7 +291,7 @@ contains
     real(r8)            :: ss_in(nzcanm)     ! Roof fraction at each level 
     real(r8)            :: wcan              ! Width of the canyons [m]
     real(r8)            :: wbui              ! Width of the buildings [m]
-    real(r8)            :: tree_cov          ! Canopy cover within the canyon (between-building) space
+    real(r8)            :: wtroad_tree          ! Canopy cover within the canyon (between-building) space
     real(r8)            :: dray              ! Ray step [m]
     real(r8)            :: hsky              ! A height scaling factor for sky ray calculations
     integer             :: nrays             ! Number of rays from foliage layer (Number from surfaces will be half)
@@ -393,11 +401,11 @@ contains
     real(r8)            :: r_tree  ! tree radius
     real(r8)            :: ht_tree  ! tree height
     real(r8)            :: bv_drag_ratio    ! total plan area
-    real(r8)            :: frontal_b_unsh ! tree radius
-    real(r8)            :: frontal_v_unsh ! tree height
-    real(r8)            :: frontal_b ! tree radius
-    real(r8)            :: frontal_v ! tree height
-    real(r8)            :: plan_ai_eff ! tree height
+    real(r8)            :: frontal_b_unsh ! unsheltered frontal area of building
+    real(r8)            :: frontal_v_unsh ! unsheltered frontal area of tree
+    real(r8)            :: frontal_b ! sheltered frontal area of building
+    real(r8)            :: frontal_v ! sheltered frontal area of tree
+    real(r8)            :: plan_ai_eff ! effective leaf area index
 
 !-------------------[kz.3]Ray tracing test-------------------------   
     
@@ -424,16 +432,18 @@ contains
     allocate(this%em_roof             (begl:endl))          ; this%em_roof             (:)   = nan
     allocate(this%em_improad          (begl:endl))          ; this%em_improad          (:)   = nan
     allocate(this%em_perroad          (begl:endl))          ; this%em_perroad          (:)   = nan
-    allocate(this%em_tree          (begl:endl))          ; this%em_tree          (:)   = nan
+    allocate(this%em_tree_urb          (begl:endl))          ; this%em_tree_urb          (:)   = nan
     allocate(this%em_wall             (begl:endl))          ; this%em_wall             (:)   = nan
     allocate(this%alb_roof_dir        (begl:endl,numrad))   ; this%alb_roof_dir        (:,:) = nan
     allocate(this%alb_roof_dif        (begl:endl,numrad))   ; this%alb_roof_dif        (:,:) = nan    
     allocate(this%alb_improad_dir     (begl:endl,numrad))   ; this%alb_improad_dir     (:,:) = nan       
     allocate(this%alb_perroad_dir     (begl:endl,numrad))   ; this%alb_perroad_dir     (:,:) = nan       
-    allocate(this%alb_tree_dir     (begl:endl,numrad))   ; this%alb_tree_dir     (:,:) = nan       
+    allocate(this%alb_tree_urb_dir     (begl:endl,numrad))   ; this%alb_tree_urb_dir     (:,:) = nan       
     allocate(this%alb_improad_dif     (begl:endl,numrad))   ; this%alb_improad_dif     (:,:) = nan       
     allocate(this%alb_perroad_dif     (begl:endl,numrad))   ; this%alb_perroad_dif     (:,:) = nan       
-    allocate(this%alb_tree_dif     (begl:endl,numrad))   ; this%alb_tree_dif     (:,:) = nan       
+    allocate(this%alb_tree_urb_dif     (begl:endl,numrad))   ; this%alb_tree_urb_dif     (:,:) = nan       
+    allocate(this%tran_tree_urb_dif     (begl:endl,numrad))   ; this%tran_tree_urb_dif     (:,:) = nan       
+    allocate(this%tran_tree_urb_dir     (begl:endl,numrad))   ; this%tran_tree_urb_dir     (:,:) = nan       
     allocate(this%alb_wall_dir        (begl:endl,numrad))   ; this%alb_wall_dir        (:,:) = nan    
     allocate(this%alb_wall_dif        (begl:endl,numrad))   ; this%alb_wall_dif        (:,:) = nan
     allocate(this%eflx_traffic_factor (begl:endl))          ; this%eflx_traffic_factor (:)   = nan
@@ -533,6 +543,11 @@ contains
     allocate(this%A_v1                 (begl:endl))                        ; this%A_v1             (:)     = nan
     allocate(this%h1                 (begl:endl))                        ; this%h1             (:)     = nan
     allocate(this%h2                 (begl:endl))                        ; this%h2             (:)     = nan
+
+    !Kallocate(this%z_d_town_out         (begl:endl))                        ; this%z_d_town_out     (:)     = nan
+    !Kallocate(this%z_0_town_out         (begl:endl))                        ; this%z_0_town_out     (:)     = nan
+    !Kallocate(this%plan_ai_out         (begl:endl))                        ; this%plan_ai_out     (:)     = nan
+    !Kallocate(this%frontal_ai_out         (begl:endl))                        ; this%frontal_ai_out     (:)     = nan
     
    !------------------------------------------------------------------------------
    ! These values give a single-layer urban canyon for view factor calculation
@@ -543,7 +558,7 @@ contains
     ss_in=0._r8
     pb_in=0._r8
     lad=0._r8
-    tree_cov=0._r8         
+    wtroad_tree=0._r8         
     omega=0._r8           
     dray=0._r8 
     h1=0.0_r8
@@ -575,32 +590,35 @@ contains
              this%alb_roof_dif   (l,ib) = urbinp%alb_roof_dif   (g,dindx,ib)
              this%alb_improad_dir(l,ib) = urbinp%alb_improad_dir(g,dindx,ib)
              this%alb_perroad_dir(l,ib) = urbinp%alb_perroad_dir(g,dindx,ib)
-             this%alb_tree_dir(l,ib) = urbinp%alb_tree_dir(g,dindx,ib)
+             this%alb_tree_urb_dir(l,ib) = urbinp%alb_tree_urb_dir(g,dindx,ib)
              this%alb_improad_dif(l,ib) = urbinp%alb_improad_dif(g,dindx,ib)
              this%alb_perroad_dif(l,ib) = urbinp%alb_perroad_dif(g,dindx,ib)
-             this%alb_tree_dif(l,ib) = urbinp%alb_tree_dif(g,dindx,ib)
+             this%alb_tree_urb_dif(l,ib) = urbinp%alb_tree_urb_dif(g,dindx,ib)
+             this%tran_tree_urb_dir(l,ib) = urbinp%tran_tree_urb_dir(g,dindx,ib)
+             this%tran_tree_urb_dif(l,ib) = urbinp%tran_tree_urb_dif(g,dindx,ib)
              this%alb_wall_dir   (l,ib) = urbinp%alb_wall_dir   (g,dindx,ib)
              this%alb_wall_dif   (l,ib) = urbinp%alb_wall_dif   (g,dindx,ib)
           end do
           this%em_roof   (l) = urbinp%em_roof   (g,dindx)
           this%em_improad(l) = urbinp%em_improad(g,dindx)
           this%em_perroad(l) = urbinp%em_perroad(g,dindx)
-          this%em_tree(l) = urbinp%em_tree(g,dindx)
+          this%em_tree_urb(l) = urbinp%em_tree_urb(g,dindx)
           this%em_wall   (l) = urbinp%em_wall   (g,dindx)
 
           ! Landunit level initialization for urban wall and roof layers and interfaces
 
           lun%canyon_hwr(l)   = urbinp%canyon_hwr(g,dindx)
 !-------------------[kz.5]Ray tracing test-------------------------            
-          lun%lai(l)          = urbinp%lai(g,dindx)
-          lun%tree_cov(l)     = urbinp%tree_cov(g,dindx)       
+          lun%tree_lai_urb(l)          = urbinp%tree_lai_urb(g,dindx)
+          lun%wtroad_tree(l)     = urbinp%wtroad_tree(g,dindx)       
+          lun%tree_bht_urb(l)          = urbinp%tree_bht_urb(g,dindx)
+          lun%tree_tht_urb(l)     = urbinp%tree_tht_urb(g,dindx)       
 !-------------------[kz.5]Ray tracing test-------------------------     
           lun%wtroad_perv(l)  = urbinp%wtroad_perv(g,dindx)
-          lun%wtroad_tree(l)  = urbinp%wtroad_tree(g,dindx)
           lun%ht_roof(l)      = urbinp%ht_roof(g,dindx)
           lun%ht_can_eff(l)      = urbinp%ht_roof(g,dindx)
           lun%wtlunit_roof(l) = urbinp%wtlunit_roof(g,dindx)
-
+          lun%wall_to_plan_area_ratio(l) = urbinp%wall_to_plan_area_ratio(g,dindx)
           this%tk_wall(l,:)      = urbinp%tk_wall(g,dindx,:)
           this%tk_roof(l,:)      = urbinp%tk_roof(g,dindx,:)
           this%tk_improad(l,:)   = urbinp%tk_improad(g,dindx,:)
@@ -618,51 +636,35 @@ contains
           dzcan=lun%ht_roof(l)
           wcan=lun%ht_roof(l)/lun%canyon_hwr(l)        
           wbui = lun%ht_roof(l)/(lun%canyon_hwr(l)*(1._r8-lun%wtlunit_roof(l))/lun%wtlunit_roof(l))
-          ! For now, set LAI as a constant read from surface data
-          lad(:)=lun%lai(l)
+          
+          lad(:)=lun%tree_lai_urb(l)
           ! These are unused but keep for now:
           lads=lad  ! for shortwave calcs (usually equal to "lad")
           ladl=lad  ! lfor longwave calcs (usually equal to "lad")
           
           ! For now, specify various h1 and h2 combincations for test
           call RANDOM_NUMBER(rnum)
-          if (rnum > 0.8_r8) then 
-              lun%h1(l)=min(lun%ht_roof(l)*0.6_r8,10.0_r8) ! ca=1
-              lun%h2(l)=min(lun%ht_roof(l)*1.1_r8,20.0_r8)  
-          else if (rnum > 0.6_r8) then 
-              lun%h1(l)=min(lun%ht_roof(l)*0.4_r8,10.0_r8) ! ca=2
-              lun%h2(l)=min(lun%ht_roof(l)*1.1_r8,20.0_r8)  
-          else if (rnum > 0.4_r8) then 
-              lun%h1(l)=min(lun%ht_roof(l)*0.7_r8,10.0_r8) ! ca=3
-              lun%h2(l)=min(lun%ht_roof(l)*0.8_r8,20.0_r8)          
-          else if (rnum > 0.2_r8) then     
-              lun%h1(l)=min(lun%ht_roof(l)*0.3_r8,10.0_r8) ! ca=4
-              lun%h2(l)=min(lun%ht_roof(l)*0.8_r8,15.0_r8)
-          else
-              lun%h1(l)=max(lun%ht_roof(l)*0.2_r8,1.0_r8)  ! ca=0
-              lun%h2(l)=max(lun%ht_roof(l)*0.6_r8,1.0_r8)
-          end if
                             
           !Eq. 15 in Krayenhoff et al. 2020
-          omega=-1.0_r8 / (0.5_r8 * lun%lai(l)) * log(1.0_r8 - lun%tree_cov(l) * &
-                (1.0_r8 - exp(-0.5_r8 * lun%lai(l)/lun%tree_cov(l))))
+          omega=-1.0_r8 / (0.5_r8 * lun%tree_lai_urb(l)) * log(1.0_r8 - lun%wtroad_tree(l) * &
+                (1.0_r8 - exp(-0.5_r8 * lun%tree_lai_urb(l)/lun%wtroad_tree(l))))
           dray=0.05_r8*min(min(dzcan,wcan),wbui)/dzcan
 
-          if ((lun%h1(l)+lun%h2(l))<= lun%ht_roof(l)) then
-              lun%A_v1(l)=wcan*lad(1)*omega(1)*lun%h2(l)*2._r8
+          if ((lun%tree_bht_urb(l)+lun%tree_tht_urb(l))<= lun%ht_roof(l)) then
+              lun%A_v1(l)=wcan*lad(1)*omega(1)*lun%tree_tht_urb(l)*2._r8
               lun%A_v2(l)=0._r8 
-          else if ((lun%h1(l)+lun%h2(l)) > lun%ht_roof(l)) then
-              lun%A_v1(l)=wcan*lad(1)*omega(1)*(lun%ht_roof(l)-lun%h1(l))*2._r8
-              lun%A_v2(l)=wcan*lad(2)*omega(2)*(lun%h1(l)+lun%h2(l)-lun%ht_roof(l))*2._r8   
+          else if ((lun%tree_bht_urb(l)+lun%tree_tht_urb(l)) > lun%ht_roof(l)) then
+              lun%A_v1(l)=wcan*lad(1)*omega(1)*(lun%ht_roof(l)-lun%tree_bht_urb(l))*2._r8
+              lun%A_v2(l)=wcan*lad(2)*omega(2)*(lun%tree_bht_urb(l)+lun%tree_tht_urb(l)-lun%ht_roof(l))*2._r8   
           end if  
                               
-          tree_cov=lun%tree_cov(l)
-          h1=lun%h1(l)
-          h2=lun%h2(l)
+          wtroad_tree=lun%wtroad_tree(l)
+          h1=lun%tree_bht_urb(l)
+          h2=lun%tree_tht_urb(l)
           
           ! calculate view factor
           call montecarlo_view_factors(nzcanm,dzcan,wcan,wbui,&
-                  tree_cov,lad,lads,ladl,omega,ss_in,pb_in,dray,maxind,&
+                  wtroad_tree,lad,lads,ladl,omega,ss_in,pb_in,dray,maxind,&
                           maxbhind,nrays,nsky,hsky,h1,h2,&
                           fww1d,fvv1d,fwv1d,fvw1d,fwr1d,frw1d,fvr1d,&
                           frv1d,fwg1d,fgw1d,fgv1d,fsw1d,fvg1d,fsg1d,fsr1d,&
@@ -785,18 +787,11 @@ contains
           ! Grimmond and Oke (1999)
           !----------------------------------------------------------------------------------
 
-          ! Calculate plan area index 
-          plan_ai = lun%canyon_hwr(l)/(lun%canyon_hwr(l) + 1._r8)
+          ! Use plan_ai = roof fraction. See notes from 6-9-21
+          plan_ai = lun%wtlunit_roof(l)
 
-          ! Building shape shortside/longside ratio (e.g. 1 = square )
-          ! This assumes the building occupies the entire canyon length
-          build_lw_ratio = plan_ai
-
-          ! Calculate frontal area index
-          frontal_ai = (1._r8 - plan_ai) * lun%canyon_hwr(l)
-
-          ! Adjust frontal area index for different building configuration
-          frontal_ai = frontal_ai * sqrt(1/build_lw_ratio) * sqrt(plan_ai)
+          ! Use relationship derived from Porson (2010) and Masson (2020)
+          frontal_ai = lun%wall_to_plan_area_ratio(l)/rpi
 
           ! Calculate displacement height
           if (use_vancouver) then
@@ -805,11 +800,11 @@ contains
              lun%z_d_town(l) = 10.9_r8
           else
              ! hard-coded tree parameters
-             r_tree=0.25_r8*lun%tree_cov(l)*lun%ht_roof(l)/lun%canyon_hwr(l)
-             ht_tree=10.0_r8
+             r_tree=0.25_r8*lun%wtroad_tree(l)*lun%ht_roof(l)/lun%canyon_hwr(l)
+             ht_tree=lun%tree_tht_urb(l)
              k_opt=0.5_r8
  
-             p_2d=exp(-k_opt*lun%lai(l))
+             p_2d=exp(-k_opt*lun%tree_lai_urb(l))
              p_3d=p_2d**0.4_r8
              A_pv=4.0_r8*r_tree
              A_pb=lun%ht_roof(l)/lun%canyon_hwr(l)*lun%wtlunit_roof(l)/(1-lun%wtlunit_roof(l))
@@ -843,6 +838,11 @@ contains
              lun%z_0_town(l) = lun%ht_can_eff(l) * (1._r8 - lun%z_d_town(l) / lun%ht_can_eff(l)) * &
                   exp(-(1/(vkc**2)*0.5_r8*beta*C_d*(1.0_r8 - lun%z_d_town(l)/lun%ht_can_eff(l))*(frontal_b+bv_drag_ratio*frontal_v)/A_tot)**(-0.5_r8))
           end if
+
+          !Kthis%plan_ai_out(l)=plan_ai
+          !Kthis%frontal_ai_out(l)=frontal_ai
+          !Kthis%z_d_town_out(l)=lun%z_d_town(l)
+          !Kthis%z_0_town_out(l)=lun%z_0_town(l)
 
        else ! Not urban point 
 
@@ -1016,27 +1016,31 @@ contains
        ! Allocate dynamic memory
 !-------------------[kz.7]Ray tracing test-------------------------     
        allocate(urbinp%canyon_hwr(begg:endg, numurbl), &  
-                urbinp%lai(begg:endg, numurbl), &  
-                urbinp%tree_cov(begg:endg, numurbl), &     
-!-------------------[kz.7]Ray tracing test-------------------------                                      
+                urbinp%tree_lai_urb(begg:endg, numurbl), &  
+                urbinp%wtroad_tree(begg:endg, numurbl), &     
+                urbinp%tree_bht_urb(begg:endg, numurbl), &     
+                urbinp%tree_tht_urb(begg:endg, numurbl), &     
+                !-------------------[kz.7]Ray tracing test-------------------------                                      
                 urbinp%wtlunit_roof(begg:endg, numurbl), &  
                 urbinp%wtroad_perv(begg:endg, numurbl), &
-                urbinp%wtroad_tree(begg:endg, numurbl), &
+                urbinp%wall_to_plan_area_ratio(begg:endg, numurbl), &
                 urbinp%em_roof(begg:endg, numurbl), &     
                 urbinp%em_improad(begg:endg, numurbl), &    
                 urbinp%em_perroad(begg:endg, numurbl), &    
-                urbinp%em_tree(begg:endg, numurbl), &    
+                urbinp%em_tree_urb(begg:endg, numurbl), &    
                 urbinp%em_wall(begg:endg, numurbl), &    
                 urbinp%alb_roof_dir(begg:endg, numurbl, numrad), &    
                 urbinp%alb_roof_dif(begg:endg, numurbl, numrad), &    
                 urbinp%alb_improad_dir(begg:endg, numurbl, numrad), &    
                 urbinp%alb_perroad_dir(begg:endg, numurbl, numrad), &    
-                urbinp%alb_tree_dir(begg:endg, numurbl, numrad), &    
+                urbinp%alb_tree_urb_dir(begg:endg, numurbl, numrad), &    
                 urbinp%alb_improad_dif(begg:endg, numurbl, numrad), &    
                 urbinp%alb_perroad_dif(begg:endg, numurbl, numrad), &    
-                urbinp%alb_tree_dif(begg:endg, numurbl, numrad), &    
+                urbinp%alb_tree_urb_dif(begg:endg, numurbl, numrad), &    
                 urbinp%alb_wall_dir(begg:endg, numurbl, numrad), &    
                 urbinp%alb_wall_dif(begg:endg, numurbl, numrad), &
+                urbinp%tran_tree_urb_dif(begg:endg, numurbl, numrad), &    
+                urbinp%tran_tree_urb_dir(begg:endg, numurbl, numrad), &    
                 urbinp%ht_roof(begg:endg, numurbl), &
                 urbinp%wind_hgt_canyon(begg:endg, numurbl), &
                 urbinp%tk_wall(begg:endg, numurbl,nlevurb), &
@@ -1087,16 +1091,22 @@ contains
           call endrun(msg=errmsg(sourcefile, __LINE__))
        endif
 !-------------------[kz.8]Ray tracing test-------------------------
-       call ncd_io(ncid=ncid, varname='LAI', flag='read', data=urbinp%lai,&
+       call ncd_io(ncid=ncid, varname='TREE_LAI_URB', flag='read', data=urbinp%tree_lai_urb,&
            dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
-         call endrun( msg='ERROR: LAI NOT on fsurdat file '//errmsg(sourcefile, __LINE__))
+         call endrun( msg='ERROR: TREE_LAI_URB NOT on fsurdat file '//errmsg(sourcefile, __LINE__))
        end if
 
-       call ncd_io(ncid=ncid, varname='TREE_COV', flag='read', data=urbinp%tree_cov,&
+       call ncd_io(ncid=ncid, varname='TREE_BHT_URB', flag='read', data=urbinp%tree_bht_urb,&
            dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
-         call endrun( msg='ERROR: TREE_COV NOT on fsurdat file '//errmsg(sourcefile, __LINE__))
+         call endrun( msg='ERROR: TREE_BHT_URB NOT on fsurdat file '//errmsg(sourcefile, __LINE__))
+       end if
+
+       call ncd_io(ncid=ncid, varname='TREE_THT_URB', flag='read', data=urbinp%tree_tht_urb,&
+           dim1name=grlnd, readvar=readvar)
+       if (.not. readvar) then
+         call endrun( msg='ERROR: TREE_THT_URB NOT on fsurdat file '//errmsg(sourcefile, __LINE__))
        end if
 !-------------------[kz.8]Ray tracing test-------------------------        
        call ncd_io(ncid=ncid, varname='CANYON_HWR', flag='read', data=urbinp%canyon_hwr,&
@@ -1115,6 +1125,12 @@ contains
             dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
           call endrun( msg=' ERROR: WTROAD_PERV NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
+       end if
+
+       call ncd_io(ncid=ncid, varname='WALL_TO_PLAN_AREA_RATIO', flag='read', data=urbinp%wall_to_plan_area_ratio, &
+            dim1name=grlnd, readvar=readvar)
+       if (.not. readvar) then
+          call endrun( msg=' ERROR: WALL_TO_PLAN_AREA_RATIO NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
        end if
 
        call ncd_io(ncid=ncid, varname='WTROAD_TREE', flag='read', data=urbinp%wtroad_tree, &
@@ -1141,10 +1157,10 @@ contains
           call endrun( msg=' ERROR: EM_PERROAD NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
        end if
 
-       call ncd_io(ncid=ncid, varname='EM_TREE', flag='read', data=urbinp%em_tree, &
+       call ncd_io(ncid=ncid, varname='EM_TREE_URB', flag='read', data=urbinp%em_tree_urb, &
             dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
-          call endrun( msg=' ERROR: EM_TREE NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
+          call endrun( msg=' ERROR: EM_TREE_URB NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
        end if
 
        call ncd_io(ncid=ncid, varname='EM_WALL', flag='read', data=urbinp%em_wall, &
@@ -1213,18 +1229,30 @@ contains
           call endrun( msg=' ERROR: ALB_PERROAD_DIF NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
        end if
 
-       call ncd_io(ncid=ncid, varname='ALB_TREE_DIR', flag='read',data=urbinp%alb_tree_dir, &
+       call ncd_io(ncid=ncid, varname='ALB_TREE_URB_DIR', flag='read',data=urbinp%alb_tree_urb_dir, &
             dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
-          call endrun( msg=' ERROR: ALB_TREE_DIR NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
+          call endrun( msg=' ERROR: ALB_TREE_URB_DIR NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
        end if
 
-       call ncd_io(ncid=ncid, varname='ALB_TREE_DIF', flag='read',data=urbinp%alb_tree_dif, &
+       call ncd_io(ncid=ncid, varname='ALB_TREE_URB_DIF', flag='read',data=urbinp%alb_tree_urb_dif, &
             dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
-          call endrun( msg=' ERROR: ALB_TREE_DIF NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
+          call endrun( msg=' ERROR: ALB_TREE_URB_DIF NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
        end if
-       
+
+              call ncd_io(ncid=ncid, varname='TRAN_TREE_URB_DIR', flag='read',data=urbinp%tran_tree_urb_dir, &
+            dim1name=grlnd, readvar=readvar)
+       if (.not. readvar) then
+          call endrun( msg=' ERROR: TRAN_TREE_URB_DIR NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
+       end if
+
+       call ncd_io(ncid=ncid, varname='TRAN_TREE_URB_DIF', flag='read',data=urbinp%tran_tree_urb_dif, &
+            dim1name=grlnd, readvar=readvar)
+       if (.not. readvar) then
+          call endrun( msg=' ERROR: TRAN_TREE_URB_DIF NOT on fsurdat file'//errmsg(sourcefile, __LINE__))
+       end if
+
        call ncd_io(ncid=ncid, varname='ALB_ROOF_DIR', flag='read', data=urbinp%alb_roof_dir,  &
             dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
@@ -1296,27 +1324,31 @@ contains
        if ( nlevurb == 0 ) return       
        deallocate(urbinp%canyon_hwr, &
 !-------------------[kz.9]Ray tracing test-------------------------        
-                  urbinp%lai, &     
-                  urbinp%tree_cov, &     
+                  urbinp%tree_lai_urb, &     
+                  urbinp%wtroad_tree, & 
+                  urbinp%tree_bht_urb, &    
+                  urbinp%tree_tht_urb, &     
+                  urbinp%wall_to_plan_area_ratio, &
 !-------------------[kz.9]Ray tracing test-------------------------                    
                   urbinp%wtlunit_roof, &
                   urbinp%wtroad_perv, &
-                  urbinp%wtroad_tree, &
                   urbinp%em_roof, &
                   urbinp%em_improad, &
                   urbinp%em_perroad, &
-                  urbinp%em_tree, &
+                  urbinp%em_tree_urb, &
                   urbinp%em_wall, &
                   urbinp%alb_roof_dir, &
                   urbinp%alb_roof_dif, &
                   urbinp%alb_improad_dir, &
                   urbinp%alb_perroad_dir, &
-                  urbinp%alb_tree_dir, &
+                  urbinp%alb_tree_urb_dir, &
                   urbinp%alb_improad_dif, &
                   urbinp%alb_perroad_dif, &
-                  urbinp%alb_tree_dif, &
+                  urbinp%alb_tree_urb_dif, &
                   urbinp%alb_wall_dir, &
                   urbinp%alb_wall_dif, &
+                  urbinp%tran_tree_urb_dif, &
+                  urbinp%tran_tree_urb_dir, &
                   urbinp%ht_roof, &
                   urbinp%wind_hgt_canyon, &
                   urbinp%tk_wall, &
@@ -1375,12 +1407,14 @@ contains
              if ( .not. urban_valid(nl) .or. &
                   urbinp%canyon_hwr(nl,n)            <= 0._r8 .or. &
 !-------------------[kz.10]Ray tracing test-------------------------                    
-                  urbinp%lai(nl,n)                   <= 0._r8 .or. &
-                  urbinp%tree_cov(nl,n)              <= 0._r8 .or. &   
+                  urbinp%tree_lai_urb(nl,n)                   <= 0._r8 .or. &
+                  urbinp%wtroad_tree(nl,n)              <= 0._r8 .or. &   
+                  urbinp%tree_bht_urb(nl,n)              <= 0._r8 .or. &   
+                  urbinp%tree_tht_urb(nl,n)              <= 0._r8 .or. &   
 !-------------------[kz.10]Ray tracing test-------------------------                                     
                   urbinp%em_improad(nl,n)            <= 0._r8 .or. &
                   urbinp%em_perroad(nl,n)            <= 0._r8 .or. &
-                  urbinp%em_tree(nl,n)            <= 0._r8 .or. &
+                  urbinp%em_tree_urb(nl,n)            <= 0._r8 .or. &
                   urbinp%em_roof(nl,n)               <= 0._r8 .or. &
                   urbinp%em_wall(nl,n)               <= 0._r8 .or. &
                   urbinp%ht_roof(nl,n)               <= 0._r8 .or. &
@@ -1390,11 +1424,15 @@ contains
                   urbinp%wind_hgt_canyon(nl,n)       <= 0._r8 .or. &
                   urbinp%wtlunit_roof(nl,n)          <= 0._r8 .or. &
                   urbinp%wtroad_perv(nl,n)           < 0._r8 .or. &
-                  urbinp%wtroad_tree(nl,n)           < 0._r8 .or. &
+                  urbinp%wall_to_plan_area_ratio(nl,n) <= 0._r8 .or. &
                   any(urbinp%alb_improad_dir(nl,n,:) <= 0._r8) .or. &
                   any(urbinp%alb_improad_dif(nl,n,:) <= 0._r8) .or. &
                   any(urbinp%alb_perroad_dir(nl,n,:) <= 0._r8) .or. &
                   any(urbinp%alb_perroad_dif(nl,n,:) <= 0._r8) .or. &
+                  any(urbinp%alb_tree_urb_dir(nl,n,:) <= 0._r8) .or. &
+                  any(urbinp%alb_tree_urb_dif(nl,n,:) <= 0._r8) .or. &
+                  any(urbinp%tran_tree_urb_dif(nl,n,:) <= 0._r8) .or. &
+                  any(urbinp%tran_tree_urb_dif(nl,n,:) <= 0._r8) .or. &
                   any(urbinp%alb_roof_dir(nl,n,:)    <= 0._r8) .or. &
                   any(urbinp%alb_roof_dif(nl,n,:)    <= 0._r8) .or. &
                   any(urbinp%alb_wall_dir(nl,n,:)    <= 0._r8) .or. &
@@ -1429,12 +1467,14 @@ contains
        write(iulog,*)'urban_valid:     ',urban_valid(nindx)
        write(iulog,*)'canyon_hwr:      ',urbinp%canyon_hwr(nindx,dindx)
 !-------------------[kz.11]Ray tracing test-------------------------         
-       write(iulog,*)'lai:             ',urbinp%lai(nindx,dindx)
-       write(iulog,*)'tree_cov:        ',urbinp%tree_cov(nindx,dindx)   
-!-------------------[kz.11]Ray tracing test-------------------------             
+       write(iulog,*)'tree_lai_urb:             ',urbinp%tree_lai_urb(nindx,dindx)
+       write(iulog,*)'wtroad_tree:        ',urbinp%wtroad_tree(nindx,dindx)   
+       write(iulog,*)'tree_bht_urb:        ',urbinp%tree_bht_urb(nindx,dindx)   
+       write(iulog,*)'tree_tht_urb:        ',urbinp%tree_tht_urb(nindx,dindx)   
+       !-------------------[kz.11]Ray tracing test-------------------------             
        write(iulog,*)'em_improad:      ',urbinp%em_improad(nindx,dindx)
        write(iulog,*)'em_perroad:      ',urbinp%em_perroad(nindx,dindx)
-       write(iulog,*)'em_tree:      ',urbinp%em_tree(nindx,dindx)
+       write(iulog,*)'em_tree_urb:      ',urbinp%em_tree_urb(nindx,dindx)
        write(iulog,*)'em_roof:         ',urbinp%em_roof(nindx,dindx)
        write(iulog,*)'em_wall:         ',urbinp%em_wall(nindx,dindx)
        write(iulog,*)'ht_roof:         ',urbinp%ht_roof(nindx,dindx)
@@ -1444,13 +1484,15 @@ contains
        write(iulog,*)'wind_hgt_canyon: ',urbinp%wind_hgt_canyon(nindx,dindx)
        write(iulog,*)'wtlunit_roof:    ',urbinp%wtlunit_roof(nindx,dindx)
        write(iulog,*)'wtroad_perv:     ',urbinp%wtroad_perv(nindx,dindx)
-       write(iulog,*)'wtroad_tree:     ',urbinp%wtroad_tree(nindx,dindx)
+       write(iulog,*)'wall_to_plan_area_ratio:     ',urbinp%wall_to_plan_area_ratio(nindx,dindx)
        write(iulog,*)'alb_improad_dir: ',urbinp%alb_improad_dir(nindx,dindx,:)
        write(iulog,*)'alb_improad_dif: ',urbinp%alb_improad_dif(nindx,dindx,:)
        write(iulog,*)'alb_perroad_dir: ',urbinp%alb_perroad_dir(nindx,dindx,:)
        write(iulog,*)'alb_perroad_dif: ',urbinp%alb_perroad_dif(nindx,dindx,:)
-       write(iulog,*)'alb_tree_dir: ',urbinp%alb_tree_dir(nindx,dindx,:)
-       write(iulog,*)'alb_tree_dif: ',urbinp%alb_tree_dif(nindx,dindx,:)
+       write(iulog,*)'alb_tree_urb_dir: ',urbinp%alb_tree_urb_dir(nindx,dindx,:)
+       write(iulog,*)'alb_tree_urb_dif: ',urbinp%alb_tree_urb_dif(nindx,dindx,:)
+       write(iulog,*)'tran_tree_urb_dir: ',urbinp%tran_tree_urb_dir(nindx,dindx,:)
+       write(iulog,*)'tran_tree_urb_dif: ',urbinp%tran_tree_urb_dif(nindx,dindx,:)
        write(iulog,*)'alb_roof_dir:    ',urbinp%alb_roof_dir(nindx,dindx,:)
        write(iulog,*)'alb_roof_dif:    ',urbinp%alb_roof_dif(nindx,dindx,:)
        write(iulog,*)'alb_wall_dir:    ',urbinp%alb_wall_dir(nindx,dindx,:)
@@ -1473,7 +1515,7 @@ contains
 
   !----------------------------------------------------------------------- 
   subroutine montecarlo_view_factors(nzcanm,dzcan,wcan,wbui,&
-      tree_cov,lad,lads,ladl,omega,ss,pb,dray,maxind,maxbhind,n,nsky,hsky,h1,h2,&
+      wtroad_tree,lad,lads,ladl,omega,ss,pb,dray,maxind,maxbhind,n,nsky,hsky,h1,h2,&
       fww1d,fvv1d,fwv1d,fvw1d,fwr1d,frw1d,fvr1d,frv1d,fwg1d,fgw1d,fgv1d,fsw1d,fvg1d,fsg1d,fsr1d,&
       fsv1d,kww1d,kvv1d,kwv1d,kvw1d,kwr1d,krw1d,kvr1d,krv1d,kwg1d,kgw1d,kgv1d,ksw1d,kvg1d,ksg1d,ksr1d,&
       ksv1d,kws1d,kvs1d,kts1d,krs1d,fws1d,fvs1d,fts1d,frs1d,vfww_f,vfvv_f,vfwv_f,vfvw_f,vfwr_f,vfrw_f,vfvr_f,&
@@ -1492,7 +1534,7 @@ contains
     real(r8)        , intent(in) :: dzcan            ! Height of buildings [m]
     real(r8)        , intent(in) :: wcan             ! Width of the canyons [m]
     real(r8)        , intent(in) :: wbui             ! Width of the buildings [m]
-    real(r8)        , intent(in) :: tree_cov         ! Canopy cover within the canyon (between-building) space
+    real(r8)        , intent(in) :: wtroad_tree         ! Canopy cover within the canyon (between-building) space
     real(r8)        , intent(in) :: lad(nzcanm)      ! Leaf area density in the canyon column [m-1]
     real(r8)        , intent(in) :: lads(nzcanm)     ! Leaf area density in the canyon column [m-1] for shortwave calcs
     real(r8)        , intent(in) :: ladl(nzcanm)     ! Leaf area density in the canyon column [m-1] for longwave calcs
@@ -1721,7 +1763,7 @@ contains
     kk=1
     phi1=0.0_r8
     
-    lad_tree=lad/tree_cov
+    lad_tree=lad/wtroad_tree
     
     call init_random_seed(1234)
     call RANDOM_NUMBER(rnum)
@@ -1845,7 +1887,7 @@ contains
     ! Width of the two columns (canyon and building)
     wtot=wcan+wbui
     bldfrac=wbui/wtot
-    xdom=wtot/dzcan
+    xdom=wtot/dzcan !
     if (debug_write) then
         write(6,*)'wcan,wbui,wtot,dzcan',wcan,wbui,wtot,dzcan
         write(6,*)'lad1, lad2',lad(1),lad(2)
@@ -2468,7 +2510,20 @@ contains
        
        svft_f=svft
        vfst_f=vfst
-       
+
+      write(iulog,*) '--- ray tracing ---'
+      write(iulog,*) 'A_g             = ', A_g
+      write(iulog,*) 'A_w_max             = ', A_w_max
+      write(iulog,*) 'A_v1            = ', A_v(1)
+      write(iulog,*) 'A_v2            = ', A_v(2)
+      write(iulog,*) 'A_r_max             = ', A_r_max
+      write(iulog,*) 'A_s             = ', A_s
+      write(iulog,*) 'fsg1d(l)        = ', fsg1d,vfst
+      write(iulog,*) 'fsw1d(l,1)      = ', fsw1d(1),vfsw(1)
+      write(iulog,*) 'fsr1d(l,2)         = ', fsr1d(2),vfsr(2)
+      write(iulog,*) 'fsv1d(l,1)       = ', fsv1d(1),vfsv(1)
+      write(iulog,*) 'fsv1d(l,2)       = ', fsv1d(2),vfsv(2)
+
        
     endif
  

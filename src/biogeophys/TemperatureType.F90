@@ -114,22 +114,22 @@ module TemperatureType
      real(r8), pointer :: emv_patch                (:)   ! patch vegetation emissivity
      real(r8), pointer :: emg_col                  (:)   ! col ground emissivity
 !-------------------[kz.11]Ray tracing test------------------------- 
-     real(r8), pointer :: fww1d_out1       (:,:) ! view factor from wall to wall for a given canyon
-     real(r8), pointer :: fww1d_out2       (:,:) ! view factor from wall to wall for a given canyon
-     real(r8), pointer :: fvv1d_out1       (:,:) ! view factor from vegetation to vegetation for a given canyon
-     real(r8), pointer :: fvv1d_out2       (:,:) ! view factor from vegetation to vegetation for a given canyon
-     real(r8), pointer :: fwv1d_out1       (:,:) ! view factor from wall to vegetation for a given canyon
-     real(r8), pointer :: fwv1d_out2       (:,:) ! view factor from wall to vegetation for a given canyon
-     real(r8), pointer :: fvw1d_out1       (:,:) ! view factor from vegetation to wall for a given canyon
-     real(r8), pointer :: fvw1d_out2       (:,:) ! view factor from vegetation to wall for a given canyon
-     real(r8), pointer :: fwr1d_out1       (:,:) ! view factor from wall to roof for a given canyon
-     real(r8), pointer :: fwr1d_out2       (:,:) ! view factor from wall to roof for a given canyon
-     real(r8), pointer :: frw1d_out1       (:,:) ! view factor from roof to wall for a given canyon
-     real(r8), pointer :: frw1d_out2       (:,:) ! view factor from roof to wall for a given canyon
-     real(r8), pointer :: fvr1d_out1       (:,:) ! view factor from vegetation to roof for a given canyon
-     real(r8), pointer :: fvr1d_out2       (:,:) ! view factor from vegetation to roof for a given canyon
-     real(r8), pointer :: frv1d_out1       (:,:) ! view factor from roof to vegetation for a given canyon
-     real(r8), pointer :: frv1d_out2       (:,:) ! view factor from roof to vegetation for a given canyon
+     real(r8), pointer :: fww1d_out1       (:,:) ! view factor from wall to wall for a given canyon dimension 1
+     real(r8), pointer :: fww1d_out2       (:,:) ! view factor from wall to wall for a given canyon dimension 2
+     real(r8), pointer :: fvv1d_out1       (:,:) ! view factor from vegetation to vegetation for a given canyon dimension 1
+     real(r8), pointer :: fvv1d_out2       (:,:) ! view factor from vegetation to vegetation for a given canyon dimension 2
+     real(r8), pointer :: fwv1d_out1       (:,:) ! view factor from wall to vegetation for a given canyon dimension 1
+     real(r8), pointer :: fwv1d_out2       (:,:) ! view factor from wall to vegetation for a given canyon dimension 2
+     real(r8), pointer :: fvw1d_out1       (:,:) ! view factor from vegetation to wall for a given canyon dimension 1
+     real(r8), pointer :: fvw1d_out2       (:,:) ! view factor from vegetation to wall for a given canyon dimension 2
+     real(r8), pointer :: fwr1d_out1       (:,:) ! view factor from wall to roof for a given canyon dimension 1
+     real(r8), pointer :: fwr1d_out2       (:,:) ! view factor from wall to roof for a given canyon dimension 2
+     real(r8), pointer :: frw1d_out1       (:,:) ! view factor from roof to wall for a given canyon dimension 1
+     real(r8), pointer :: frw1d_out2       (:,:) ! view factor from roof to wall for a given canyon dimension 2
+     real(r8), pointer :: fvr1d_out1       (:,:) ! view factor from vegetation to roof for a given canyon dimension 1
+     real(r8), pointer :: fvr1d_out2       (:,:) ! view factor from vegetation to roof for a given canyon dimension 2
+     real(r8), pointer :: frv1d_out1       (:,:) ! view factor from roof to vegetation for a given canyon dimension 1
+     real(r8), pointer :: frv1d_out2       (:,:) ! view factor from roof to vegetation for a given canyon dimension 2
 
      real(r8), pointer :: fwg1d_out       (:,:)   ! view factor from wall to ground for a given canyon
      real(r8), pointer :: fgw1d_out       (:,:)   ! view factor from ground to wall for a given canyon
@@ -145,22 +145,22 @@ module TemperatureType
      real(r8), pointer :: fts1d_out       (:)     ! view factor from ? to sky for a given canyon
      real(r8), pointer :: frs1d_out       (:,:)   ! view factor from roof to sky for a given canyon
        
-     real(r8), pointer :: kww1d_out1       (:,:) ! view kactor krom wall to wall kor a given canyon
-     real(r8), pointer :: kww1d_out2       (:,:) ! view kactor krom wall to wall kor a given canyon
-     real(r8), pointer :: kvv1d_out1       (:,:) ! view kactor krom vegetation to vegetation kor a given canyon
-     real(r8), pointer :: kvv1d_out2       (:,:) ! view kactor krom vegetation to vegetation kor a given canyon
-     real(r8), pointer :: kwv1d_out1       (:,:) ! view kactor krom wall to vegetation kor a given canyon
-     real(r8), pointer :: kwv1d_out2       (:,:) ! view kactor krom wall to vegetation kor a given canyon
-     real(r8), pointer :: kvw1d_out1       (:,:) ! view kactor krom vegetation to wall kor a given canyon
-     real(r8), pointer :: kvw1d_out2       (:,:) ! view kactor krom vegetation to wall kor a given canyon
-     real(r8), pointer :: kwr1d_out1       (:,:) ! view kactor krom wall to rook kor a given canyon
-     real(r8), pointer :: kwr1d_out2       (:,:) ! view kactor krom wall to rook kor a given canyon
-     real(r8), pointer :: krw1d_out1       (:,:) ! view kactor krom rook to wall kor a given canyon
-     real(r8), pointer :: krw1d_out2       (:,:) ! view kactor krom rook to wall kor a given canyon
-     real(r8), pointer :: kvr1d_out1       (:,:) ! view kactor krom vegetation to rook kor a given canyon
-     real(r8), pointer :: kvr1d_out2       (:,:) ! view kactor krom vegetation to rook kor a given canyon
-     real(r8), pointer :: krv1d_out1       (:,:) ! view kactor krom rook to vegetation kor a given canyon
-     real(r8), pointer :: krv1d_out2       (:,:) ! view kactor krom rook to vegetation kor a given canyon 
+     real(r8), pointer :: kww1d_out1       (:,:) ! view kactor krom wall to wall for a given canyon dimension 1
+     real(r8), pointer :: kww1d_out2       (:,:) ! view kactor krom wall to wall for a given canyon dimension 2
+     real(r8), pointer :: kvv1d_out1       (:,:) ! view kactor krom vegetation to vegetation for a given canyon dimension 1
+     real(r8), pointer :: kvv1d_out2       (:,:) ! view kactor krom vegetation to vegetation for a given canyon dimension 2
+     real(r8), pointer :: kwv1d_out1       (:,:) ! view kactor krom wall to vegetation for a given canyon dimension 1
+     real(r8), pointer :: kwv1d_out2       (:,:) ! view kactor krom wall to vegetation for a given canyon dimension 2
+     real(r8), pointer :: kvw1d_out1       (:,:) ! view kactor krom vegetation to wall for a given canyon dimension 1
+     real(r8), pointer :: kvw1d_out2       (:,:) ! view kactor krom vegetation to wall for a given canyon dimension 2
+     real(r8), pointer :: kwr1d_out1       (:,:) ! view kactor krom wall to rook for a given canyon dimension 1
+     real(r8), pointer :: kwr1d_out2       (:,:) ! view kactor krom wall to rook for a given canyon  dimension 2
+     real(r8), pointer :: krw1d_out1       (:,:) ! view kactor krom rook to wall for a given canyon dimension 1
+     real(r8), pointer :: krw1d_out2       (:,:) ! view kactor krom rook to wall for a given canyon dimension 2 
+     real(r8), pointer :: kvr1d_out1       (:,:) ! view kactor krom vegetation to rook for a given canyon dimension 1 
+     real(r8), pointer :: kvr1d_out2       (:,:) ! view kactor krom vegetation to rook for a given canyon dimension 2 
+     real(r8), pointer :: krv1d_out1       (:,:) ! view kactor krom rook to vegetation for a given canyon dimension 1 
+     real(r8), pointer :: krv1d_out2       (:,:) ! view kactor krom rook to vegetation for a given canyon dimension 2
 
      real(r8), pointer :: kwg1d_out       (:,:)   ! view factor from wall to ground for a given canyon
      real(r8), pointer :: kgw1d_out       (:,:)   ! view factor from ground to wall for a given canyon
@@ -275,7 +275,7 @@ contains
 
   !------------------------------------------------------------------------
   subroutine Init(this, bounds, &
-       em_roof_lun,  em_wall_lun, em_improad_lun, em_perroad_lun,em_tree_lun, &
+       em_roof_lun,  em_wall_lun, em_improad_lun, em_perroad_lun,em_tree_urb_lun, &
        is_simple_buildtemp, is_prog_buildtemp, exice_init_conc_col, NLFileName)
     !
     ! !DESCRIPTION:
@@ -289,7 +289,7 @@ contains
     real(r8)          , intent(in) :: em_wall_lun(bounds%begl:)
     real(r8)          , intent(in) :: em_improad_lun(bounds%begl:)
     real(r8)          , intent(in) :: em_perroad_lun(bounds%begl:)
-    real(r8)          , intent(in) :: em_tree_lun(bounds%begl:)
+    real(r8)          , intent(in) :: em_tree_urb_lun(bounds%begl:)
     logical           , intent(in) :: is_simple_buildtemp  ! Simple building temp is being used
     logical           , intent(in) :: is_prog_buildtemp    ! Prognostic building temp is being used
     real(r8)          , intent(in) :: exice_init_conc_col(bounds%begc:)  ! initial coldstart excess ice concentration (from the stream file)
@@ -309,7 +309,7 @@ contains
          em_wall_lun(bounds%begl:bounds%endl),    &
          em_improad_lun(bounds%begl:bounds%endl), &
          em_perroad_lun(bounds%begl:bounds%endl), &
-         em_tree_lun(bounds%begl:bounds%endl), &
+         em_tree_urb_lun(bounds%begl:bounds%endl), &
          is_simple_buildtemp, is_prog_buildtemp,  &
          exice_init_conc_col(bounds%begc:bounds%endc) )
 
@@ -1533,7 +1533,7 @@ contains
 
   !-----------------------------------------------------------------------
   subroutine InitCold(this, bounds, &
-       em_roof_lun,  em_wall_lun, em_improad_lun, em_perroad_lun,em_tree_lun, &
+       em_roof_lun,  em_wall_lun, em_improad_lun, em_perroad_lun,em_tree_urb_lun, &
        is_simple_buildtemp, is_prog_buildtemp, exice_init_conc_col)
     !
     ! !DESCRIPTION:
@@ -1557,7 +1557,7 @@ contains
     real(r8)          , intent(in) :: em_wall_lun(bounds%begl:)
     real(r8)          , intent(in) :: em_improad_lun(bounds%begl:)
     real(r8)          , intent(in) :: em_perroad_lun(bounds%begl:)
-    real(r8)          , intent(in) :: em_tree_lun(bounds%begl:)
+    real(r8)          , intent(in) :: em_tree_urb_lun(bounds%begl:)
     logical           , intent(in) :: is_simple_buildtemp  ! Simple building temp is being used
     logical           , intent(in) :: is_prog_buildtemp    ! Prognostic building temp is being used
     real(r8)          , intent(in) :: exice_init_conc_col(bounds%begc:) ! initial coldstart excess ice concentration (from the stream file)
@@ -1575,7 +1575,7 @@ contains
     SHR_ASSERT_ALL_FL((ubound(em_wall_lun)    == (/bounds%endl/)), sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(em_improad_lun) == (/bounds%endl/)), sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(em_perroad_lun) == (/bounds%endl/)), sourcefile, __LINE__)
-    SHR_ASSERT_ALL_FL((ubound(em_tree_lun) == (/bounds%endl/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(em_tree_urb_lun) == (/bounds%endl/)), sourcefile, __LINE__)
 
     associate(snl => col%snl) ! Output: [integer (:)    ]  number of snow layers
 
@@ -1778,7 +1778,7 @@ contains
        if (col%itype(c) == icol_shadewall  ) this%emg_col(c) = em_wall_lun(l)
        if (col%itype(c) == icol_road_imperv) this%emg_col(c) = em_improad_lun(l)
        if (col%itype(c) == icol_road_perv  ) this%emg_col(c) = em_perroad_lun(l)
-       if (col%itype(c) == icol_road_tree  ) this%emg_col(c) = em_tree_lun(l)
+       if (col%itype(c) == icol_road_tree  ) this%emg_col(c) = em_tree_urb_lun(l)
     end do
 
     ! Initialize dynbal_baseline_heat_col: for some columns, this is set elsewhere in

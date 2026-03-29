@@ -343,6 +343,12 @@ contains
 
   end subroutine InitCold
 
+  !------------------------------------------------------------------------
+  ! The required input surfalb_inst%tlai_z_patch was set in SurfaceAlbedoMod
+  ! The required input surfalb_inst%fsun_z_patch was computed by TwoStream in SurfaceAlbedoMod
+  ! solarabs_inst%sabs_tree_dif_lun/sabs_tree_dir_lun was computed by UrbanAlbedoMod
+  ! surfalb_inst%fabd_sun/sha_z_patch or fabi_sun/sha_z_patch was computed by TwoStream in SurfaceAlbedoMod
+  !------------------------------------------------------------------------
 
   subroutine CanopySunShadeFracs(filter_nourbanwtreep, num_nourbanwtreep,  &
                                  atm2lnd_inst, surfalb_inst,     &
@@ -393,7 +399,7 @@ contains
     associate( tlai_z  => surfalb_inst%tlai_z_patch, &    ! Input: [real(r8) (:)   ] tlai increment for canopy layer
           fsun_z      => surfalb_inst%fsun_z_patch, &     ! Input: [real(r8) (:)   ]sunlit fraction of canopy layer
           elai        => canopystate_inst%elai_patch, &   ! Input: [real(r8) (:)   ]one-sided leaf area index
-          lai                 =>   lun%lai                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+          tree_lai_urb                 =>   lun%tree_lai_urb                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
           sabs_tree_dif      =>    solarabs_inst%sabs_tree_dif_lun      , & ! Input: [real(r8) (:,:) ]  diffuse solar absorbed  by above-roof treeetation per unit treeetation area per unit incident flux
           sabs_tree_dir      =>    solarabs_inst%sabs_tree_dir_lun      , & ! Input: [real(r8) (:,:) ]  direct  solar absorbed  by above-roof treeetation per unit treeetation area per unit incident flux
 
@@ -440,7 +446,7 @@ contains
         end do
         if (elai(p) > 0._r8) then
            if (col%itype(c) == icol_road_tree) then 
-             fsun(p) = laisun(p) / lai(l)
+             fsun(p) = laisun(p) / tree_lai_urb(l)
            else 
              fsun(p) = laisun(p) / elai(p)
            end if 
@@ -462,12 +468,30 @@ contains
           write (6,'(A,1X,*(F10.5,1X))') 'fabi_sun_z(p,iv),fabi_sha_z(p,iv)', fabi_sun_z(p,iv),fabi_sha_z(p,iv)
         end do
         do iv = 1, nrad(p)
+           ! The absorbed solar radiation for urban road tree is calculated in UrbanAlbedoMod
+           ! Here just use the fabd_sun_z and fabd_sha_z to get the patition of sunlit and shaded leave absorption.
+           ! Use the ratio when the sum of fabd_sun_z(p,iv)+fabd_sha_z(p,iv) is non-zero
+           ! Otherwise, the solar radiation should be very small, keep the formula unchanged
            if (col%itype(c) == icol_road_tree) then 
-             parsun_z(p,iv) = forc_solad_col(c,ipar)*fabd_sun_z(p,iv)*sabs_tree_dir(l,ipar) + forc_solai(g,ipar)*fabi_sun_z(p,iv)*sabs_tree_dif(l,ipar)
-             parsha_z(p,iv) = forc_solad_col(c,ipar)*fabd_sha_z(p,iv)*sabs_tree_dir(l,ipar) + forc_solai(g,ipar)*fabi_sha_z(p,iv)*sabs_tree_dif(l,ipar)
+             if (fabd_sun_z(p,iv)+fabd_sha_z(p,iv) > 0.000001_r8) then
+                 parsun_z(p,iv) = forc_solad_col(c,ipar)*fabd_sun_z(p,iv)/(fabd_sun_z(p,iv)+fabd_sha_z(p,iv))*sabs_tree_dir(l,ipar) +&
+                  forc_solai(g,ipar)*fabi_sun_z(p,iv)/(fabi_sun_z(p,iv)+fabi_sha_z(p,iv))*sabs_tree_dif(l,ipar)
+                  
+                 parsha_z(p,iv) = forc_solad_col(c,ipar)*fabd_sha_z(p,iv)/(fabd_sun_z(p,iv)+fabd_sha_z(p,iv))*sabs_tree_dir(l,ipar) +&
+                  forc_solai(g,ipar)*fabi_sha_z(p,iv)/(fabi_sun_z(p,iv)+fabi_sha_z(p,iv))*sabs_tree_dif(l,ipar)
+              else 
+                  parsun_z(p,iv) = forc_solad_col(c,ipar)*fabd_sun_z(p,iv)*sabs_tree_dir(l,ipar) +&
+                   forc_solai(g,ipar)*fabi_sun_z(p,iv)*sabs_tree_dif(l,ipar)
+                   
+                  parsha_z(p,iv) = forc_solad_col(c,ipar)*fabd_sha_z(p,iv)*sabs_tree_dir(l,ipar) +&
+                   forc_solai(g,ipar)*fabi_sha_z(p,iv)*sabs_tree_dif(l,ipar)
+               end if
            else 
-             parsun_z(p,iv) = forc_solad_col(c,ipar)*fabd_sun_z(p,iv) + forc_solai(g,ipar)*fabi_sun_z(p,iv)
-             parsha_z(p,iv) = forc_solad_col(c,ipar)*fabd_sha_z(p,iv) + forc_solai(g,ipar)*fabi_sha_z(p,iv)
+             parsun_z(p,iv) = forc_solad_col(c,ipar)*fabd_sun_z(p,iv) +&
+              forc_solai(g,ipar)*fabi_sun_z(p,iv)
+              
+             parsha_z(p,iv) = forc_solad_col(c,ipar)*fabd_sha_z(p,iv) +&
+              forc_solai(g,ipar)*fabi_sha_z(p,iv)
            end if 
         end do
         

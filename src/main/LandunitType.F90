@@ -47,19 +47,19 @@ module LandunitType
 
      ! urban properties
      real(r8), pointer :: canyon_hwr   (:) ! urban landunit canyon height to width ratio (-)   
-     real(r8), pointer :: lai          (:) ! urban landunit canyon height to width ratio (-)   
-     real(r8), pointer :: tree_cov     (:) ! urban landunit canyon height to width ratio (-)   
+     real(r8), pointer :: tree_lai_urb          (:) ! LAI of road tree (m2/m2) 
+     real(r8), pointer :: tree_bht_urb     (:) ! the height of of tree crown base
+     real(r8), pointer :: tree_tht_urb     (:) ! the height of of tree crown
      real(r8), pointer :: wtroad_perv  (:) ! urban landunit weight of pervious road column to total road (-)
      real(r8), pointer :: wtroad_tree  (:) ! urban landunit weight of road tree column to total road (-)
      real(r8), pointer :: wtlunit_roof (:) ! weight of roof with respect to urban landunit (-)
+     real(r8), pointer :: wall_to_plan_area_ratio (:) ! wall area to plan area ratio for urban landunit (-)
      real(r8), pointer :: ht_roof      (:) ! height of urban roof (m)
-     real(r8), pointer :: ht_can_eff      (:) ! height of urban roof (m)
+     real(r8), pointer :: ht_can_eff      (:) ! effective height of urban roof (m)
      real(r8), pointer :: z_0_town     (:) ! urban landunit momentum roughness length (m)
      real(r8), pointer :: z_d_town     (:) ! urban landunit displacement height (m)
-     real(r8), pointer :: h1     (:) ! urban landunit canyon height to width ratio (-)   
-     real(r8), pointer :: h2     (:) ! urban landunit canyon height to width ratio (-)   
-     real(r8), pointer :: A_v1     (:) ! urban landunit canyon height to width ratio (-)   
-     real(r8), pointer :: A_v2     (:) ! urban landunit canyon height to width ratio (-)   
+     real(r8), pointer :: A_v1     (:) ! leaf area for urban tree canopy below roof   
+     real(r8), pointer :: A_v2     (:) ! leaf area for urban tree canopy abov roof   
 
      ! hillslope variables
      real(r8), pointer :: stream_channel_depth   (:) ! stream channel bankfull depth (m)
@@ -113,17 +113,17 @@ contains
 
     ! The following is set in routine urbanparams_inst%Init in module UrbanParamsType
     allocate(this%canyon_hwr   (begl:endl)); this%canyon_hwr   (:) = nan
-    allocate(this%lai          (begl:endl)); this%lai          (:) = nan
-    allocate(this%tree_cov     (begl:endl)); this%tree_cov     (:) = nan
+    allocate(this%tree_lai_urb          (begl:endl)); this%tree_lai_urb          (:) = nan
+    allocate(this%wtroad_tree     (begl:endl)); this%wtroad_tree     (:) = nan
     allocate(this%wtroad_perv  (begl:endl)); this%wtroad_perv  (:) = nan
-    allocate(this%wtroad_tree  (begl:endl)); this%wtroad_tree  (:) = nan
+    allocate(this%wall_to_plan_area_ratio  (begl:endl)); this%wall_to_plan_area_ratio  (:) = nan
     allocate(this%ht_roof      (begl:endl)); this%ht_roof      (:) = nan
     allocate(this%ht_can_eff      (begl:endl)); this%ht_can_eff      (:) = nan
     allocate(this%wtlunit_roof (begl:endl)); this%wtlunit_roof (:) = nan
     allocate(this%z_0_town     (begl:endl)); this%z_0_town     (:) = nan
     allocate(this%z_d_town     (begl:endl)); this%z_d_town     (:) = nan
-    allocate(this%h1     (begl:endl)); this%h1     (:) = nan
-    allocate(this%h2     (begl:endl)); this%h2     (:) = nan
+    allocate(this%tree_bht_urb     (begl:endl)); this%tree_bht_urb     (:) = nan
+    allocate(this%tree_tht_urb     (begl:endl)); this%tree_tht_urb     (:) = nan
     allocate(this%A_v1     (begl:endl)); this%A_v1     (:) = nan
     allocate(this%A_v2     (begl:endl)); this%A_v2     (:) = nan
 
@@ -162,15 +162,15 @@ contains
     deallocate(this%glcpoi       )
     deallocate(this%active       )
     deallocate(this%canyon_hwr   )
-    deallocate(this%lai   )
-    deallocate(this%tree_cov   )
-    deallocate(this%h1   )
-    deallocate(this%h2   )
+    deallocate(this%tree_lai_urb   )
+    deallocate(this%wtroad_tree   )
+    deallocate(this%tree_bht_urb   )
+    deallocate(this%tree_tht_urb   )
     deallocate(this%A_v1   )
     deallocate(this%A_v2   )
 
     deallocate(this%wtroad_perv  )
-    deallocate(this%wtroad_tree  )
+    deallocate(this%wall_to_plan_area_ratio  )
     deallocate(this%ht_roof      )
     deallocate(this%ht_can_eff      )
     deallocate(this%wtlunit_roof )

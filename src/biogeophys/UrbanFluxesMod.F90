@@ -10,7 +10,7 @@ module UrbanFluxesMod
   use shr_log_mod          , only : errMsg => shr_log_errMsg
   use decompMod            , only : bounds_type, subgrid_level_landunit
   use clm_varpar           , only : numrad
-  use clm_varctl           , only : iulog
+  use clm_varctl           , only : iulog, use_cn, use_c13
   use abortutils           , only : endrun  
   use UrbanParamsType      , only : urbanparams_type
   use UrbanParamsType      , only : urban_wasteheat_on, urban_hac_on, urban_hac
@@ -39,7 +39,7 @@ module UrbanFluxesMod
   use OzoneBaseMod          , only : ozone_base_type
   use clm_time_manager  , only : get_nstep 
   use SoilMoistStressMod    , only : calc_effective_soilporosity, calc_root_moist_stress,calc_volumetric_h2oliq
-  use PhotosynthesisMod     , only : Photosynthesis
+  use PhotosynthesisMod     , only : Photosynthesis, Fractionation
   use SoilWaterRetentionCurveMod, only : soil_water_retention_curve_type
   use array_utils     , only : find_k_max_indices
 
@@ -121,6 +121,7 @@ contains
     use clm_instur, only :  wt_nat_patch
     use pftconMod           , only : pftcon
     use clm_varcon      , only : ispval,denh2o
+    use shr_infnan_mod  , only : nan => shr_infnan_nan, assignment(=)
 
     !
     ! !ARGUMENTS:
@@ -258,12 +259,15 @@ contains
     real(r8) :: eah(bounds%begp:bounds%endp)         ! canopy air vapor pressure (pa)
     real(r8) :: co2(bounds%begp:bounds%endp)         ! atmospheric co2 partial pressure (pa)
     real(r8) :: o2(bounds%begp:bounds%endp)          ! atmospheric o2 partial pressure (pa)
+    real(r8) :: downreg_patch(bounds%begp:bounds%endp)          ! fractional reduction in GPP due to N limitation (dimensionless)
+    real(r8) :: lai_p(bounds%begp:bounds%endp)          ! patch level urban tree lai
+
     real(r8), allocatable :: leafn_array(:)
     integer :: max_indice(1)
     
     real(r8) :: leafn_road_tree(bounds%begp:bounds%endp)
-    real(r8) :: rb(bounds%begp:bounds%endp)                        ! leaf boundary layer resistance [s/m]
-    real(r8) :: rbl(bounds%begl:bounds%endl)                        ! leaf boundary layer resistance [s/m]
+    real(r8) :: rb(bounds%begp:bounds%endp)                        ! leaf boundary layer resistance on patch level [s/m]
+    real(r8) :: rbl(bounds%begl:bounds%endl)                        ! leaf boundary layer resistance on landunit level [s/m]
     real(r8) :: rshal(bounds%begl:bounds%endl)                 ! leaf shaded stomatal resistance (s/m) (output from Photosynthesis)
     real(r8) :: rsunl(bounds%begl:bounds%endl)                 ! leaf sunlit stomatal resistance (s/m) (output from Photosynthesis)
     real(r8) :: W_roof                                            ! fraction of roof surface that is wet (-)
@@ -285,6 +289,8 @@ contains
       endp                =>   bounds%endp                               , &
       begc                =>   bounds%begc                               , &
       endc                =>   bounds%endc                               , &
+      begl                =>   bounds%begl                               , &
+      endl                =>   bounds%endl                               , &
       watsat                 => soilstate_inst%watsat_col                    , & ! Input:  [real(r8) (:,:) ]  volumetric soil water at saturation (porosity)   (constant)                     
       btran                  => energyflux_inst%btran_patch                  , & ! Output: [real(r8) (:)   ]  transpiration wetness factor (0 to 1)  
       h2osoi_liqvol          => waterdiagnosticbulk_inst%h2osoi_liqvol_col            , & ! Output: [real(r8) (:,:) ]  volumetric liquid water (v/v) 
@@ -308,7 +314,7 @@ contains
          ht_can_eff             =>   lun%ht_can_eff                               , & ! Input:  [real(r8) (:)   ]  weight of roof with respect to landunit           
          wtroad_perv         =>   lun%wtroad_perv                           , & ! Input:  [real(r8) (:)   ]  weight of pervious road wrt total road            
          wtroad_tree         =>   lun%wtroad_tree                          , & ! Input:  [real(r8) (:)   ]  weight of road tree wrt total road   
-         lai                 =>   lun%lai                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+         tree_lai_urb                 =>   lun%tree_lai_urb                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
          forc_t              =>   atm2lnd_inst%forc_t_not_downscaled_grc    , & ! Input:  [real(r8) (:)   ]  atmospheric temperature (K)                       
          forc_th             =>   atm2lnd_inst%forc_th_not_downscaled_grc   , & ! Input:  [real(r8) (:)   ]  atmospheric potential temperature (K)             
          forc_rho            =>   atm2lnd_inst%forc_rho_not_downscaled_grc  , & ! Input:  [real(r8) (:)   ]  density (kg/m**3)                                 
@@ -382,6 +388,7 @@ contains
          zeta                =>   frictionvel_inst%zeta_patch               , & ! Output: [real(r8) (:)   ]  dimensionless stability parameter
          ram1                =>   frictionvel_inst%ram1_patch               , & ! Output: [real(r8) (:)   ]  aerodynamical resistance (s/m)                    
          u10_clm             =>   frictionvel_inst%u10_clm_patch            , & ! Input:  [real(r8) (:)   ]  10 m height winds (m/s)
+         rb1                 => frictionvel_inst%rb1_patch                   , & ! Output: [real(r8) (:)   ]  boundary layer resistance (s/m)   
 
          htvp                =>   energyflux_inst%htvp_col                  , & ! Input:  [real(r8) (:)   ]  latent heat of evaporation (/sublimation) (J/kg)  
          dlrad               =>   energyflux_inst%dlrad_patch               , & ! Output: [real(r8) (:)   ]  downward longwave radiation below the canopy (W/m**2)
@@ -407,10 +414,8 @@ contains
 
          qflx_evap_soi       =>   waterfluxbulk_inst%qflx_evap_soi_patch        , & ! Output: [real(r8) (:)   ]  soil evaporation (mm H2O/s) (+ = to atm)          
          qflx_tran_veg       =>   waterfluxbulk_inst%qflx_tran_veg_patch        , & ! Output: [real(r8) (:)   ]  vegetation transpiration (mm H2O/s) (+ = to atm)  
-         qflx_evap_veg       =>   waterfluxbulk_inst%qflx_evap_veg_patch        , & ! Output: [real(r8) (:)   ]  vegetation evaporation (mm H2O/s) (+ = to atm)    
+         qflx_evap_veg       =>   waterfluxbulk_inst%qflx_evap_veg_patch         & ! Output: [real(r8) (:)   ]  vegetation evaporation (mm H2O/s) (+ = to atm)    
 
-         begl                =>   bounds%begl                               , &
-         endl                =>   bounds%endl                                 &
          )
 
       ! Define fields that appear on the restart file for non-urban landunits 
@@ -427,7 +432,10 @@ contains
       ! Set constants (same as in Biogeophysics1Mod)
       beta(begl:endl) = 1._r8             ! Should be set to the same values as in Biogeophysics1Mod
       zii(begl:endl)  = 1000._r8          ! Should be set to the same values as in Biogeophysics1Mod
-
+      downreg_patch(begp:endp) = nan 
+      
+      rb1(begp:endp) = 0._r8
+      
       ! Get current date
       dtime = get_step_size_real()
 
@@ -435,14 +443,15 @@ contains
       ! The loop below tries to find the dominant natural vegetation in the grid and 
       ! assign its leafn to urban tree
       ! Need to check the meaning of wt_nat_patch
+      ! In sp mode, the leafn=nan, and it does not trigger any error - we can just keep it as nan?
       !------------------------------------------------------------------------
       do f = 1, num_urbantreep
          p = filter_urbantreep(f)
          g = patch%gridcell(p)
          l = patch%landunit(p)
          
-         write (6,'(A,I5)') '-------------------(p):par_z_urbanflux------------------- ', p
-         write (6,'(A,1X,*(F10.5,1X))') 'parsun_z(p,:),parsha_z(p,:)', parsun_z(p,:),parsha_z(p,:)
+         !write (6,'(A,I5)') '-------------------(p):par_z_urbanflux------------------- ', p
+         !write (6,'(A,1X,*(F10.5,1X))') 'parsun_z(p,:),parsha_z(p,:)', parsun_z(p,:),parsha_z(p,:)
 
          ! l2 is the landunit index of the natural vegetation in the same grid of patch p
          l2 = grc%landunit_indices(istsoil, g)
@@ -467,8 +476,10 @@ contains
              leafn_road_tree(p) = leafn_array(1)
          end if                  
       end do
-
+      
+      
       ! calculate daylength control for Vcmax
+      ! Assign landunit level lai to pacth level lai_p
       do f = 1, num_urbantreep
         p = filter_urbantreep(f)
         l = patch%landunit(p)
@@ -476,6 +487,7 @@ contains
         ! calculate dayl_factor as the ratio of (current:max dayl)^2
         ! set a minimum of 0.01 (1%) for the dayl_factor
         dayl_factor(p)=min(1._r8,max(0.01_r8,(dayl(g)*dayl(g))/(max_dayl(g)*max_dayl(g))))
+        lai_p(p)=tree_lai_urb(l)
       end do
       
       ! these constants are required to calculate leaf boundary resistance
@@ -486,6 +498,7 @@ contains
       
       !------------------------------------------------------------------------
       ! The loop below tries to calculate some variables required to run Photosynthesis subroutine
+      ! svpts, eah, co2, o2
       !------------------------------------------------------------------------
       do f = 1, num_urbantreep
          p = filter_urbantreep(f)
@@ -505,8 +518,11 @@ contains
       
       !------------------------------------------------------------------------
       ! Compute effective soil porosity (eff_por) for urban road tree columns, which is required to run Photosynthesis subroutine
-      ! Is it okay to use the same variable soilstate_inst%eff_porosity_col to store the value?
-      ! The required input watsat, h2osoi_ice for urban tree columns have been computed in SoilStateInitTimeConstMod.F90
+      ! Question: Is it okay to use the same variable soilstate_inst%eff_porosity_col to store the value?
+      ! Question: Am I using bounds, num_urbantreec, filter_urbantreec correctly?
+      ! Question: The watsat of urban road tree column has been set in SoilStateInitTimeConst subroutine of SoilStateInitTimeConstMod.F90, right?
+      ! The required input watsat for urban tree columns have been computed in SoilStateInitTimeConstMod.F90
+      ! The required input h2osoi_ice has been computed somewhere for all hydrologically active columns (see subroutine SetSoilWaterFractions of SoilHydrologyMod.F90)
       !------------------------------------------------------------------------
       call calc_effective_soilporosity(bounds,                          &
            ubj = nlevgrnd,                                              &
@@ -517,9 +533,15 @@ contains
            denice = denice,                                             &
            eff_por=eff_porosity(bounds%begc:bounds%endc, 1:nlevgrnd) )
 
-       !compute volumetric liquid water content
+       ! compute volumetric liquid water content
+       ! set top level for each column to 1
        jtop(bounds%begc:bounds%endc) = 1
        
+       !------------------------------------------------------------------------
+       ! Compute waterstatebulk_inst%h2osoi_vol_col which is required to run calc_root_moist_stress
+       ! The required input eff_porosity was just computed by calc_effective_soilporosity
+       ! The required input h2osoi_liq has been computed somewhere for urban road tree column (see subroutine CalculateSurfaceHumidity of SurfaceHumidityMod.F90)
+       !------------------------------------------------------------------------
        call calc_volumetric_h2oliq(bounds,                                    &
              jtop = jtop(bounds%begc:bounds%endc),                             &
              lbj = 1,                                                          &
@@ -534,13 +556,23 @@ contains
      !------------------------------------------------------------------------
      ! Compute root moisture stress (btran) for urban road tree columns, which is required to run Photosynthesis subroutine
      ! This subroutine requires active_layer_inst, soilstate_inst%watsat, sucsat, bsw ,waterstatebulk_inst%h2osoi_vol_col
-     ! soilstate_inst%rootfr_patch is required: modified init_vegrootfr to let urban tree use pft%itype =5
-     ! active_layer_inst%altmax_indx_col are calculated by subroutine alt_calc
-     ! active_layer_inst%alt_calc are called by clm_driver --> I changed the filter used by alt_calc to be soil_urbtreec instead of soil_c
-     ! waterstatebulk_inst%h2osoi_vol_col has been set for all soil columns including road tree
+     ! SoilStateInitTimeConstMod.F90
+     ! 
+     ! The required input soilstate_inst%rootfr_patch is computed in the modified init_vegrootfr from RootBiophysMod.F90 (let urban tree use pft%itype =5)
+     !     call sequence: clm_initializeMod.F90: call clm_instInit(bounds_proc) --> call SoilStateInitTimeConst --> call soilstate_inst%rootfr_patch
+     ! Currently, the soilstate_inst%rootfr_road_perv_col/rootfr_road_tree_col are separately set in SoilStateInitTimeConst, we 
+     !      probably can remove then (doublecheck this with Keith)
+     ! 
+     ! The required input active_layer_inst%altmax_indx_col/altmax_lastyear_indx_col are calculated by subroutine alt_calc from ActiveLayerMod.F90
+     !  then the active_layer_inst%alt_calc are called by clm_driver --> I changed the filter used by alt_calc to be soil_urbtreec instead of soil_c
+     !
+     ! The required input temperature_inst%t_soisno_col has been computed somewhere for all non-lake columns (see subroutine SoilTemperature of SoilTemperatureMod.F90)
+     !
+     ! The required input soilstate_inst%watsat_col/sucsat_col/bsw_col for urban tree columns have been computed in SoilStateInitTimeConstMod.F90
+     ! The required input soilstate_inst%eff_porosity_col was just computed by calc_effective_soilporosity
+     ! The required input waterstatebulk_inst%h2osoi_vol_col has been set for all non-lake columns (see subroutine HydrologyDrainage in HydrologyDrainageMod.F90)
      ! modified calc_root_moist_stress_clm45default to let urban tree use pft%itype =5
      !------------------------------------------------------------------------
-
      call calc_root_moist_stress(bounds,     &
        nlevgrnd = nlevgrnd,               &
        fn = num_urbantreep,                           &
@@ -669,10 +701,10 @@ contains
          do f = 1, num_urbantreep
             p = filter_urbantreep(f)
             l = patch%landunit(p)
-
+            
             rb(p)=1/Cv*(ustar(l)/dleaf)**(-0.5_r8)
             rbl(l)=rb(p)
-            
+            rb1(p)=rb(p)
          end do
          
          do fl = 1, num_urbanl
@@ -702,32 +734,67 @@ contains
          
          !------------------------------------------------------------------------
          ! Compute leaf shaded and sunlit stomatal resistance
-         ! svpts, eah, o2, co2, rb, btran, dayl_factorm, leafn_road_tree has been computed 
-         ! required variable temperature_inst%t_a10_patch (are urban tree values computed already?)
-         ! temperature_inst%thm_patch is calculated in BiogeophysPreFluxCalcsMod
-         ! surfalb_inst%nrad_patch, tlai_z_patch has been modfied in SurfaceAlbedoMod for urban tree
-         ! both t_veg and t_grnd are read, use t_grnd when it is urban tree column 
-         ! canopystate_inst%tlai_patch = lai for urban tree column 
-         ! light_inhibit, leafresp_method, medlynintercept, stomatalcond_mtd, leaf_mr_vcm are either pft dependent or constant
-         !
-         ! solarabs_inst%parsun_z_patch was calculated in subroutine CanopySunShadeFracs
-         ! ozone_inst%o3coefvsun_patch, o3coefvsha_patch
-         ! CalcOzoneStress-->CalcOzoneStressLombardozzi2015; require o3uptakesha_patch
-         ! CalcOzoneUptake calculates o3uptakesha_patch
-         !------------------------------------------------------------------------
+         ! 
+         ! The required input svpts, eah, o2, co2, rb, btran, dayl_factorm, leafn_road_tree 
+         !              dayl_factor, has been computed in previous code
+         ! The required input temperature_inst%t_veg_patch: here I read both t_veg and t_grnd
+         !              and the code uses t_grnd when it is urban tree column 
 
+         ! Question: is the t_a10_patch computed for all patches including urban road tree?
+         !
+         ! The required input temperature_inst%thm_patch is calculated in subroutine CalcInitialTemperatureAndEnergyVars of BiogeophysPreFluxCalcsMod
+         !
+         ! The required input surfalb_inst%nrad_patch, tlai_z_patch has been specified 
+         !        for urban tree by modifying subroutine SurfaceAlbedo in SurfaceAlbedoMod 
+         
+         ! The required input surfalb_inst%vcmaxcintsun/shd_patch has computed by subroutine TwoStream in SurfaceAlbedoMod 
+         ! The required input solarabs_inst%parsun/shd_z_patch,laisun/shd_z_patch is computed in subroutine CanopySunShadeFracs of SurfaceRadiationMod.F90
+         ! Question: The required input photosyns_inst%alphapsnsun_patch is only computed in subroutine Fractionation of PhotosynthesisMod.F90
+         !          but the Fractionation is called after Photosynthesis call...?
+
+         ! The required input canopystate_inst%tlai_patch will be replaced by lun%tree_lai_urb for urban tree column 
+         ! The required input light_inhibit, leafresp_method, medlynintercept, stomatalcond_mtd, leaf_mr_vcm are either pft dependent (use index=5) or constant
+         !
+         ! The required input ozone_inst%o3coefvsun_patch, o3coefvsha_patch are computed by 
+         !            CalcOzoneStress-->CalcOzoneStressLombardozzi2015; require o3uptakesun/sha_patch
+         !            Run ozone_inst%CalcOzoneUptake to calculate o3uptakesun/sha_patch
+         !            Here I also modified CalcOzoneStress in clm_driver to let it include urban tree patches
+         !------------------------------------------------------------------------
          call Photosynthesis (bounds, num_urbantreep, filter_urbantreep, &
               svpts(begp:endp), eah(begp:endp), o2(begp:endp), co2(begp:endp), rb(begp:endp), btran(begp:endp), &
               dayl_factor(begp:endp), leafn_road_tree(begp:endp), &
               atm2lnd_inst, temperature_inst, surfalb_inst, solarabs_inst, &
               canopystate_inst, ozone_inst, photosyns_inst, phase='sun')
               
+          !------------------------------------------------------------------------
+          ! Compute photosyns_inst%alphapsnsun_patch, which is required by Photosynthesis
+          ! Question: so the alphapsn computed is used by Photosynthesis in the next time step?
+          ! See commont of Fractionation: "As of CLM5, nutrient downregulation can be ignored"
+          ! The required input downreg_patch(begp:endp) are set as NAN (always in SP mode)
+          ! The required input atm2lnd_inst%forc_pbot_downscaled_col/forc_pco2_grc,pftcon%c3psn exist
+          ! The required input surfalb_inst%nrad_patch has been specified 
+          ! The required input photosyns_inst%gb_mol_patch/gs_mol_patch/an_patch has been calculated in call Photosynthesis
+          !------------------------------------------------------------------------
+          if ( use_cn .and. use_c13 ) then
+             call Fractionation (bounds, num_urbantreep, filter_urbantreep, downreg_patch(begp:endp), &
+                  atm2lnd_inst, canopystate_inst, solarabs_inst, surfalb_inst, photosyns_inst, &
+                  phase='sun')
+          endif
+
+         ! leafn is only used in BGC mode, in SP mode, it is set to NAN and should not affect the calculation
+         ! in SP mode, lnc_opt is false
          call Photosynthesis (bounds, num_urbantreep, filter_urbantreep, &
              svpts(begp:endp), eah(begp:endp), o2(begp:endp), co2(begp:endp), rb(begp:endp), btran(begp:endp), &
              dayl_factor(begp:endp), leafn_road_tree(begp:endp), &
              atm2lnd_inst, temperature_inst, surfalb_inst, solarabs_inst, &
              canopystate_inst, ozone_inst, photosyns_inst, phase='sha')
              
+         if ( use_cn .and. use_c13 ) then
+            call Fractionation (bounds, num_urbantreep, filter_urbantreep, downreg_patch(begp:endp), &
+                 atm2lnd_inst, canopystate_inst, solarabs_inst, surfalb_inst, photosyns_inst, &
+                 phase='sha')
+         end if
+                      
          do f = 1, num_urbantreep
 
             p = filter_urbantreep(f)
@@ -768,7 +835,7 @@ contains
             ! road width
             W_road=ht_roof(l)/canyon_hwr(l)
             ! effective tree area width
-            W_tree=lai(l)*ht_roof(l)/canyon_hwr(l)
+            W_tree=tree_lai_urb(l)*ht_roof(l)/canyon_hwr(l)
             W_tot=W_roof+W_road+W_tree
             
 
@@ -815,7 +882,7 @@ contains
                
             else if (ctype(c) == icol_road_tree) then
                ! scaled sensible heat conductance
-               wtus(c) = (W_tree/W_tot)*rbl(l)/(lai(l))
+               wtus(c) = (W_tree/W_tot)*rbl(l)/(tree_lai_urb(l))
                wtus_road_tree(l) = wtus(c)
                ! unscaled sensible heat conductance
                wtus_road_tree_unscl(l) = 1._r8/canyon_resistance(l)
@@ -1065,7 +1132,10 @@ contains
 
          if (ctype(c) == icol_roof) then
             qflx_evap_soi(p) = -forc_rho(g)*wtuq_roof_unscl(l)*dqh(l)
-         else if (ctype(c) == icol_road_perv) then
+         else if (ctype(c) == icol_road_perv) then   
+            ! Now although we have explcit urban trees, the unrepresented urban green 
+            ! like parks, grass, is still represented by pervious land
+                     
             ! Evaporation assigned to soil term if dew or snow
             ! or if no liquid water available in soil column
             if (dqh(l) > 0._r8 .or. frac_sno(c) > 0._r8 .or. soilalpha_u(c) <= 0._r8) then
@@ -1251,8 +1321,8 @@ contains
            rssha     = photosyns_inst%rssha_patch(bounds%begp:bounds%endp), &
            rb        = frictionvel_inst%rb1_patch(bounds%begp:bounds%endp), &
            ram       = frictionvel_inst%ram1_patch(bounds%begp:bounds%endp), &
-           tlai      = canopystate_inst%tlai_patch(bounds%begp:bounds%endp),  &
-     forc_o3   = atm2lnd_inst%forc_o3_grc(bounds%begg:bounds%endg))
+           tlai      = lai_p(bounds%begp:bounds%endp),  &
+           forc_o3   = atm2lnd_inst%forc_o3_grc(bounds%begg:bounds%endg))
 
     end associate
 

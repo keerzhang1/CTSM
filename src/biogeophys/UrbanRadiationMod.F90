@@ -104,7 +104,7 @@ contains
     real(r8) :: em_roof_s(bounds%begl:bounds%endl)      ! roof emissivity with snow effects
     real(r8) :: em_improad_s(bounds%begl:bounds%endl)   ! impervious road emissivity with snow effects
     real(r8) :: em_perroad_s(bounds%begl:bounds%endl)   ! pervious road emissivity with snow effects
-    real(r8) :: em_tree_s(bounds%begl:bounds%endl)   ! road tree emissivity with snow effects
+    real(r8) :: em_tree_urb_s(bounds%begl:bounds%endl)   ! road tree emissivity with snow effects
     real(r8) :: em_br_tree(bounds%begl:bounds%endl)   ! pervious road emissivity with snow effects
     real(r8) :: em_ar_tree(bounds%begl:bounds%endl)   ! pervious road emissivity with snow effects
     
@@ -137,7 +137,7 @@ contains
          em_roof            =>    urbanparams_inst%em_roof                   , & ! Input:  [real(r8) (:)   ]  roof emissivity                                   
          em_improad         =>    urbanparams_inst%em_improad                , & ! Input:  [real(r8) (:)   ]  impervious road emissivity                        
          em_perroad         =>    urbanparams_inst%em_perroad                , & ! Input:  [real(r8) (:)   ]  pervious road emissivity                          
-         em_tree         =>    urbanparams_inst%em_tree                , & ! Input:  [real(r8) (:)   ]  road tree emissivity                          
+         em_tree_urb         =>    urbanparams_inst%em_tree_urb                , & ! Input:  [real(r8) (:)   ]  road tree emissivity                          
          em_wall            =>    urbanparams_inst%em_wall                   , & ! Input:  [real(r8) (:)   ]  wall emissivity                                   
 
          albd               =>    surfalb_inst%albd_patch                    , & ! Input:  [real(r8) (:,:) ] pft surface albedo (direct)                         
@@ -1006,16 +1006,78 @@ contains
         err = lwdown(l) - (lwdown_road(l)*A_g(l)/A_s(l) + (lwdown_shadewall(l) + lwdown_sunwall(l))* A_w(l)/A_s(l) &
                  +lwdown_br_tree(l)*A_v1(l)/A_s(l)+ lwdown_ar_tree(l)*A_v2(l)/A_s(l) + lwdown_roof(l)*A_r(l)/A_s(l))
 
-        if (abs(err) > 0.10_r8 ) then
-           write(iulog,*) 'urban incident atmospheric longwave radiation balance error',err
-           write(iulog,*) 'l          = ',l
-           write(iulog,*) 'lwdown     = ',lwdown(l)
-           write(iulog,*) 'fsg1d(l)      = ',fsg1d(l)
-           write(iulog,*) 'fsw1d(l,1)      = ',fsw1d(l,1)
-           write(iulog,*) 'canyon_hwr = ',canyon_hwr(l)
-           write(iulog,*) 'clm model is stopping'
-           call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
-        endif
+                 if (abs(err) > 0.10_r8) then
+            write(iulog,*) 'urban incident atmospheric longwave radiation balance error = ', err
+            write(iulog,*) 'l               = ', l
+            write(iulog,*) 'lwdown          = ', lwdown(l)
+
+            write(iulog,*) '--- raw flux terms ---'
+            write(iulog,*) 'lwdown_road     = ', lwdown_road(l)
+            write(iulog,*) 'lwdown_shadewall= ', lwdown_shadewall(l)
+            write(iulog,*) 'lwdown_sunwall  = ', lwdown_sunwall(l)
+            write(iulog,*) 'lwdown_br_tree  = ', lwdown_br_tree(l)
+            write(iulog,*) 'lwdown_ar_tree  = ', lwdown_ar_tree(l)
+            write(iulog,*) 'lwdown_roof     = ', lwdown_roof(l)
+            
+            write(iulog,*) '--- raw inputs ---'
+            write(iulog,*) 'ht_roof           = ', ht_roof(l)
+            write(iulog,*) 'canyon_hwr        = ', canyon_hwr(l)
+            write(iulog,*) 'wtlunit_roof      = ', wtlunit_roof(l)
+            write(iulog,*) 'wtroad_perv       = ', wtroad_perv(l)
+            write(iulog,*) 'wtroad_tree       = ', wtroad_tree(l)
+            write(iulog,*) 'wtroad_imperv     = ', wtroad_imperv(l)
+
+            write(iulog,*) '--- raw inputs ---'
+            write(iulog,*) 'ht_roof           = ', ht_roof(l)
+            write(iulog,*) 'canyon_hwr        = ', canyon_hwr(l)
+            write(iulog,*) 'wtlunit_roof      = ', wtlunit_roof(l)
+            write(iulog,*) 'wtroad_perv       = ', wtroad_perv(l)
+            write(iulog,*) 'wtroad_tree       = ', wtroad_tree(l)
+            
+            write(iulog,*) '--- area terms ---'
+            write(iulog,*) 'A_g             = ', A_g(l)
+            write(iulog,*) 'A_w             = ', A_w(l)
+            write(iulog,*) 'A_v1            = ', A_v1(l)
+            write(iulog,*) 'A_v2            = ', A_v2(l)
+            write(iulog,*) 'A_r             = ', A_r(l)
+            write(iulog,*) 'A_s             = ', A_s(l)
+
+            write(iulog,*) '--- normalized contributions ---'
+            write(iulog,*) 'road term       = ', lwdown_road(l) * A_g(l) / A_s(l)
+            write(iulog,*) 'wall term       = ', (lwdown_shadewall(l) + lwdown_sunwall(l)) * A_w(l) / A_s(l)
+            write(iulog,*) 'tree below term = ', lwdown_br_tree(l) * A_v1(l) / A_s(l)
+            write(iulog,*) 'tree above term = ', lwdown_ar_tree(l) * A_v2(l) / A_s(l)
+            write(iulog,*) 'roof term       = ', lwdown_roof(l) * A_r(l) / A_s(l)
+
+            write(iulog,*) '--- summed RHS ---'
+            write(iulog,*) 'rhs total       = ', &
+               lwdown_road(l) * A_g(l) / A_s(l) &
+               + (lwdown_shadewall(l) + lwdown_sunwall(l)) * A_w(l) / A_s(l) &
+               + lwdown_br_tree(l) * A_v1(l) / A_s(l) &
+               + lwdown_ar_tree(l) * A_v2(l) / A_s(l) &
+               + lwdown_roof(l) * A_r(l) / A_s(l)
+
+            write(iulog,*) 'fsg1d(l)        = ', fsg1d(l)
+            write(iulog,*) 'fsw1d(l,1)      = ', fsw1d(l,1)
+            write(iulog,*) 'fsr1d(l,2)         = ', fsr1d(l,2) 
+            write(iulog,*) 'fsv1d(l,1)       = ', fsv1d(l,1) 
+            write(iulog,*) 'fsv1d(l,2)       = ', fsv1d(l,2) 
+            write(iulog,*) 'canyon_hwr      = ', canyon_hwr(l)
+            write(iulog,*) 'clm model is stopping'
+
+            call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
+         endif
+         
+      !   if (abs(err) > 0.10_r8 ) then
+      !      write(iulog,*) 'urban incident atmospheric longwave radiation balance error',err
+      !      write(iulog,*) 'l          = ',l
+      !      write(iulog,*) 'lwdown     = ',lwdown(l)
+      !      write(iulog,*) 'fsg1d(l)      = ',fsg1d(l)
+      !      write(iulog,*) 'fsw1d(l,1)      = ',fsw1d(l,1)
+      !      write(iulog,*) 'canyon_hwr = ',canyon_hwr(l)
+      !      write(iulog,*) 'clm model is stopping'
+      !      call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
+      !   endif
      end do
 
      do fl = 1,num_urbanl

@@ -1406,7 +1406,7 @@ contains
 
          nrad       => surfalb_inst%nrad_patch               , & ! Input:  [integer  (:)   ]  pft number of canopy layers, above snow for radiative transfer
          tlai_z     => surfalb_inst%tlai_z_patch             , & ! Input:  [real(r8) (:,:) ]  pft total leaf area index for canopy layer
-         lai                 =>   lun%lai                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+         tree_lai_urb                 =>   lun%tree_lai_urb                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
          tlai       => canopystate_inst%tlai_patch           , & ! Input/Output:  [real(r8)(:)    ]  one-sided leaf area index, no burying by snow  
          c3flag     => photosyns_inst%c3flag_patch           , & ! Output: [logical  (:)   ]  true if C3 and false if C4
          ac         => photosyns_inst%ac_patch               , & ! Output: [real(r8) (:,:) ]  Rubisco-limited gross photosynthesis (umol CO2/m**2/s)
@@ -1508,7 +1508,7 @@ contains
 
          if ((lun%itype(l) == isturb_tbd) .or. (lun%itype(l) == isturb_hd) .or. (lun%itype(l) == isturb_md)) then
            tveg_tgrnd = t_grnd(c)
-           tlai(p) = lai(l)
+           tlai(p) = tree_lai_urb(l)
            veg_type=5
          else
            tveg_tgrnd = t_veg(p)
@@ -1570,6 +1570,7 @@ contains
 
       do f = 1, fn
          p = filterp(f)
+         c = patch%column(p)
 
          if (lnc_opt .eqv. .false.) then     
             ! Leaf nitrogen concentration at the top of the canopy (g N leaf / m**2 leaf)
@@ -1702,7 +1703,11 @@ contains
                !using new form for respiration base rate from Atkin
                !communication. 
                if ( lnc(p) > 0.0_r8 ) then
-                  lmr25top = params_inst%lmr_intercept_atkin(ivt(p)) + (lnc(p) * 0.2061_r8) - (0.0402_r8 * (t10(p)-tfrz))
+                  if (col%itype(c) == icol_road_tree) then
+                      lmr25top = params_inst%lmr_intercept_atkin(5) + (lnc(p) * 0.2061_r8) - (0.0402_r8 * (t10(p)-tfrz))
+                  else 
+                      lmr25top = params_inst%lmr_intercept_atkin(ivt(p)) + (lnc(p) * 0.2061_r8) - (0.0402_r8 * (t10(p)-tfrz))
+                  end if
                else
                   lmr25top = 0.0_r8
                end if

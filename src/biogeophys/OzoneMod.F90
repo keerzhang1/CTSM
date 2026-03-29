@@ -399,7 +399,7 @@ contains
     SHR_ASSERT_ALL_FL((ubound(tlai) == (/bounds%endp/)), sourcefile, __LINE__)
 
     associate( &
-         lai                 =>   lun%lai                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+         tree_lai_urb                 =>   lun%tree_lai_urb                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
          o3uptakesha => this%o3uptakesha_patch                , & ! Output: [real(r8) (:)] ozone dose
          o3uptakesun => this%o3uptakesun_patch                , & ! Output: [real(r8) (:)] ozone dose
          tlai_old    => this%tlai_old_patch                     & ! Output: [real(r8) (:)] tlai from last time step
@@ -416,28 +416,28 @@ contains
            call CalcOzoneUptakeOnePoint( &
                 forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
                 rs=rssha(p), rb=rb(p), ram=ram(p), &
-                tlai=lai(l), tlai_old=lai(l), pft_type=5, &
+                tlai=tree_lai_urb(l), tlai_old=tree_lai_urb(l), pft_type=5, &
                 o3uptake=o3uptakesha(p))
 
            ! Ozone uptake for sunlit leaves
            call CalcOzoneUptakeOnePoint( &
                 forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
                 rs=rssun(p), rb=rb(p), ram=ram(p), &
-                tlai=lai(l), tlai_old=lai(l), pft_type=5, &
+                tlai=tree_lai_urb(l), tlai_old=tree_lai_urb(l), pft_type=5, &
                 o3uptake=o3uptakesun(p))     
          else 
            ! Ozone uptake for shaded leaves
            call CalcOzoneUptakeOnePoint( &
                 forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
                 rs=rssha(p), rb=rb(p), ram=ram(p), &
-                tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
+                tlai=tree_lai_urb(l), tlai_old=tree_lai_urb(l), pft_type=5, &
                 o3uptake=o3uptakesha(p))
 
            ! Ozone uptake for sunlit leaves
            call CalcOzoneUptakeOnePoint( &
                 forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
                 rs=rssun(p), rb=rb(p), ram=ram(p), &
-                tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
+                tlai=tree_lai_urb(l), tlai_old=tree_lai_urb(l), pft_type=5, &
                 o3uptake=o3uptakesun(p))
          end if 
          tlai_old(p) = tlai(p)
