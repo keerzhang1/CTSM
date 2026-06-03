@@ -27,7 +27,8 @@ module SurfaceAlbedoMod
   use GridcellType      , only : grc                
   use LandunitType      , only : lun                
   use ColumnType        , only : col                
-  use PatchType         , only : patch                
+  use PatchType         , only : patch   
+  use SolarAbsorbedType  , only : solarabs_type             
   !
   implicit none
   !
@@ -234,7 +235,7 @@ contains
         nextsw_cday  , declinp1,       &
         clm_fates,                     &
         aerosol_inst, canopystate_inst, waterstatebulk_inst, waterdiagnosticbulk_inst, &
-        lakestate_inst, temperature_inst, surfalb_inst)
+        lakestate_inst, temperature_inst, surfalb_inst,solarabs_inst)
     !
     ! !DESCRIPTION:
     ! Surface albedo and two-stream fluxes
@@ -286,6 +287,7 @@ contains
     type(lakestate_type)   , intent(in)            :: lakestate_inst
     type(temperature_type) , intent(in)            :: temperature_inst
     type(surfalb_type)     , intent(inout)         :: surfalb_inst
+    type(solarabs_type)    , intent(in)            :: solarabs_inst
     !
     ! !LOCAL VARIABLES:
     integer  :: i                                                                         ! index for layers [idx]
@@ -1068,7 +1070,7 @@ contains
             coszen_patch(bounds%begp:bounds%endp), &
             rho(bounds%begp:bounds%endp, :), &
             tau(bounds%begp:bounds%endp, :), &
-            canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst)
+            canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst,solarabs_inst)
        ! Run TwoStream again just to calculate the Snow Free (SF) albedo's
        if (use_SSRE) then
           if ( nlevcan > 1 )then
@@ -1079,7 +1081,7 @@ contains
                coszen_patch(bounds%begp:bounds%endp), &
                rho(bounds%begp:bounds%endp, :), &
                tau(bounds%begp:bounds%endp, :), &
-               canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst, &
+               canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst, solarabs_inst,&
                SFonly=.true.)
        end if
        
@@ -1279,7 +1281,7 @@ contains
    subroutine TwoStream (bounds, &
         filter, num, &
         coszen, rho, tau, &
-        canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst, &
+        canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst,solarabs_inst, &
         SFonly)
      !
      ! !DESCRIPTION:
@@ -1310,6 +1312,7 @@ contains
      type(temperature_type) , intent(in)    :: temperature_inst
      type(waterdiagnosticbulk_type)  , intent(in)    :: waterdiagnosticbulk_inst
      type(surfalb_type)     , intent(inout) :: surfalb_inst
+     type(solarabs_type)    , intent(in) :: solarabs_inst
      logical, optional      , intent(in)    :: SFonly                              ! If should just calculate the Snow Free albedos
      !
      ! !LOCAL VARIABLES:
@@ -1406,6 +1409,9 @@ contains
          ftid         =>    surfalb_inst%ftid_patch             , & ! Output: [real(r8) (:,:) ]  down diffuse flux below canopy per unit direct flx
          ftii         =>    surfalb_inst%ftii_patch             , & ! Output: [real(r8) (:,:) ]  down diffuse flux below canopy per unit diffuse flx
 
+         albd_perroad_s         => solarabs_inst%albd_perroad_s_lun          , & ! Input:  [real(r8) (:,:) ]  ground direct solar albedo on pervious road with snow effects
+         albi_perroad_s         => solarabs_inst%albi_perroad_s_lun          , & ! Input:  [real(r8) (:,:) ]  ground diffuse solar albedo on pervious road with snow effects
+
          ! Needed for SF Snow free case
          albsod       =>    surfalb_inst%albsod_col             , & ! Input: [real(r8)  (:,:) ]  soil albedo (direct)
          albsoi       =>    surfalb_inst%albsoi_col             , & ! Input: [real(r8)  (:,:) ]  soil albedo (diffuse)
@@ -1430,14 +1436,15 @@ contains
       ! for horizontal leaves, 0 for random leaves, and –1 for vertical leaves.
       ! Eq. 3.3
       if (col%itype(c) == icol_road_tree) then
+          ! corrected: we want to use realistic tree albedo here!!!
           chil(p) = min( max(xl(7), -0.4_r8), 0.6_r8 )
           temp_t(p)=t_grnd(c)
           temp_fcansno(p)=0.0_r8
           temp_fwet(p)=0.0_r8
           temp_elaiesai(p)=tree_lai_urb(l)
           temp_elai(p)=tree_lai_urb(l)
-          temp_albgrd(c,:)=1.0_r8
-          temp_albgri(c,:)=1.0_r8
+          temp_albgrd(c,:)=albd_perroad_s(l,:)
+          temp_albgri(c,:)=albi_perroad_s(l,:)
       else 
           chil(p) = min( max(xl(patch%itype(p)), -0.4_r8), 0.6_r8 )
           temp_t(p)=t_veg(p)

@@ -1,5 +1,5 @@
 module LandunitType
-
+  !-------checked260512-------- 
   !-----------------------------------------------------------------------
   ! !DESCRIPTION:
   ! Landunit data type allocation 
@@ -46,7 +46,8 @@ module LandunitType
      logical , pointer :: active       (:) ! true=>do computations on this landunit 
 
      ! urban properties
-     real(r8), pointer :: canyon_hwr   (:) ! urban landunit canyon height to width ratio (-)   
+     real(r8), pointer :: canyon_hwr   (:) ! urban landunit canyon height to width ratio (-)  
+
      real(r8), pointer :: tree_lai_urb          (:) ! LAI of road tree (m2/m2) 
      real(r8), pointer :: tree_bht_urb     (:) ! the height of of tree crown base
      real(r8), pointer :: tree_tht_urb     (:) ! the height of of tree crown
@@ -59,7 +60,7 @@ module LandunitType
      real(r8), pointer :: z_0_town     (:) ! urban landunit momentum roughness length (m)
      real(r8), pointer :: z_d_town     (:) ! urban landunit displacement height (m)
      real(r8), pointer :: A_v1     (:) ! leaf area for urban tree canopy below roof   
-     real(r8), pointer :: A_v2     (:) ! leaf area for urban tree canopy abov roof   
+     real(r8), pointer :: A_v2     (:) ! leaf area for urban tree canopy above roof   
 
      ! hillslope variables
      real(r8), pointer :: stream_channel_depth   (:) ! stream channel bankfull depth (m)
@@ -67,6 +68,7 @@ module LandunitType
      real(r8), pointer :: stream_channel_length  (:) ! stream channel length (m)
      real(r8), pointer :: stream_channel_slope   (:) ! stream channel slope (m/m)
      real(r8), pointer :: stream_channel_number  (:) ! number of channels in landunit
+     logical, pointer :: has_trees     (:) ! whether this landunit has trees (1.0) or not (0.0) based on tree_lai_urb, wtroad_tree, and tree_tht_urb
 
    contains
 
@@ -126,6 +128,7 @@ contains
     allocate(this%tree_tht_urb     (begl:endl)); this%tree_tht_urb     (:) = nan
     allocate(this%A_v1     (begl:endl)); this%A_v1     (:) = nan
     allocate(this%A_v2     (begl:endl)); this%A_v2     (:) = nan
+    allocate(this%has_trees     (begl:endl)); this%has_trees     (:) = .false.
 
     ! Hillslope variables initialized in HillslopeHydrologyMod
     allocate(this%stream_channel_depth(begl:endl));  this%stream_channel_depth   (:) = nan
@@ -181,6 +184,7 @@ contains
     deallocate(this%stream_channel_length)
     deallocate(this%stream_channel_slope)
     deallocate(this%stream_channel_number)
+    deallocate(this%has_trees     )
   end subroutine Clean
 
 end module LandunitType

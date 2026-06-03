@@ -413,6 +413,9 @@ contains
          
          if (col%itype(c)== icol_road_tree) then 
            ! Ozone uptake for shaded leaves
+
+           ! here the tlai_old should be corrected!
+            ! It makes more sense to assign tree_lai_urb(l) to tlai
            call CalcOzoneUptakeOnePoint( &
                 forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
                 rs=rssha(p), rb=rb(p), ram=ram(p), &
@@ -430,14 +433,14 @@ contains
            call CalcOzoneUptakeOnePoint( &
                 forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
                 rs=rssha(p), rb=rb(p), ram=ram(p), &
-                tlai=tree_lai_urb(l), tlai_old=tree_lai_urb(l), pft_type=5, &
+                tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
                 o3uptake=o3uptakesha(p))
 
            ! Ozone uptake for sunlit leaves
            call CalcOzoneUptakeOnePoint( &
                 forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
                 rs=rssun(p), rb=rb(p), ram=ram(p), &
-                tlai=tree_lai_urb(l), tlai_old=tree_lai_urb(l), pft_type=5, &
+                tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
                 o3uptake=o3uptakesun(p))
          end if 
          tlai_old(p) = tlai(p)

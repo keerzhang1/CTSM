@@ -239,6 +239,10 @@ module TemperatureType
      real(r8), pointer :: svfr_f_out        (:,:)   ! Unweighted longwave sky view factor for roof  
      real(r8), pointer :: vfst_f_out        (:)     ! Unweighted longwave view factor from sky to ground  
      real(r8), pointer :: svft_f_out        (:)     ! Unweighted longwave sky view factor for ground  
+     real(r8), pointer :: frontal_ai_out      (:)      ! frontal area index for output 
+     real(r8), pointer :: plan_ai_out      (:)      ! plan area index for output
+     real(r8), pointer :: z_d_town_out      (:)      ! displacement height for output
+     real(r8), pointer :: z_0_town_out      (:)      ! roughness length for output
 
 !-------------------[kz.11]Ray tracing test------------------------- 
      ! Misc
@@ -556,11 +560,16 @@ contains
     allocate(this%vfst_f_out           (begl:endl))                 ; this%vfst_f_out        (:)    = nan
     allocate(this%svft_f_out           (begl:endl))                 ; this%svft_f_out        (:)    = nan
 
+    allocate(this%z_d_town_out         (begl:endl))                        ; this%z_d_town_out     (:)     = nan
+    allocate(this%z_0_town_out         (begl:endl))                        ; this%z_0_town_out     (:)     = nan
+    allocate(this%plan_ai_out         (begl:endl))                        ; this%plan_ai_out     (:)     = nan
+    allocate(this%frontal_ai_out         (begl:endl))                        ; this%frontal_ai_out     (:)     = nan
 !-------------------[kz.13]Ray tracing test------------------------- 
     allocate(this%xmf_col                  (begc:endc))                      ; this%xmf_col                  (:)   = nan
     allocate(this%xmf_h2osfc_col           (begc:endc))                      ; this%xmf_h2osfc_col           (:)   = nan
     allocate(this%fact_col                 (begc:endc, -nlevsno+1:nlevmaxurbgrnd)) ; this%fact_col                 (:,:) = nan
     allocate(this%c_h2osfc_col             (begc:endc))                      ; this%c_h2osfc_col             (:)   = nan
+
 
   end subroutine InitAllocate
 
@@ -1527,6 +1536,25 @@ contains
        long_name='Unweighted longwave view factor from sky view factor for ground', &
        ptr_lunit=this%svft_f_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
 
+   this%plan_ai_out(begl:endl) = spval
+   call hist_addfld1d(fname='plan_ai', units='unitless', avgflag='A', &
+       long_name='Plan area index for output', &
+       ptr_lunit=this%plan_ai_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+
+   this%frontal_ai_out(begl:endl) = spval
+   call hist_addfld1d(fname='frontal_ai', units='unitless', avgflag='A', &
+       long_name='Frontal area index for output', &
+       ptr_lunit=this%frontal_ai_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+
+   this%z_d_town_out(begl:endl) = spval
+   call hist_addfld1d(fname='z_d_town', units='m', avgflag='A', &
+       long_name='Displacement height for output', &
+       ptr_lunit=this%z_d_town_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
+
+   this%z_0_town_out(begl:endl) = spval
+   call hist_addfld1d(fname='z_0_town', units='m', avgflag='A', &
+       long_name='Roughness length for output', &
+       ptr_lunit=this%z_0_town_out, set_nourb=spval, l2g_scale_type='unity', default='inactive')
 !-------------------[kz.14]Ray tracing test-------------------------          
 
   end subroutine InitHistory

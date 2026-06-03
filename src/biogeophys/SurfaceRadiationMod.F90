@@ -443,15 +443,27 @@ contains
            laisha_z(p,iv) = tlai_z(p,iv) * (1._r8 - fsun_z(p,iv))
            laisun(p) = laisun(p) + laisun_z(p,iv)
            laisha(p) = laisha(p) + laisha_z(p,iv)
+            ! write(6,*) '----------------leaf lai------------ '
+            ! write(6,*) ' tlai_z(p,iv) = ',  tlai_z(p,iv)
+            ! write(6,*) 'laisun_z(p,iv) = ', laisun_z(p,iv)
+            ! write(6,*) 'laisha_z(p,iv) = ', laisha_z(p,iv)
+            ! write(6,*) 'laisun(p) = ', laisun(p)
+            ! write(6,*) 'laisha(p) = ', laisha(p)
         end do
-        if (elai(p) > 0._r8) then
-           if (col%itype(c) == icol_road_tree) then 
-             fsun(p) = laisun(p) / tree_lai_urb(l)
-           else 
-             fsun(p) = laisun(p) / elai(p)
-           end if 
-        else
-           fsun(p) = 0._r8
+        if (col%itype(c) == icol_road_tree) then 
+            ! tree_lai_urb(l) > 1.e-6_r8 means has_trees is true
+            ! otherwise, the tree_lai_urb(l) will be set to 0
+            if (tree_lai_urb(l) > 1.e-6_r8) then
+               fsun(p) = laisun(p) / tree_lai_urb(l)
+            else
+               fsun(p) = 0._r8
+            end if
+        else 
+            if (elai(p) > 0._r8) then
+               fsun(p) = laisun(p) / elai(p)
+            else
+               fsun(p) = 0._r8
+            end if
         end if
 
         ! Absorbed PAR profile through canopy
@@ -459,14 +471,14 @@ contains
         ! are canopy integrated so that layer values equal big leaf values.
 
         g = patch%gridcell(p)
-        do iv = 1, nrad(p)
-          write (6,'(A,I5)') '-------------------(p):before parsun_z------------------- ', p
-          write (6,'(A,I5)') '-------------------iv---------------- ', iv
-          write (6,'(A,1X,*(F10.5,1X))') 'forc_solad_col(c,ipar),forc_solai(g,ipar) ', forc_solad_col(c,ipar),forc_solai(g,ipar)
-          write (6,'(A,1X,*(F10.5,1X))') 'sabs_tree_dif(l,ipar),sabs_tree_dir(l,ipar) ',sabs_tree_dif(l,ipar),sabs_tree_dir(l,ipar)
-          write (6,'(A,1X,*(F10.5,1X))') 'fabd_sun_z(p,iv),fabd_sha_z(p,iv)', fabd_sun_z(p,iv),fabd_sha_z(p,iv)
-          write (6,'(A,1X,*(F10.5,1X))') 'fabi_sun_z(p,iv),fabi_sha_z(p,iv)', fabi_sun_z(p,iv),fabi_sha_z(p,iv)
-        end do
+      !   do iv = 1, nrad(p)
+      !     write (6,'(A,I5)') '-------------------(p):before parsun_z------------------- ', p
+      !     write (6,'(A,I5)') '-------------------iv---------------- ', iv
+      !     write (6,'(A,1X,*(F10.5,1X))') 'forc_solad_col(c,ipar),forc_solai(g,ipar) ', forc_solad_col(c,ipar),forc_solai(g,ipar)
+      !     write (6,'(A,1X,*(F10.5,1X))') 'sabs_tree_dif(l,ipar),sabs_tree_dir(l,ipar) ',sabs_tree_dif(l,ipar),sabs_tree_dir(l,ipar)
+      !     write (6,'(A,1X,*(F10.5,1X))') 'fabd_sun_z(p,iv),fabd_sha_z(p,iv)', fabd_sun_z(p,iv),fabd_sha_z(p,iv)
+      !     write (6,'(A,1X,*(F10.5,1X))') 'fabi_sun_z(p,iv),fabi_sha_z(p,iv)', fabi_sun_z(p,iv),fabi_sha_z(p,iv)
+      !   end do
         do iv = 1, nrad(p)
            ! The absorbed solar radiation for urban road tree is calculated in UrbanAlbedoMod
            ! Here just use the fabd_sun_z and fabd_sha_z to get the patition of sunlit and shaded leave absorption.
@@ -495,11 +507,11 @@ contains
            end if 
         end do
         
-        do iv = 1, nrad(p)
-          write (6,'(A,I5)') '-------------------(p):after parsun_z------------------- ', p
-          write (6,'(A,I5)') '-------------------iv---------------- ', iv
-          write (6,'(A,1X,*(F10.5,1X))') 'parsun_z(p,iv),parsha_z(p,iv)', parsun_z(p,iv),parsha_z(p,iv)
-        end do
+      !   do iv = 1, nrad(p)
+      !     write (6,'(A,I5)') '-------------------(p):after parsun_z------------------- ', p
+      !     write (6,'(A,I5)') '-------------------iv---------------- ', iv
+      !     write (6,'(A,1X,*(F10.5,1X))') 'parsun_z(p,iv),parsha_z(p,iv)', parsun_z(p,iv),parsha_z(p,iv)
+      !   end do
      end do ! end of fp = 1,num_nourbanwtreep loop
    end associate
    return

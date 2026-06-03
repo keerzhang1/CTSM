@@ -1515,8 +1515,8 @@ contains
            veg_type=patch%itype(p)
          end if
          
-         write (6,'(A,I5)') '-------------------(p):par_z(p,iv)------------------- ', p
-         write (6,'(A,1X,*(F10.5,1X))') 'par_z(p,:)', par_z(p,:)
+         !write (6,'(A,I5)') '-------------------(p):par_z(p,iv)------------------- ', p
+         !write (6,'(A,1X,*(F10.5,1X))') 'par_z(p,:)', par_z(p,:)
 
          ! C3 or C4 photosynthesis logical variable
 
@@ -1764,9 +1764,9 @@ contains
                lmr_z(p,iv) = lmr_z(p,iv) / (1._r8 + exp( 1.3_r8*(tveg_tgrnd-(tfrz+55._r8)) ))
             end if
             
-            write (6,'(A,I5)') '-------------------(p):par_z(p,iv)------------------- ', p
-            write (6,'(A,I5)') '-------------------iv---------------- ', iv
-            write (6,'(A,1X,*(F10.5,1X))') 'par_z(p,iv)', par_z(p,iv)
+            ! write (6,'(A,I5)') '-------------------(p):par_z(p,iv)------------------- ', p
+            ! write (6,'(A,I5)') '-------------------iv---------------- ', iv
+            ! write (6,'(A,1X,*(F10.5,1X))') 'par_z(p,iv)', par_z(p,iv)
 
             if (par_z(p,iv) <= 0._r8) then           ! night time
 
@@ -3100,9 +3100,9 @@ contains
          p = filterp(f)
          c = patch%column(p)
          
-         write (6,'(A,I5)') '-------------------(p):par_z_sunsha(p,iv)------------------- ', p
-         write (6,'(A,1X,*(F10.5,1X))') 'par_z_sun(p,:)', par_z_sun(p,:)
-         write (6,'(A,1X,*(F10.5,1X))') 'par_z_sha(p,:)', par_z_sha(p,:)
+         !write (6,'(A,I5)') '-------------------(p):par_z_sunsha(p,iv)------------------- ', p
+         !write (6,'(A,1X,*(F10.5,1X))') 'par_z_sun(p,:)', par_z_sun(p,:)
+         !write (6,'(A,1X,*(F10.5,1X))') 'par_z_sha(p,:)', par_z_sha(p,:)
          
          do j = 1,nlevsoi
 

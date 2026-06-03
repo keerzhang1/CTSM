@@ -1251,7 +1251,7 @@ contains
                aerosol_inst, canopystate_inst, &
                water_inst%waterstatebulk_inst, &
                water_inst%waterdiagnosticbulk_inst, &
-               lakestate_inst, temperature_inst, surfalb_inst)
+               lakestate_inst, temperature_inst, surfalb_inst,solarabs_inst)
 
           call t_stopf('surfalb')
 

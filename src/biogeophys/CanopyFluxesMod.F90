@@ -1293,7 +1293,7 @@ bioms:   do f = 1, fn
             lw_grnd=(frac_sno(c)*t_soisno(c,snl(c)+1)**4 &
                  +(1._r8-frac_sno(c)-frac_h2osfc(c))*t_soisno(c,1)**4 &
                  +frac_h2osfc(c)*t_h2osfc(c)**4)
-
+            ! confirm: not sure why  air(p) &+ bir(p)*t_veg(p)**4 + cir(p)*lw_grnd)
             dt_veg(p) = ((1._r8-frac_rad_abs_by_stem(p))*(sabv(p) + air(p) &
                   + bir(p)*t_veg(p)**4 + cir(p)*lw_grnd) &
                   - efsh - efe(p) - lw_leaf(p) + lw_stem(p) &
