@@ -23,8 +23,7 @@ module OzoneMod
   use abortutils  , only : endrun
   use PatchType   , only : patch
   use pftconMod   , only : pftcon
-  use ColumnType           , only : col  
-  
+
   implicit none
   save
   private
@@ -359,11 +358,7 @@ contains
     !
     ! !DESCRIPTION:
     ! Calculate ozone uptake.
-    
-    ! USES
-    use column_varcon       , only : icol_road_tree
-    use LandunitType         , only : lun  
-
+    !
     ! !ARGUMENTS:
     class(ozone_type)      , intent(inout) :: this
     type(bounds_type)      , intent(in)    :: bounds
@@ -382,7 +377,6 @@ contains
     integer  :: fp             ! filter index
     integer  :: p              ! patch index
     integer  :: c              ! column index
-    integer  :: l              ! landunit index
     integer  :: g              ! gridcell index
 
     character(len=*), parameter :: subname = 'CalcOzoneUptake'
@@ -399,7 +393,6 @@ contains
     SHR_ASSERT_ALL_FL((ubound(tlai) == (/bounds%endp/)), sourcefile, __LINE__)
 
     associate( &
-         tree_lai_urb                 =>   lun%tree_lai_urb                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
          o3uptakesha => this%o3uptakesha_patch                , & ! Output: [real(r8) (:)] ozone dose
          o3uptakesun => this%o3uptakesun_patch                , & ! Output: [real(r8) (:)] ozone dose
          tlai_old    => this%tlai_old_patch                     & ! Output: [real(r8) (:)] tlai from last time step
@@ -408,41 +401,22 @@ contains
       do fp = 1, num_exposedvegp
          p = filter_exposedvegp(fp)
          c = patch%column(p)
-         l = patch%landunit(p)
          g = patch%gridcell(p)
-         
-         if (col%itype(c)== icol_road_tree) then 
-           ! Ozone uptake for shaded leaves
 
-           ! here the tlai_old should be corrected!
-            ! It makes more sense to assign tree_lai_urb(l) to tlai
-           call CalcOzoneUptakeOnePoint( &
-                forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
-                rs=rssha(p), rb=rb(p), ram=ram(p), &
-                tlai=tree_lai_urb(l), tlai_old=tree_lai_urb(l), pft_type=5, &
-                o3uptake=o3uptakesha(p))
+         ! Ozone uptake for shaded leaves
+         call CalcOzoneUptakeOnePoint( &
+               forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
+               rs=rssha(p), rb=rb(p), ram=ram(p), &
+               tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
+               o3uptake=o3uptakesha(p))
 
-           ! Ozone uptake for sunlit leaves
-           call CalcOzoneUptakeOnePoint( &
-                forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
-                rs=rssun(p), rb=rb(p), ram=ram(p), &
-                tlai=tree_lai_urb(l), tlai_old=tree_lai_urb(l), pft_type=5, &
-                o3uptake=o3uptakesun(p))     
-         else 
-           ! Ozone uptake for shaded leaves
-           call CalcOzoneUptakeOnePoint( &
-                forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
-                rs=rssha(p), rb=rb(p), ram=ram(p), &
-                tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
-                o3uptake=o3uptakesha(p))
+         ! Ozone uptake for sunlit leaves
+         call CalcOzoneUptakeOnePoint( &
+               forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
+               rs=rssun(p), rb=rb(p), ram=ram(p), &
+               tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
+               o3uptake=o3uptakesun(p))
 
-           ! Ozone uptake for sunlit leaves
-           call CalcOzoneUptakeOnePoint( &
-                forc_ozone=forc_o3(g), forc_pbot=forc_pbot(c), forc_th=forc_th(c), &
-                rs=rssun(p), rb=rb(p), ram=ram(p), &
-                tlai=tlai(p), tlai_old=tlai_old(p), pft_type=patch%itype(p), &
-                o3uptake=o3uptakesun(p))
-         end if 
          tlai_old(p) = tlai(p)
 
       end do

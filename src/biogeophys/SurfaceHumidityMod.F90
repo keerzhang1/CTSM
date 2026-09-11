@@ -74,7 +74,6 @@ contains
     real(r8) :: psit         ! negative potential of soil
     real(r8) :: hr           ! alpha soil
     real(r8) :: hr_road_perv ! alpha soil for urban pervious road
-    real(r8) :: hr_road_tree ! alpha soil for urban road tree
     real(r8) :: wx           ! partial volume of ice and water of surface layer
     real(r8) :: fac_fc       ! soil wetness of surface layer relative to field capacity
     real(r8) :: eff_porosity ! effective porosity in layer
@@ -109,8 +108,6 @@ contains
          bsw              =>    soilstate_inst%bsw_col                      , & ! Input:  [real(r8) (:,:) ] Clapp and Hornberger "b"
          rootfr_road_perv =>    soilstate_inst%rootfr_road_perv_col         , & ! Input:  [real(r8) (:,:) ] fraction of roots in each soil layer for urban pervious road
          rootr_road_perv  =>    soilstate_inst%rootr_road_perv_col          , & ! Output: [real(r8) (:,:) ] effective fraction of roots in each soil layer for urban pervious road
-         rootfr_road_tree =>    soilstate_inst%rootfr_road_tree_col         , & ! Input:  [real(r8) (:,:) ] fraction of roots in each soil layer for urban road tree
-         rootr_road_tree  =>    soilstate_inst%rootr_road_tree_col          , & ! Output: [real(r8) (:,:) ] effective fraction of roots in each soil layer for urban road tree
          soilalpha        =>    soilstate_inst%soilalpha_col                , & ! Output: [real(r8) (:)   ] factor that reduces ground saturated specific humidity (-)
          soilalpha_u      =>    soilstate_inst%soilalpha_u_col              , & ! Output: [real(r8) (:)   ] Urban factor that reduces ground saturated specific humidity (-)
 
@@ -125,10 +122,6 @@ contains
 
          if (col%itype(c) == icol_road_perv) then
             hr_road_perv = 0._r8
-         end if
-
-         if (col%itype(c) == icol_road_tree) then
-            hr_road_tree = 0._r8
          end if
          
          ! Saturated vapor pressure, specific humidity and their derivatives
@@ -173,27 +166,17 @@ contains
                end if              
                soilalpha_u(c) = qred
             else if (col%itype(c) == icol_road_tree) then
-               ! Pervious road tree depends on water in total soil column
-               do j = 1, nlevgrnd
-                  if (t_soisno(c,j) >= tfrz) then
-                     vol_ice = min(watsat(c,j), h2osoi_ice(c,j)/(dz(c,j)*denice))
-                     eff_porosity = watsat(c,j)-vol_ice
-                     vol_liq = min(eff_porosity, h2osoi_liq(c,j)/(dz(c,j)*denh2o))
-                     fac = min( max(vol_liq-watdry(c,j),0._r8) / (watopt(c,j)-watdry(c,j)), 1._r8 )
-                  else
-                     fac = 0._r8
-                  end if
-                  rootr_road_tree(c,j) = rootfr_road_tree(c,j)*fac
-                  hr_road_tree = hr_road_tree + rootr_road_tree(c,j)
-               end do
-               ! Allows for sublimation of snow or dew on snow
-               qred = (1.-frac_sno_eff(c))*hr_road_tree + frac_sno_eff(c)
-               
-               if (hr_road_tree > 0._r8) then
-                  do j = 1, nlevgrnd
-                     rootr_road_tree(c,j) = rootr_road_tree(c,j)/hr_road_tree
-                  end do
-               end if               
+               ! for road tree, use natural veg formula to compute soilalpha_u
+               wx   = (h2osoi_liq(c,1)/denh2o+h2osoi_ice(c,1)/denice)/dz(c,1)
+               fac  = min(1._r8, wx/watsat(c,1))
+               fac  = max( fac, 0.01_r8 )
+               psit = -sucsat(c,1) * fac ** (-bsw(c,1))
+               psit = max(smpmin(c), psit)
+               ! modify qred to account for h2osfc
+               hr   = exp(psit/roverg/t_soisno(c,1))
+               ! frac_h2osfc is identically 0 for urban; kept for parallelism with the natural-veg branch.
+               qred = (1._r8 - frac_sno_eff(c) - frac_h2osfc(c))*hr &
+                    + frac_sno_eff(c) + frac_h2osfc(c)
                soilalpha_u(c) = qred
 
             else if (col%itype(c) == icol_sunwall .or. col%itype(c) == icol_shadewall) then

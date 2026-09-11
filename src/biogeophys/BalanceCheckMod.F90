@@ -459,7 +459,7 @@ contains
      ! error = abs(precipitation - change of water storage - evaporation - runoff)
      !
      ! !USES:
-     use clm_varcon        , only : spval
+     use clm_varcon        , only : spval, hvap
      use clm_varctl        , only : use_soil_moisture_streams
      use clm_time_manager  , only : get_step_size_real, get_nstep
      use clm_time_manager  , only : get_nstep_since_startup_or_lastDA_restart_or_pause
@@ -467,6 +467,7 @@ contains
      use subgridAveMod     , only : c2g
      use dynSubgridControlMod, only : get_for_testing_zero_dynbal_fluxes
      use SurfaceAlbedoType , only : surfalb_type
+     use UrbanFluxesMod    , only : MergeUrbanPervTreePair
      !
      ! !ARGUMENTS:
      type(bounds_type)     , intent(in)    :: bounds  
@@ -584,7 +585,7 @@ contains
           errsol                  =>    energyflux_inst%errsol_patch            , & ! Output: [real(r8) (:)   ]  solar radiation conservation error (W/m**2)
           errseb                  =>    energyflux_inst%errseb_patch            , & ! Output: [real(r8) (:)   ]  surface energy conservation error (W/m**2)
           errlon                  =>    energyflux_inst%errlon_patch            , & ! Output: [real(r8) (:)   ]  longwave radiation conservation error (W/m**2)
-
+         lwnet_tree_perroad     => solarabs_inst%lwnet_tree_perroad_lun     , & ! Input:  [real(r8) (:) ]  net (outgoing-incoming) longwave radiation (per unit ground area), pervious road beneath the tree canopy (W/m**2)
           sabg_soil               =>    solarabs_inst%sabg_soil_patch           , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by soil (W/m**2)
           sabg_snow               =>    solarabs_inst%sabg_snow_patch           , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by snow (W/m**2)
           sabg_chk                =>    solarabs_inst%sabg_chk_patch            , & ! Input:  [real(r8) (:)   ]  sum of soil/snow using current fsno, for balance check
@@ -603,7 +604,9 @@ contains
           ftdd                    =>    surfalb_inst%ftdd_patch                 , & ! Input:  [real(r8) (:,:)]  down direct flux below canopy per unit direct flux
           ftid                    =>    surfalb_inst%ftid_patch                 , & ! Input:  [real(r8) (:,:)]  down diffuse flux below canopy per unit direct flux
           ftii                    =>    surfalb_inst%ftii_patch                 , & ! Input:  [real(r8) (:,:)]  down diffuse flux below canopy per unit diffuse flux
-
+         eflx_sh_veg             => energyflux_inst%eflx_sh_veg_patch       , & ! Output: [real(r8) (:)   ]  sensible heat flux from leaves (W/m**2) [+ to atm]
+         ! qflx_evap_veg           => waterfluxbulk_inst%qflx_evap_veg_patch      , & ! Output: [real(r8) (:)   ]  vegetation evaporation (mm H2O/s) (+ = to atm)
+         eflx_sh_grnd            => energyflux_inst%eflx_sh_grnd_patch      , & ! Output: [real(r8) (:)   ]  sensible heat flux from ground (W/m**2) [+ to atm]
           netrad                  =>    energyflux_inst%netrad_patch              & ! Output: [real(r8) (:)   ]  net radiation (positive downward) (W/m**2)
           )
 
@@ -658,7 +661,26 @@ contains
           end if
 
        end do
-       
+
+       ! The urban pervious road and the urban road trees are driven by a common set of
+       ! merged fluxes onto and out of one shared soil column (see CanopyHydrologyMod,
+       ! clm_drv_patch2col and HydrologyNoDrainageMod), so water genuinely moves between
+       ! the two columns: each column's soil receives the area weighted mean throughfall
+       ! and loses the area weighted mean root uptake and ground evaporation, while its
+       ! storage change and qflx_evap_tot_col still carry its own canopy. Neither column
+       ! balances on its own any more - only the pair does.
+       !
+       ! Replacing the error by its area weighted mean over the pair turns the test
+       ! below into exactly a test of pair closure, while leaving the warning, the
+       ! reporting and the abort thresholds untouched. This is the same relationship
+       ! that errsoi_patch has to errsoi_col for natural vegetation patches sharing one
+       ! column: closure is required of the mean, not of each member.
+       !
+       ! errh2osno needs no equivalent treatment: its sources and sinks are all merged
+       ! column fluxes acting on identical snow states, so it still closes per column.
+
+       call MergeUrbanPervTreePair(bounds, errh2o_col(bounds%begc:bounds%endc))
+
        errh2o_max_val = maxval(abs(errh2o_col(bounds%begc:bounds%endc)))
 
        if (errh2o_max_val > h2o_warning_thresh) then
@@ -934,7 +956,8 @@ contains
                 errseb(p) = sabv(p) + sabg_chk(p) + forc_lwrad(c) - eflx_lwrad_out(p) &
                      - eflx_sh_tot(p) - eflx_lh_tot(p) - eflx_soil_grnd(p) - dhsdt_canopy(p)
              else
-                errseb(p) = sabv(p) + sabg(p) &
+               ! sabg and eflx_lwrad_net are flux per ground area for urban tree leaf
+               errseb(p) = sabv(p) + sabg(p) &
                      - eflx_lwrad_net(p) &
                      - eflx_sh_tot(p) - eflx_lh_tot(p) - eflx_soil_grnd(p) &
                      + eflx_wasteheat_patch(p) + eflx_heat_from_ac_patch(p) + eflx_traffic_patch(p) &
@@ -1002,16 +1025,21 @@ contains
            indexp = maxloc( abs(errseb(bounds%begp:bounds%endp)), 1 ) + bounds%begp -1
            indexc = patch%column(indexp)
            indexg = patch%gridcell(indexp)
+           indexl = patch%landunit(indexp)
 
            write(iulog,*)'WARNING: BalanceCheck: surface flux energy balance error (W/m2)'
            write(iulog,*)'nstep          = ' ,nstep
            write(iulog,*)'errseb         = ' ,errseb(indexp)
-
            if ( errseb_max_val > error_thresh ) then
+           ! TODO fix the print: For urban patches sabg_soil/sabg_snow are never set (NaN/spval),
               write(iulog,*)'CTSM is stopping because errseb > ', error_thresh, ' W/m2'
               write(iulog,*)'sabv           = ' ,sabv(indexp)
-              write(iulog,*)'sabg           = ' ,sabg(indexp), ((1._r8- frac_sno(indexc))*sabg_soil(indexp) + &
-                   frac_sno(indexc)*sabg_snow(indexp)),sabg_chk(indexp)
+              if (.not. lun%urbpoi(indexl)) then
+                  write(iulog,*)'sabg           = ' ,sabg(indexp), ((1._r8- frac_sno(indexc))*sabg_soil(indexp) + &
+                        frac_sno(indexc)*sabg_snow(indexp)),sabg_chk(indexp)
+              else
+                  write(iulog,*)'sabg           = ' ,sabg(indexp)         
+              end if
               write(iulog,*)'forc_tot      = '  ,forc_solad(indexg,1) + forc_solad(indexg,2) + &
                    forc_solai(indexg,1) + forc_solai(indexg,2)
 
@@ -1032,6 +1060,14 @@ contains
        end if
 
        ! Soil energy balance check
+
+       ! As for errh2o_col above: the ground heat flux and its temperature derivative
+       ! are merged over the pervious road / road tree pair in SoilTemperatureMod, so
+       ! the shared soil absorbs the area weighted mean while eflx_soil_grnd remains
+       ! each patch's own residual. Merge the error so the test below is applied to the
+       ! pair mean, which is what conservation actually requires.
+
+       call MergeUrbanPervTreePair(bounds, errsoi_col(bounds%begc:bounds%endc))
 
        errsoi_col_max_val  =  maxval( abs(errsoi_col(bounds%begc:bounds%endc)) , mask = col%active(bounds%begc:bounds%endc))
 

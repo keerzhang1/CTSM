@@ -25,8 +25,9 @@ contains
       ! of columns and for different process modules
       ! The super-set of all columns that should have a root water sink
       ! is filter_hydrologyc
-      ! There are three groups of columns:
-      ! 1) impervious roads, 2) non-natural vegetation and 3) natural vegetation
+      ! There are four groups of columns:
+      ! 1) pervious roads, 1b) urban road trees, 2) non-natural vegetation and
+      ! 3) natural vegetation
       ! There are several methods available.
       ! 1) the default version, 2) hydstress version and 3) fates boundary conditions
       !
@@ -65,10 +66,14 @@ contains
       num_filterc_tot = 0
 
       ! 1) pervious roads
+      !
+      ! The pervious road carries no explicit vegetation - UrbanFluxes lumps bare soil
+      ! evaporation and implicit grass transpiration into one bulk flux - so it has no
+      ! valid plant hydraulics state and always takes the soil moisture stress path.
       num_filterc = 0
       do fc = 1, num_hydrologyc
          c = filter_hydrologyc(fc)
-         if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_tree) then
+         if (col%itype(c) == icol_road_perv) then
             num_filterc = num_filterc + 1
             filterc(num_filterc) = c
          end if
@@ -83,13 +88,41 @@ contains
       end if
 
 
-      ! Note: 2 and 3 really don't need to be split.  But I am leaving
+      ! 2) urban road trees
+      !
+      ! Unlike the pervious road, the road tree runs the full canopy solve in
+      ! UrbanFluxes, including PhotosynthesisHydraulicStress when use_hydrstress is
+      ! true. That call sets k_soil_root_patch and vegwp_patch for the tree patch, so
+      ! the tree can - and for consistency must - use the same plant hydraulics uptake
+      ! as natural vegetation: its qflx_tran_veg comes from the PHS root water flux, so
+      ! distributing that total with the SMS root profile instead would be inconsistent
+      ! with the vegwp solution the tree's stomatal conductance was built on.
+      num_filterc = 0
+      do fc = 1, num_hydrologyc
+         c = filter_hydrologyc(fc)
+         if (col%itype(c) == icol_road_tree) then
+            num_filterc = num_filterc + 1
+            filterc(num_filterc) = c
+         end if
+      end do
+      num_filterc_tot = num_filterc_tot+num_filterc
+      if(use_hydrstress) then
+         call Compute_EffecRootFrac_And_VertTranSink_HydStress(bounds, &
+               num_filterc, filterc, waterfluxbulk_inst, soilstate_inst, &
+               canopystate_inst, energyflux_inst)
+      else
+         call Compute_EffecRootFrac_And_VertTranSink_Default(bounds, &
+               num_filterc,filterc, soilstate_inst, waterfluxbulk_inst)
+      end if
+
+
+      ! Note: 3 and 4 really don't need to be split.  But I am leaving
       ! it split in case someone wants to calculate uptake in a special
       ! way for a specific LU or coverage type (RGK 04/2017).  Feel
       ! free to consolidate if there are no plans to do such a thing.
 
          
-      ! 2) not ( pervious road or natural vegetation) , everything else
+      ! 3) not ( pervious road or natural vegetation) , everything else
       num_filterc = 0
       do fc = 1, num_hydrologyc
          c = filter_hydrologyc(fc)
@@ -110,7 +143,7 @@ contains
       end if
       
 
-      ! 3) Natural vegetation
+      ! 4) Natural vegetation
       num_filterc = 0
       do fc = 1, num_hydrologyc
          c = filter_hydrologyc(fc)

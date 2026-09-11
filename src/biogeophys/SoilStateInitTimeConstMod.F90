@@ -274,21 +274,10 @@ contains
                /real(col%nbedrock(c))
           soilstate_inst%rootfr_road_perv_col(c,col%nbedrock(c)+1:nlevsoi) = 0._r8
        end if
-       ! how to modify the rootfr for urban tree?
-       if (lun%urbpoi(l) .and. col%itype(c) == icol_road_tree) then 
-          do lev = 1, nlevgrnd
-             soilstate_inst%rootfr_road_tree_col(c,lev) = 0._r8
-          enddo
-          do lev = 1,nlevsoi
-             soilstate_inst%rootfr_road_tree_col(c,lev) = 1.0_r8/real(nlevsoi,r8)
-          end do
-! remove roots below bedrock layer
-          soilstate_inst%rootfr_road_tree_col(c,1:col%nbedrock(c)) = &
-               soilstate_inst%rootfr_road_tree_col(c,1:col%nbedrock(c)) &
-               + sum(soilstate_inst%rootfr_road_tree_col(c,col%nbedrock(c)+1:nlevsoi)) &
-               /real(col%nbedrock(c))
-          soilstate_inst%rootfr_road_tree_col(c,col%nbedrock(c)+1:nlevsoi) = 0._r8
-       end if
+      ! The urban road tree is a normal patch with a real PFT, so its root profile comes
+      ! from init_vegrootfr below (soilstate_inst%rootfr_patch), like any other vegetated
+      ! patch. Only the pervious road, which has no patch-level vegetation, needs the
+      ! column-level rootfr_road_perv_col above.
     end do
 
     do c = bounds%begc,bounds%endc

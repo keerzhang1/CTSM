@@ -16,13 +16,13 @@ module clm_driver
   use clm_varctl             , only : use_soil_moisture_streams
   use clm_varctl             , only : use_cropcal_streams
   use clm_time_manager       , only : get_nstep, is_beg_curr_day, is_beg_curr_year
-  use clm_time_manager       , only : get_prev_date, is_first_step
+  use clm_time_manager       , only : is_first_step
   use clm_varpar             , only : nlevsno, nlevgrnd
   use clm_varorb             , only : obliqr
   use spmdMod                , only : masterproc, mpicom
   use decompMod              , only : get_proc_clumps, get_clump_bounds, get_proc_bounds, bounds_type
   use filterMod              , only : filter, filter_inactive_and_active
-  use filterMod              , only : setExposedvegpFilter
+  use filterMod              , only : setExposedvegpFilter, setExposedurbtreepFilter
   use histFileMod            , only : hist_update_hbuf, hist_htapes_wrapup
   use restFileMod            , only : restFile_write, restFile_filename
   use abortutils             , only : endrun
@@ -44,6 +44,7 @@ module clm_driver
   !
   use HydrologyNoDrainageMod , only : CalcAndWithdrawIrrigationFluxes, HandleNewSnow, HydrologyNoDrainage ! (formerly Hydrology2Mod)
   use HydrologyDrainageMod   , only : HydrologyDrainage   ! (formerly Hydrology2Mod)
+  use UrbanParamsType        , only : UrbanPhenology ! Interpolate monthly urban tree LAI to the current date
   use CanopyHydrologyMod     , only : CanopyInterceptionAndThroughfall
   use SurfaceWaterMod        , only : UpdateFracH2oSfc
   use LakeHydrologyMod       , only : LakeHydrology
@@ -95,6 +96,12 @@ module clm_driver
   private :: clm_drv_init      ! Initialization of variables needed from previous timestep
   private :: write_diagnostic  ! Write diagnostic information to log file
 
+  ! Month of the most recent urban tree phenology update, latched across time steps.
+  ! -1 means "never updated", so the first radiation step of the run triggers an
+  ! update. See the use of do_urban_phenology in clm_drv for why this is latched
+  ! rather than tested against the previous time step's month.
+  integer, private :: urban_phenology_mon = -1
+
   character(len=*), parameter, private :: sourcefile = &
        __FILE__
   !-----------------------------------------------------------------------
@@ -140,6 +147,7 @@ contains
     integer              :: mon                     ! month (1, ..., 12)
     integer              :: day                     ! day of month (1, ..., 31)
     integer              :: sec                     ! seconds of the day
+    logical              :: do_urban_phenology      ! true on the first radiation step of the run and of each month
     character(len=256)   :: filer                   ! restart file name
     integer              :: ier                     ! error code
     logical              :: need_glacier_initialization ! true if we need to initialize glacier areas in this time step
@@ -226,7 +234,6 @@ contains
     ! Specified phenology
     ! Done in SP mode, FATES-SP mode and also when dry-deposition is active
     ! ============================================================================
-    
     if (use_cn) then
        ! For dry-deposition need to call CLMSP so that mlaidiff is obtained
        ! NOTE: This is also true of FATES below
@@ -293,6 +300,7 @@ contains
 
        ! Filter bgc_soilc operates on all non-sp soil columns
        ! Filter bgc_vegp  operates on all non-fates, non-sp patches (use_cn) on soil
+       ! TODO: this SoilBiogeochemVerticalProfile is not needed by urban tree?
        if ((use_cn .or. use_fates_bgc) .and. decomp_method /= no_soil_decomp) then
           call SoilBiogeochemVerticalProfile(bounds_clump                                       , &
                filter_inactive_and_active(nc)%num_bgc_soilc, filter_inactive_and_active(nc)%bgc_soilc   , &
@@ -405,10 +413,13 @@ contains
 
        if (use_soil_moisture_streams) then
           call t_startf('prescribed_sm')
+          ! TODO: the PrescribedSoilMoistureInterp call excluded urban columns
+          ! even if a user turns on use_soil_moisture_streams, urban trees will still compute their own soil moisture — the stream won't clobber the tree column. 
           call PrescribedSoilMoistureInterp(bounds_clump, soilstate_inst, &
                water_inst%waterstatebulk_inst)
           call t_stopf('prescribed_sm')
        endif
+
        call t_startf('begwbal')
        call BeginWaterColumnBalance(bounds_clump,             &
             filter(nc)%num_nolakec, filter(nc)%nolakec,       &
@@ -487,6 +498,26 @@ contains
     ! snow accumulation exceeds 10 mm.
     ! ============================================================================
 
+    ! Update urban tree phenology on the first radiation step of the run and on the
+    ! first radiation step of each new month.
+    !
+    ! The doalb gate matters: UrbanPhenology sets elai/esai and frac_veg_nosno_alb for
+    ! the tree patch, while SurfaceAlbedo - which sets nrad and tlai_z for the same
+    ! patch - runs only when doalb is true. Updating the LAI on a non-radiation step
+    ! would leave the tree flagged as exposed for a step while nrad is still 0, and
+    ! PhotosynthesisHydraulicStress would then return unset (NaN) bsun/bsha. Gating
+    ! both on doalb keeps the tree in lockstep with the radiation state, which is how
+    ! SatellitePhenology and SurfaceAlbedo already stay consistent for natural veg.
+    !
+    ! The month is latched rather than compared against the previous time step's month,
+    ! so that a month whose first time step has doalb = .false. still gets its update on
+    ! the next radiation step instead of being skipped entirely.
+    !
+    ! Computed here in the serial section so the flag is shared read-only across clumps.
+    call get_curr_date(yr,  mon,  day,  sec)
+    do_urban_phenology = doalb .and. (mon /= urban_phenology_mon)
+    if (do_urban_phenology) urban_phenology_mon = mon
+
     !$OMP PARALLEL DO PRIVATE (nc,l,c, bounds_clump, downreg_patch, leafn_patch, agnpp_patch, bgnpp_patch, annsum_npp_patch, rr_patch, froot_carbon, croot_carbon)
     do nc = 1,nclumps
        call get_clump_bounds(nc, bounds_clump)
@@ -524,8 +555,12 @@ contains
        end if
 
        ! Update filters that depend on variables set in clm_drv_init
-
+       ! Note: setExposedvegpFilter excludes urban points, so urban tree patches are
+       ! handled separately by setExposedurbtreepFilter
        call setExposedvegpFilter(bounds_clump, &
+            canopystate_inst%frac_veg_nosno_patch(bounds_clump%begp:bounds_clump%endp))
+
+       call setExposedurbtreepFilter(bounds_clump, &
             canopystate_inst%frac_veg_nosno_patch(bounds_clump%begp:bounds_clump%endp))
 
        call t_stopf('drvinit')
@@ -533,7 +568,7 @@ contains
        if (irrigate) then
 
           call t_startf('irrigationwithdraw')
-
+           ! TODO: this is only done for soil columns; but we don't consider irrigation for now
           call CalcAndWithdrawIrrigationFluxes( &
                bounds = bounds_clump, &
                num_soilc = filter(nc)%num_soilc, &
@@ -564,13 +599,18 @@ contains
        ! ============================================================================
 
        call t_startf('hydro1')
+       ! KZ: done for all num_nolakep including urban tree
+       ! need to have frac_veg_nosno, elai, esai for urban tree
+       ! need to add urban tree for some calls
 
        call CanopyInterceptionAndThroughfall(bounds_clump, &
             filter(nc)%num_soilp, filter(nc)%soilp, &
+            filter(nc)%num_urbantreep, filter(nc)%urbantreep, &
             filter(nc)%num_nolakep, filter(nc)%nolakep, &
             filter(nc)%num_nolakec, filter(nc)%nolakec, &
             patch, col, canopystate_inst, atm2lnd_inst, water_inst)
-
+       ! KZ: done for all num_nolakec including urban tree
+       ! frac_sno_eff is either 0 or 1 for urban columns
        call HandleNewSnow(bounds_clump, &
             filter(nc)%num_nolakec, filter(nc)%nolakec, &
             scf_method, &
@@ -578,6 +618,8 @@ contains
             aerosol_inst, water_inst)
 
        ! update surface water fraction (this may modify frac_sno)
+       ! For urban and other special landunits, frac_h2osfc is held fixed at 0 — CLMU does represent ponded water, via the w_pond bucket (limit 1 kg m⁻²) on roofs and impervious roads. but not by frac_h2osfc
+       ! urban frac_h2osfc = 0
        call UpdateFracH2oSfc(bounds_clump, &
             filter(nc)%num_soilc, filter(nc)%soilc, &
             water_inst)
@@ -607,6 +649,7 @@ contains
        if(use_fates) then
           call clm_fates%wrap_sunfrac(nc,atm2lnd_inst, canopystate_inst)
        else
+          ! added urban tree pacth to the filter
           call CanopySunShadeFracs(filter(nc)%nourbanwtreep,filter(nc)%num_nourbanwtreep,     &
                                    atm2lnd_inst, surfalb_inst, canopystate_inst,    &
                                    solarabs_inst)
@@ -728,7 +771,7 @@ contains
             leafn_patch = leafn_patch(bounds_clump%begp:bounds_clump%endp), &
             froot_carbon = froot_carbon(bounds_clump%begp:bounds_clump%endp), &
             croot_carbon = croot_carbon(bounds_clump%begp:bounds_clump%endp))
-       deallocate(downreg_patch, froot_carbon, croot_carbon)
+       deallocate(downreg_patch)
        call t_stopf('canflux')
 
        ! Fluxes for all urban landunits
@@ -741,15 +784,19 @@ contains
             filter(nc)%num_urbanp, filter(nc)%urbanp,                         &
             filter(nc)%num_urbantreep, filter(nc)%urbantreep,                         &
             filter(nc)%num_urbantreec, filter(nc)%urbantreec,                         &
+            filter(nc)%num_exposedurbtreep, filter(nc)%exposedurbtreep,                         &
+            filter(nc)%num_noexposedurbtreep, filter(nc)%noexposedurbtreep,                     &
             atm2lnd_inst, urbanparams_inst, soilstate_inst, temperature_inst,   &
             water_inst%waterstatebulk_inst, water_inst%waterdiagnosticbulk_inst, &
             frictionvel_inst, energyflux_inst, water_inst%waterfluxbulk_inst, &
             water_inst%wateratm2lndbulk_inst, humanindex_inst,active_layer_inst,&
             photosyns_inst,surfalb_inst,solarabs_inst,canopystate_inst,&
             ozone_inst,soil_water_retention_curve,&
-            leafn_patch = leafn_patch(bounds_clump%begp:bounds_clump%endp))
+            leafn_patch = leafn_patch(bounds_clump%begp:bounds_clump%endp), &
+            froot_carbon = froot_carbon(bounds_clump%begp:bounds_clump%endp), &
+            croot_carbon = croot_carbon(bounds_clump%begp:bounds_clump%endp))
             
-            deallocate(leafn_patch)
+            deallocate(leafn_patch,froot_carbon, croot_carbon)
        call t_stopf('uflux')
 
        ! Fluxes for all lake landunits
@@ -871,7 +918,6 @@ contains
 
        call t_startf('bgp2')
        call SoilFluxes(bounds_clump,                                                          &
-            filter(nc)%num_urbanl,  filter(nc)%urbanl,                                        &
             filter(nc)%num_urbanp,  filter(nc)%urbanp,                                        &
             filter(nc)%num_nolakec, filter(nc)%nolakec,                                       &
             filter(nc)%num_nolakep, filter(nc)%nolakep,                                       &
@@ -983,7 +1029,7 @@ contains
        ! ! Fraction of soil covered by snow (Z.-L. Yang U. Texas)
        ! ============================================================================
        call t_startf('snow_init')
-
+       ! Note that for urban landunit, the Swenson-Lawrence value snow fraction is never read. it is always overridden by snow_depth/0.05
        do c = bounds_clump%begc,bounds_clump%endc
           l = col%landunit(c)
           if (lun%urbpoi(l)) then
@@ -1052,7 +1098,7 @@ contains
 
        if (((.not. use_cn) .and. (.not. use_fates) .and. (doalb))) then
           call t_startf('SatellitePhenology')
-          call SatellitePhenology(bounds_clump, filter(nc)%num_nolakep, filter(nc)%nolakep, &
+          call SatellitePhenology(bounds_clump, filter(nc)%num_nolakeurbanp, filter(nc)%nolakeurbanp, &
                water_inst%waterdiagnosticbulk_inst, canopystate_inst)
           call t_stopf('SatellitePhenology')
        end if
@@ -1070,6 +1116,12 @@ contains
                water_inst%waterdiagnosticbulk_inst, canopystate_inst)
           call t_stopf('SatellitePhenology')
 
+       end if
+
+       ! Interpolate prescribed monthly urban tree LAI (updated at the beginning of each month)
+       if (do_urban_phenology) then
+          call UrbanPhenology(bounds_clump, filter(nc)%num_urbantreep, filter(nc)%urbantreep, &
+               urbanparams_inst, canopystate_inst, water_inst%waterdiagnosticbulk_inst)
        end if
 
        ! Dry Deposition of chemical tracers (Wesely (1998) parameterizaion)
@@ -1601,6 +1653,7 @@ contains
     use WaterFluxBulkType  , only : waterfluxbulk_type
     use EnergyFluxType , only : energyflux_type
     use subgridAveMod  , only : p2c
+    use UrbanFluxesMod , only : MergeUrbanPervTreePair
     use shr_infnan_mod , only : nan => shr_infnan_nan, assignment(=)
     !
     ! !ARGUMENTS:
@@ -1672,6 +1725,27 @@ contains
     call p2c (bounds, num_nolakec, filter_nolakec, &
          waterfluxbulk_inst%qflx_soliddew_to_top_layer_patch(bounds%begp:bounds%endp), &
          waterfluxbulk_inst%qflx_soliddew_to_top_layer_col(bounds%begc:bounds%endc))
+
+    ! The urban pervious road and the urban road trees share the same ground surface,
+    ! so evaporation and dew have to be withdrawn from, and deposited on, one common
+    ! snow pack and top soil layer rather than two independent ones. Replace each of
+    ! these column fluxes by its area weighted average over the pair.
+    !
+    ! qflx_evap_tot_col and qflx_tran_veg_col are deliberately left alone: they are the
+    ! true total evapotranspiration of each column, used for history output and for the
+    ! water balance check, and merging them here would double count the mixing. The
+    ! consequence is that errh2o_col closes only for the pair mean, not for either
+    ! column on its own - see BalanceCheck, where the error itself is merged.
+
+    call MergeUrbanPervTreePair(bounds, waterfluxbulk_inst%qflx_ev_snow_col(bounds%begc:bounds%endc))
+    call MergeUrbanPervTreePair(bounds, waterfluxbulk_inst%qflx_ev_soil_col(bounds%begc:bounds%endc))
+    call MergeUrbanPervTreePair(bounds, waterfluxbulk_inst%qflx_ev_h2osfc_col(bounds%begc:bounds%endc))
+    call MergeUrbanPervTreePair(bounds, waterfluxbulk_inst%qflx_evap_soi_col(bounds%begc:bounds%endc))
+
+    call MergeUrbanPervTreePair(bounds, waterfluxbulk_inst%qflx_liqevap_from_top_layer_col(bounds%begc:bounds%endc))
+    call MergeUrbanPervTreePair(bounds, waterfluxbulk_inst%qflx_solidevap_from_top_layer_col(bounds%begc:bounds%endc))
+    call MergeUrbanPervTreePair(bounds, waterfluxbulk_inst%qflx_liqdew_to_top_layer_col(bounds%begc:bounds%endc))
+    call MergeUrbanPervTreePair(bounds, waterfluxbulk_inst%qflx_soliddew_to_top_layer_col(bounds%begc:bounds%endc))
 
   end subroutine clm_drv_patch2col
 

@@ -1383,6 +1383,9 @@ contains
     ! Get patch-level leaf nitrogen array
     !
     ! !USES:
+    use PatchType           , only : patch
+    use ColumnType          , only : col
+    use column_varcon       , only : icol_road_tree
     !
     ! !ARGUMENTS:
     class(cn_vegetation_type), intent(in) :: this
@@ -1390,6 +1393,7 @@ contains
     real(r8) :: leafn_patch(bounds%begp:bounds%endp)  ! function result: leaf N (gN/m2)
     !
     ! !LOCAL VARIABLES:
+    integer :: p   ! patch index
 
     character(len=*), parameter :: subname = 'get_leafn_patch'
     !-----------------------------------------------------------------------
@@ -1397,6 +1401,15 @@ contains
     if (use_cn) then
        leafn_patch(bounds%begp:bounds%endp) = &
             this%cnveg_nitrogenstate_inst%leafn_patch(bounds%begp:bounds%endp)
+
+       ! The urban road tree patch is not carried by the CN vegetation state, so its
+       ! leafn is never advanced and would otherwise return a meaningless cold-start
+       ! value. Return NaN instead, matching the .not. use_cn branch below
+       do p = bounds%begp, bounds%endp
+          if (col%itype(patch%column(p)) == icol_road_tree) then
+             leafn_patch(p) = nan
+          end if
+       end do
     else
        leafn_patch(bounds%begp:bounds%endp) = nan
     end if
@@ -1553,6 +1566,8 @@ contains
     ! !USES:
     use pftconMod           , only : pftcon
     use PatchType           , only : patch
+    use ColumnType          , only : col
+    use column_varcon, only : icol_road_tree
     !
     ! !ARGUMENTS:
     class(cn_vegetation_type), intent(in) :: this
@@ -1562,12 +1577,28 @@ contains
     !
     ! !LOCAL VARIABLES:
     character(len=*), parameter :: subname = 'get_froot_carbon_patch'
-    integer :: p
+    integer :: p, c
     !-----------------------------------------------------------------------
 
     if (use_cn) then
        froot_carbon_patch(bounds%begp:bounds%endp) = &
             this%cnveg_carbonstate_inst%frootc_patch(bounds%begp:bounds%endp)
+
+      ! The urban road tree is not carried by the CN vegetation state, so frootc_patch
+      ! is meaningless for it. Use the same SLA-based allometry as the SP branch below.
+      do p = bounds%begp, bounds%endp
+         c = patch%column(p)
+         if (col%itype(c) == icol_road_tree) then
+            ! should use urban tree LAI per tree area
+            if (pftcon%slatop(patch%itype(p)) > 0._r8) then 
+               froot_carbon_patch(p) = tlai(p) &
+                     / pftcon%slatop(patch%itype(p)) &
+                     *pftcon%froot_leaf(patch%itype(p))
+            else
+               froot_carbon_patch(p) = 0._r8
+            endif
+         end if
+      enddo
     else
 ! To get leaf biomass:
 ! bleaf = LAI / slatop
@@ -1585,6 +1616,7 @@ contains
           endif
        enddo
     end if
+   
 
   end function get_froot_carbon_patch
 
@@ -1597,6 +1629,8 @@ contains
     ! !USES:
     use pftconMod           , only : pftcon
     use PatchType           , only : patch
+    use ColumnType          , only : col
+    use column_varcon, only : icol_road_tree
     !
     ! !ARGUMENTS:
     class(cn_vegetation_type), intent(in) :: this
@@ -1607,12 +1641,27 @@ contains
     ! !LOCAL VARIABLES:
 
     character(len=*), parameter :: subname = 'get_croot_carbon_patch'
-    integer :: p
+    integer :: p, c
     !-----------------------------------------------------------------------
 
     if (use_cn) then
        croot_carbon_patch(bounds%begp:bounds%endp) = &
             this%cnveg_carbonstate_inst%livecrootc_patch(bounds%begp:bounds%endp)
+      ! The urban road tree is not carried by the CN vegetation state, so crootc_patch
+      ! is meaningless for it. Use the same SLA-based allometry as the SP branch below.
+      do p=bounds%begp, bounds%endp
+         c = patch%column(p)
+         if (col%itype(c) == icol_road_tree) then
+            if (pftcon%slatop(patch%itype(p)) > 0._r8) then 
+               croot_carbon_patch(p) = tlai(p) &
+                  / pftcon%slatop(patch%itype(p)) &
+                  *pftcon%stem_leaf(patch%itype(p)) &
+                  *pftcon%croot_stem(patch%itype(p))
+            else
+               croot_carbon_patch(p) = 0._r8
+               endif
+         end if
+      enddo
     else
 ! To get leaf biomass:
 ! bleaf = LAI / slatop
@@ -1631,7 +1680,6 @@ contains
           endif
        enddo
     end if
-
   end function get_croot_carbon_patch
 
   !-----------------------------------------------------------------------

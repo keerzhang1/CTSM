@@ -15,7 +15,7 @@ module SoilHydrologyMod
   use clm_varcon        , only : pondmx_urban
   use clm_varpar        , only : nlevsoi, nlevgrnd, nlayer, nlayert
   use column_varcon     , only : icol_roof, icol_sunwall, icol_shadewall
-  use column_varcon     , only : icol_road_imperv
+  use column_varcon     , only : icol_road_imperv, icol_road_perv, icol_road_tree
   use landunit_varcon   , only : istsoil, istcrop
   use clm_time_manager  , only : get_step_size_real
   use NumericsMod       , only : truncate_small_values
@@ -2905,6 +2905,4 @@ contains
      end associate
 
    end subroutine WithdrawGroundwaterIrrigation
-
-!#0
 end module SoilHydrologyMod

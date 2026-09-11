@@ -83,6 +83,11 @@ module filterMod
      integer, pointer :: noexposedvegp(:)! patches where frac_veg_nosno is 0 (does NOT include lake or urban)
      integer :: num_noexposedvegp        ! number of patches in noexposedvegp filter
 
+     integer, pointer :: exposedurbtreep(:)  ! urban tree patches where frac_veg_nosno is non-zero
+     integer :: num_exposedurbtreep          ! number of patches in exposedurbtreep filter
+     integer, pointer :: noexposedurbtreep(:)! urban tree patches where frac_veg_nosno is 0
+     integer :: num_noexposedurbtreep        ! number of patches in noexposedurbtreep filter
+
      integer, pointer :: hydrologyc(:)   ! hydrology filter (columns)
      integer :: num_hydrologyc           ! number of columns in hydrology filter
 
@@ -105,6 +110,9 @@ module filterMod
      integer, pointer :: urbantreep(:)       ! urban tree filter (patches)
      integer :: num_urbantreep               ! number of patches in urban tree filter
      
+     integer, pointer :: urbantreepervp(:)       ! urban tree and pervious road filter (patches)
+     integer :: num_urbantreepervp              ! number of patches in urban tree and pervious road filter
+
      integer, pointer :: nourbanp(:)     ! non-urban filter (patches)
      integer :: num_nourbanp             ! number of patches in non-urban filter
 
@@ -153,6 +161,7 @@ module filterMod
   public allocFilters         ! allocate memory for filters
   public setFilters           ! set filters
   public setExposedvegpFilter ! set the exposedvegp and noexposedvegp filters
+  public setExposedurbtreepFilter ! set the exposedurbtreep and noexposedurbtreep filters
 
   private allocFiltersOneGroup  ! allocate memory for one group of filters
   private setFiltersOneGroup    ! set one group of filters
@@ -248,6 +257,9 @@ contains
        allocate(this_filter(nc)%exposedvegp(bounds%endp-bounds%begp+1))
        allocate(this_filter(nc)%noexposedvegp(bounds%endp-bounds%begp+1))
 
+       allocate(this_filter(nc)%exposedurbtreep(bounds%endp-bounds%begp+1))
+       allocate(this_filter(nc)%noexposedurbtreep(bounds%endp-bounds%begp+1))
+
        allocate(this_filter(nc)%natvegp(bounds%endp-bounds%begp+1))
 
        allocate(this_filter(nc)%hydrologyc(bounds%endc-bounds%begc+1))
@@ -257,6 +269,7 @@ contains
        allocate(this_filter(nc)%nourbanwtreep(bounds%endp-bounds%begp+1))
 
        allocate(this_filter(nc)%urbantreep(bounds%endp-bounds%begp+1))
+       allocate(this_filter(nc)%urbantreepervp(bounds%endp-bounds%begp+1))
 
        allocate(this_filter(nc)%urbanc(bounds%endc-bounds%begc+1))
        allocate(this_filter(nc)%urbantreec(bounds%endc-bounds%begc+1))
@@ -353,7 +366,7 @@ contains
     integer :: fnl,fnlu    ! non-lake filter index
     integer :: fs          ! soil filter index
     integer :: f, fn       ! general indices
-    integer :: ft          ! urban tree indices
+    integer :: ft, ftp          ! urban tree indices
     integer :: g           !gridcell index
     !------------------------------------------------------------------------
 
@@ -571,6 +584,7 @@ contains
     f = 0
     fn = 0
     ft = 0
+    ftp = 0
     do p = bounds%begp,bounds%endp
        if (patch%active(p) .or. include_inactive) then
           l = patch%landunit(p)
@@ -581,6 +595,11 @@ contains
              if (col%itype(c) == icol_road_tree) then
                 ft = ft + 1
                 this_filter(nc)%urbantreep(ft) = p
+                ftp = ftp +1
+                this_filter(nc)%urbantreepervp(ftp) = p
+             else if (col%itype(c) == icol_road_perv) then
+                ftp = ftp +1
+                this_filter(nc)%urbantreepervp(ftp) = p
              end if
           else
              fn = fn + 1
@@ -591,6 +610,7 @@ contains
     this_filter(nc)%num_urbanp = f
     this_filter(nc)%num_nourbanp = fn
     this_filter(nc)%num_urbantreep = ft
+    this_filter(nc)%num_urbantreepervp = ftp
 
     ft = 0
     do p = bounds%begp,bounds%endp
@@ -705,6 +725,60 @@ contains
     filter(nc)%num_noexposedvegp = fn
 
   end subroutine setExposedvegpFilter
+
+  !-----------------------------------------------------------------------
+  subroutine setExposedurbtreepFilter(bounds, frac_veg_nosno)
+    !
+    ! !DESCRIPTION:
+    ! Sets the exposedurbtreep and noexposedurbtreep filters for one clump.
+    !
+    ! These are the urban tree analogues of the exposedvegp / noexposedvegp filters,
+    ! which exclude urban points. exposedurbtreep includes urban tree patches for which
+    ! frac_veg_nosno > 0; noexposedurbtreep includes urban tree patches for which
+    ! frac_veg_nosno <= 0.
+    !
+    ! Should be called from within a loop over clumps.
+    !
+    ! Only sets this filter in the main 'filter' variable, NOT in
+    ! filter_inactive_and_active.
+    !
+    ! !USES:
+    use decompMod , only : bounds_level_clump
+    !
+    ! !ARGUMENTS:
+    type(bounds_type) , intent(in) :: bounds
+    integer           , intent(in) :: frac_veg_nosno( bounds%begp: ) ! fraction of vegetation not covered by snow [patch]
+    !
+    ! !LOCAL VARIABLES:
+    integer :: nc     ! clump index
+    integer :: fp     ! filter index
+    integer :: p      ! patch index
+    integer :: fe, fn ! filter counts
+
+    character(len=*), parameter :: subname = 'setExposedurbtreepFilter'
+    !-----------------------------------------------------------------------
+
+    SHR_ASSERT_FL(bounds%level == bounds_level_clump, sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(frac_veg_nosno) == (/bounds%endp/)), sourcefile, __LINE__)
+
+    nc = bounds%clump_index
+
+    fe = 0
+    fn = 0
+    do fp = 1, filter(nc)%num_urbantreep
+       p = filter(nc)%urbantreep(fp)
+       if (frac_veg_nosno(p) > 0) then
+          fe = fe + 1
+          filter(nc)%exposedurbtreep(fe) = p
+       else
+          fn = fn + 1
+          filter(nc)%noexposedurbtreep(fn) = p
+       end if
+    end do
+    filter(nc)%num_exposedurbtreep = fe
+    filter(nc)%num_noexposedurbtreep = fn
+
+  end subroutine setExposedurbtreepFilter
 
 
 end module filterMod

@@ -341,8 +341,7 @@ contains
     real(r8) :: zenith_angle
     !-----------------------------------------------------------------------
 
-   associate(&
-          tree_lai_urb                 =>   lun%tree_lai_urb                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+   associate(&         
 
           rhol          =>    pftcon%rhol                         , & ! Input:  leaf reflectance: 1=vis, 2=nir        
           rhos          =>    pftcon%rhos                         , & ! Input:  stem reflectance: 1=vis, 2=nir        
@@ -436,6 +435,11 @@ contains
 
     do g = bounds%begg,bounds%endg
        coszen_grc(g) = shr_orb_cosz (nextsw_cday, grc%lat(g), grc%lon(g), declinp1)
+!KO
+       if (coszen_grc(g) .le. 0._r8) then
+           coszen_grc(g) = 0.01_r8
+       end if
+!KO
     end do
     
     do c = bounds%begc,bounds%endc
@@ -453,11 +457,23 @@ contains
        else
           coszen_col(c) = coszen_grc(g)
        endif
+
+!KO
+       if (coszen_col(c) .le. 0._r8) then
+           coszen_col(c) = 0.01_r8
+       end if
+!KO
     end do
     do fp = 1,num_nourbanp
        p = filter_nourbanp(fp)
        c = patch%column(p)
        coszen_patch(p) = coszen_col(c)
+
+!KO
+       if (coszen_patch(p) .le. 0._r8) then
+          coszen_patch(p) = 0.01_r8
+       end if
+!KO
     end do
 
     ! Initialize output because solar radiation only done if coszen > 0
@@ -916,8 +932,8 @@ contains
        p = filter_urbantreep(fp)
        l = patch%landunit(p)
        nrad(p) = 1
-       tlai_z(p,1) = tree_lai_urb(l)
-       tsai_z(p,1) = 0.0_r8
+       tlai_z(p,1) = elai(p)
+       tsai_z(p,1) = esai(p)
     end do
            
     do fp = 1,num_nourbanp
@@ -1350,11 +1366,6 @@ contains
      real(r8) :: extkb                                             ! direct beam extinction coefficient
      real(r8) :: extkn                                             ! nitrogen allocation coefficient
      logical  :: lSFonly                                           ! Local version of SFonly (Snow Free) flag
-     real(r8) :: temp_t(bounds%begp:bounds%endp)                                            ! temporaray temperature variable
-     real(r8) :: temp_fcansno(bounds%begp:bounds%endp)                                      ! temporaray fcansno
-     real(r8) :: temp_fwet(bounds%begp:bounds%endp)                                         ! temporaray fwet
-     real(r8) :: temp_elai(bounds%begp:bounds%endp)                                         ! temporaray fcansno
-     real(r8) :: temp_elaiesai(bounds%begp:bounds%endp)                                    ! temporaray fwet
      real(r8) :: temp_albgrd(bounds%begc:bounds%endc,numrad)                                    ! temporaray albgrd
      real(r8) :: temp_albgri(bounds%begc:bounds%endc,numrad)                                    ! temporaray albgri
      !-----------------------------------------------------------------------
@@ -1380,8 +1391,7 @@ contains
          fcansno      =>    waterdiagnosticbulk_inst%fcansno_patch       , & ! Input:  [real(r8) (:)   ]  fraction of canopy that is snow-covered (0 to 1) 
 
          elai         =>    canopystate_inst%elai_patch         , & ! Input:  [real(r8) (:)   ]  one-sided leaf area index with burying by snow
-         esai         =>    canopystate_inst%esai_patch         , & ! Input:  [real(r8) (:)   ]  one-sided stem area index with burying by snow
-         tree_lai_urb                 =>   lun%tree_lai_urb                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
+         esai         =>    canopystate_inst%esai_patch         , & ! Input:  [real(r8) (:)   ]  one-sided stem area index with burying by snow          
 
          tlai_z       =>    surfalb_inst%tlai_z_patch           , & ! Input:  [real(r8) (:,:) ]  tlai increment for canopy layer       
          tsai_z       =>    surfalb_inst%tsai_z_patch           , & ! Input:  [real(r8) (:,:) ]  tsai increment for canopy layer       
@@ -1431,31 +1441,21 @@ contains
       ! 0.001, not on values cosz = 0, since these zero have already been filtered
       ! out in filter
       cosz = max(0.001_r8, coszen(p))
-      
+      chil(p) = min( max(xl(patch%itype(p)), -0.4_r8), 0.6_r8 )
+      if (abs(chil(p)) <= 0.01_r8) chil(p) = 0.01_r8
+
       !chil is the departure of leaf angles from a random distribution and equals +1 
       ! for horizontal leaves, 0 for random leaves, and –1 for vertical leaves.
       ! Eq. 3.3
       if (col%itype(c) == icol_road_tree) then
-          ! corrected: we want to use realistic tree albedo here!!!
-          chil(p) = min( max(xl(7), -0.4_r8), 0.6_r8 )
-          temp_t(p)=t_grnd(c)
-          temp_fcansno(p)=0.0_r8
-          temp_fwet(p)=0.0_r8
-          temp_elaiesai(p)=tree_lai_urb(l)
-          temp_elai(p)=tree_lai_urb(l)
+          ! use perv ground albedo
           temp_albgrd(c,:)=albd_perroad_s(l,:)
           temp_albgri(c,:)=albi_perroad_s(l,:)
       else 
-          chil(p) = min( max(xl(patch%itype(p)), -0.4_r8), 0.6_r8 )
-          temp_t(p)=t_veg(p)
-          temp_fcansno(p)=fcansno(p)
-          temp_fwet(p)=fwet(p)
-          temp_elaiesai(p)=elai(p)+esai(p)
-          temp_elai(p)=elai(p)
           temp_albgrd(c,:)=albgrd(c,:)
           temp_albgri(c,:)=albgri(c,:)
       end if
-      if (abs(chil(p)) <= 0.01_r8) chil(p) = 0.01_r8
+      
       ! Eq. 3.3 
       phi1 = 0.5_r8 - 0.633_r8*chil(p) - 0.330_r8*chil(p)*chil(p)
       phi2 = 0.877_r8 * (1._r8-2._r8*phi1)
@@ -1533,7 +1533,7 @@ contains
          betail = 0.5_r8 * ((rho(p,ib)+tau(p,ib)) + (rho(p,ib)-tau(p,ib)) &
                 * ((1._r8+chil(p))/2._r8)**2) / omegal
 
-         if ( lSFonly .or. ( (.not. snowveg_affects_radiation) .and. (temp_t(p) > tfrz) ) ) then
+         if ( lSFonly .or. ( (.not. snowveg_affects_radiation) .and. (t_veg(p) > tfrz) ) ) then
             ! Keep omega, betad, and betai as they are (for Snow free case or
             ! when there is no snow
             tmp0 = omegal
@@ -1542,13 +1542,13 @@ contains
          else
             ! Adjust omega, betad, and betai for intercepted snow
             if (snowveg_affects_radiation) then
-               tmp0 =   (1._r8-temp_fcansno(p))*omegal        + temp_fcansno(p)*omegas(ib)
-               tmp1 = ( (1._r8-temp_fcansno(p))*omegal*betadl + temp_fcansno(p)*omegas(ib)*betads ) / tmp0
-               tmp2 = ( (1._r8-temp_fcansno(p))*omegal*betail + temp_fcansno(p)*omegas(ib)*betais ) / tmp0
+               tmp0 =   (1._r8-fcansno(p))*omegal        + fcansno(p)*omegas(ib)
+               tmp1 = ( (1._r8-fcansno(p))*omegal*betadl + fcansno(p)*omegas(ib)*betads ) / tmp0
+               tmp2 = ( (1._r8-fcansno(p))*omegal*betail + fcansno(p)*omegas(ib)*betais ) / tmp0
             else
-               tmp0 =   (1._r8-temp_fwet(p))*omegal        + temp_fwet(p)*omegas(ib)
-               tmp1 = ( (1._r8-temp_fwet(p))*omegal*betadl + temp_fwet(p)*omegas(ib)*betads ) / tmp0
-               tmp2 = ( (1._r8-temp_fwet(p))*omegal*betail + temp_fwet(p)*omegas(ib)*betais ) / tmp0
+               tmp0 =   (1._r8-fwet(p))*omegal        + fwet(p)*omegas(ib)
+               tmp1 = ( (1._r8-fwet(p))*omegal*betadl + fwet(p)*omegas(ib)*betads ) / tmp0
+               tmp2 = ( (1._r8-fwet(p))*omegal*betail + fwet(p)*omegas(ib)*betais ) / tmp0
             end if
          end if  ! end Snow free
 
@@ -1574,9 +1574,9 @@ contains
          ! Absorbed, reflected, transmitted fluxes per unit incoming radiation
          ! for full canopy
 
-         t1 = min(h*(temp_elaiesai(p)), 40._r8) !part of Eq. 3.40
+         t1 = min(h*(elai(p)+esai(p)), 40._r8) !part of Eq. 3.40
          s1 = exp(-t1)!Eq. 3.40
-         t1 = min(twostext(p)*(temp_elaiesai(p)), 40._r8) !part of Eq. 3.41
+         t1 = min(twostext(p)*(elai(p)+esai(p)), 40._r8) !part of Eq. 3.41
          s2 = exp(-t1)!Eq. 3.41
 
          ! Direct beam
@@ -1688,7 +1688,7 @@ contains
                  fsun_z(p,1) = (1._r8 - s2) / t1
  
                  ! absorbed PAR (per unit sun/shade lai+sai)
-                 laisum = temp_elaiesai(p)
+                 laisum = elai(p)+esai(p)
                  fabd_sun_z(p,1) = fabd_sun(p,ib) / (fsun_z(p,1)*laisum)
                  fabi_sun_z(p,1) = fabi_sun(p,ib) / (fsun_z(p,1)*laisum)
                  fabd_sha_z(p,1) = fabd_sha(p,ib) / ((1._r8 - fsun_z(p,1))*laisum)
@@ -1697,11 +1697,11 @@ contains
                  ! leaf to canopy scaling coefficients
                  extkn = 0.30_r8
                  extkb = twostext(p)
-                 vcmaxcintsun(p) = (1._r8 - exp(-(extkn+extkb)*temp_elai(p))) / (extkn + extkb)
-                 vcmaxcintsha(p) = (1._r8 - exp(-extkn*temp_elai(p))) / extkn - vcmaxcintsun(p)
-                 if (temp_elai(p)  >  0._r8) then
-                   vcmaxcintsun(p) = vcmaxcintsun(p) / (fsun_z(p,1)*temp_elai(p))
-                   vcmaxcintsha(p) = vcmaxcintsha(p) / ((1._r8 - fsun_z(p,1))*temp_elai(p))
+                 vcmaxcintsun(p) = (1._r8 - exp(-(extkn+extkb)*elai(p))) / (extkn + extkb)
+                 vcmaxcintsha(p) = (1._r8 - exp(-extkn*elai(p))) / extkn - vcmaxcintsun(p)
+                 if (elai(p)  >  0._r8) then
+                   vcmaxcintsun(p) = vcmaxcintsun(p) / (fsun_z(p,1)*elai(p))
+                   vcmaxcintsha(p) = vcmaxcintsha(p) / ((1._r8 - fsun_z(p,1))*elai(p))
                  else
                    vcmaxcintsun(p) = 0._r8
                    vcmaxcintsha(p) = 0._r8

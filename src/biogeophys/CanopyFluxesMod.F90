@@ -1293,7 +1293,7 @@ bioms:   do f = 1, fn
             lw_grnd=(frac_sno(c)*t_soisno(c,snl(c)+1)**4 &
                  +(1._r8-frac_sno(c)-frac_h2osfc(c))*t_soisno(c,1)**4 &
                  +frac_h2osfc(c)*t_h2osfc(c)**4)
-            ! confirm: not sure why  air(p) &+ bir(p)*t_veg(p)**4 + cir(p)*lw_grnd)
+            
             dt_veg(p) = ((1._r8-frac_rad_abs_by_stem(p))*(sabv(p) + air(p) &
                   + bir(p)*t_veg(p)**4 + cir(p)*lw_grnd) &
                   - efsh - efe(p) - lw_leaf(p) + lw_stem(p) &
@@ -1500,6 +1500,7 @@ bioms:   do f = 1, fn
          eflx_sh_grnd(p) = cpair*forc_rho(c)*wtg(p)*delt
 
          ! compute individual sensible heat fluxes
+         ! Ask keith why they use this expression intsead of t_soisno(c,snl(c)+1)-taf?
          delt_snow = wtal(p)*t_soisno(c,snl(c)+1)-wtl0(p)*t_veg(p)-wta0(p)*thm(p)-wtstem0(p)*t_stem(p)
          delt_soil  = wtal(p)*t_soisno(c,1)-wtl0(p)*t_veg(p)-wta0(p)*thm(p)-wtstem0(p)*t_stem(p)
          delt_h2osfc  = wtal(p)*t_h2osfc(c)-wtl0(p)*t_veg(p)-wta0(p)*thm(p)-wtstem0(p)*t_stem(p)
@@ -1575,7 +1576,7 @@ bioms:   do f = 1, fn
          end if
 
          ! Downward longwave radiation below the canopy
-
+         ! Ask Keith why they use this expression instead of t_veg
          dlrad(p) = (1._r8-emv(p))*emg(c)*forc_lwrad(c) &
               + emv(p)*emg(c)*sb*tlbef(p)**3*(tlbef(p) + 4._r8*dt_veg(p)) &
               *(1.0_r8-frac_rad_abs_by_stem(p)) &

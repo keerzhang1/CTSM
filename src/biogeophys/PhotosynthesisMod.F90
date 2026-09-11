@@ -1238,9 +1238,7 @@ contains
     use clm_varctl     , only : cnallocate_carbon_only
     use clm_varctl     , only : lnc_opt, reduce_dayl_factor, vcmax_opt    
     use pftconMod      , only : nbrdlf_dcd_tmp_shrub, npcropmin
-    use LandunitType      , only : lun 
-    use landunit_varcon , only : isturb_tbd, isturb_hd, isturb_md
-    use column_varcon       , only : icol_road_tree
+    use column_varcon     , only : icol_road_tree
     !
     ! !ARGUMENTS:
     type(bounds_type)      , intent(in)    :: bounds
@@ -1296,7 +1294,8 @@ contains
     real(r8) :: lmrc           ! scaling factor for high temperature inhibition (25 C = 1.0)
 
     ! Other
-    integer  :: f,p,c,iv,l          ! indices
+    integer  :: f,p,c,iv            ! indices
+    logical  :: use_leafn           ! use CN leaf nitrogen rather than SLA and leaf C:N
     real(r8) :: cf                ! s m**2/umol -> s/m
     real(r8) :: rsmax0            ! maximum stomatal resistance [s/m]
     real(r8) :: gb                ! leaf boundary layer conductance (m/s)
@@ -1360,9 +1359,7 @@ contains
     integer  :: nptreemax                
 
     real(r8) :: dtime                           ! land model time step (sec)
-    integer  :: g                               ! index
-    real(r8) :: tveg_tgrnd     
-    integer  :: veg_type             ! iteration loop index         
+    integer  :: g                               ! index      
     !------------------------------------------------------------------------------
 
     ! Temperature and soil water response functions
@@ -1406,8 +1403,7 @@ contains
 
          nrad       => surfalb_inst%nrad_patch               , & ! Input:  [integer  (:)   ]  pft number of canopy layers, above snow for radiative transfer
          tlai_z     => surfalb_inst%tlai_z_patch             , & ! Input:  [real(r8) (:,:) ]  pft total leaf area index for canopy layer
-         tree_lai_urb                 =>   lun%tree_lai_urb                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
-         tlai       => canopystate_inst%tlai_patch           , & ! Input/Output:  [real(r8)(:)    ]  one-sided leaf area index, no burying by snow  
+         tlai       => canopystate_inst%tlai_patch           , & ! Input:  [real(r8) (:)   ]  one-sided leaf area index, no burying by snow
          c3flag     => photosyns_inst%c3flag_patch           , & ! Output: [logical  (:)   ]  true if C3 and false if C4
          ac         => photosyns_inst%ac_patch               , & ! Output: [real(r8) (:,:) ]  Rubisco-limited gross photosynthesis (umol CO2/m**2/s)
          aj         => photosyns_inst%aj_patch               , & ! Output: [real(r8) (:,:) ]  RuBP-limited gross photosynthesis (umol CO2/m**2/s)
@@ -1504,25 +1500,15 @@ contains
       do f = 1, fn
          p = filterp(f)
          c = patch%column(p)
-         l = patch%landunit(p)
 
-         if ((lun%itype(l) == isturb_tbd) .or. (lun%itype(l) == isturb_hd) .or. (lun%itype(l) == isturb_md)) then
-           tveg_tgrnd = t_grnd(c)
-           tlai(p) = tree_lai_urb(l)
-           veg_type=5
-         else
-           tveg_tgrnd = t_veg(p)
-           veg_type=patch%itype(p)
-         end if
-         
          !write (6,'(A,I5)') '-------------------(p):par_z(p,iv)------------------- ', p
          !write (6,'(A,1X,*(F10.5,1X))') 'par_z(p,:)', par_z(p,:)
 
          ! C3 or C4 photosynthesis logical variable
 
-         if (nint(c3psn(veg_type)) == 1) then
+         if (nint(c3psn(patch%itype(p))) == 1) then
             c3flag(p) = .true.
-         else if (nint(c3psn(veg_type)) == 0) then
+         else if (nint(c3psn(patch%itype(p))) == 0) then
             c3flag(p) = .false.
          end if
 
@@ -1540,7 +1526,7 @@ contains
 
          if ( stomatalcond_mtd == stomatalcond_mtd_bb1987 ) then
             bbb(p) = max (bbbopt(p)*btran(p), 1._r8)
-            mbb(p) = mbbopt(veg_type)
+            mbb(p) = mbbopt(patch%itype(p))
          end if
 
          ! kc, ko, cp, from: Bernacchi et al (2001) Plant, Cell and Environment 24:253-259
@@ -1559,9 +1545,9 @@ contains
          cp25 = 0.5_r8 * oair(p) / sco
          
 
-         kc(p) = kc25 * ft(tveg_tgrnd, params_inst%kcha)
-         ko(p) = ko25 * ft(tveg_tgrnd, params_inst%koha)
-         cp(p) = cp25 * ft(tveg_tgrnd, params_inst%cpha)
+         kc(p) = kc25 * ft(t_veg(p), params_inst%kcha)
+         ko(p) = ko25 * ft(t_veg(p), params_inst%koha)
+         cp(p) = cp25 * ft(t_veg(p), params_inst%cpha)
       end do
 
       ! Multi-layer parameters scaled by leaf nitrogen profile.
@@ -1572,19 +1558,15 @@ contains
          p = filterp(f)
          c = patch%column(p)
 
-         if (lnc_opt .eqv. .false.) then     
-            ! Leaf nitrogen concentration at the top of the canopy (g N leaf / m**2 leaf)
-            
-           if ( (slatop(veg_type) *leafcn(veg_type)) .le. 0.0_r8)then
-              call endrun(subgrid_index=p, subgrid_level=subgrid_level_patch, msg="ERROR: slatop or leafcn is zero")
-           end if
-           lnc(p) = 1._r8 / (slatop(veg_type) * leafcn(veg_type))
-         end if   
+         ! The urban road tree is not carried by the CN vegetation state, so leafn(p) is
+         ! NaN for it even when use_cn is true. Always fix its leaf nitrogen from SLA and
+         ! the leaf C:N ratio, as in the lnc_opt = .false. case.
+         use_leafn = lnc_opt .and. col%itype(c) /= icol_road_tree
 
-         ! Using the actual nitrogen allocated to the leaf after
-         ! uptake rather than fixing leaf nitrogen based on SLA and CN
-         ! ratio
-         if (lnc_opt .eqv. .true.) then                                                     
+         if (use_leafn) then
+            ! Using the actual nitrogen allocated to the leaf after
+            ! uptake rather than fixing leaf nitrogen based on SLA and CN
+            ! ratio
             ! nlevcan and nrad(p) look like the same variable ?? check this later
             sum_nscaler = 0.0_r8                                                    
             laican = 0.0_r8                                                         
@@ -1617,14 +1599,21 @@ contains
                ! from m2 ground to m2 leaf; dividing by sum_nscaler to
                ! convert total leaf N to leaf N at canopy top
                lnc(p) = leafn(p) / (tlai(p) * sum_nscaler)
-            else                                                                    
-               lnc(p) = 0.0_r8                                                      
-            end if                                                                  
+            else
+               lnc(p) = 0.0_r8
+            end if
 
-         end if                                                                     
+         else
+            ! Leaf nitrogen concentration at the top of the canopy (g N leaf / m**2 leaf)
+
+            if ( (slatop(patch%itype(p)) *leafcn(patch%itype(p))) .le. 0.0_r8)then
+               call endrun(subgrid_index=p, subgrid_level=subgrid_level_patch, msg="ERROR: slatop or leafcn is zero")
+            end if
+            lnc(p) = 1._r8 / (slatop(patch%itype(p)) * leafcn(patch%itype(p)))
+         end if
 
 
-         ! reduce_dayl_factor .eqv. .false.  
+         ! reduce_dayl_factor .eqv. .false.
          if (reduce_dayl_factor .eqv. .true.) then                                          
             if (dayl_factor(p) > 0.25_r8) then
                ! dayl_factor(p) = 1.0_r8  
@@ -1635,23 +1624,23 @@ contains
          ! Default
          if (vcmax_opt == 0) then                                                   
             ! vcmax25 at canopy top, as in CN but using lnc at top of the canopy
-            vcmax25top = lnc(p) * flnr(veg_type) * params_inst%fnr * params_inst%act25 * dayl_factor(p)
+            vcmax25top = lnc(p) * flnr(patch%itype(p)) * params_inst%fnr * params_inst%act25 * dayl_factor(p)
             if (.not. use_cn) then
-               vcmax25top = vcmax25top * fnitr(veg_type)
+               vcmax25top = vcmax25top * fnitr(patch%itype(p))
             else
-               if ( CNAllocate_Carbon_only() ) vcmax25top = vcmax25top * fnitr(veg_type)
+               if ( CNAllocate_Carbon_only() ) vcmax25top = vcmax25top * fnitr(patch%itype(p))
             end if
          else if (vcmax_opt == 3) then                                                                   
-            vcmax25top = ( i_vcad(veg_type) + s_vcad(veg_type) * lnc(p) ) * dayl_factor(p)  
+            vcmax25top = ( i_vcad(patch%itype(p)) + s_vcad(patch%itype(p)) * lnc(p) ) * dayl_factor(p)  
          else if (vcmax_opt == 4) then                                                                   
             nptreemax = 9  ! is this number correct? check later 
-            if (veg_type >= nptreemax) then   ! if not tree 
+            if (patch%itype(p) >= nptreemax) then   ! if not tree 
                ! for shrubs and herbs 
-               vcmax25top = lnc(p) * ( i_flnr(veg_type) + s_flnr(veg_type) * lnc(p) ) * params_inst%fnr * params_inst%act25 * &
+               vcmax25top = lnc(p) * ( i_flnr(patch%itype(p)) + s_flnr(patch%itype(p)) * lnc(p) ) * params_inst%fnr * params_inst%act25 * &
                     dayl_factor(p)
             else
                ! if tree 
-               vcmax25top = lnc(p) * ( i_flnr(veg_type) * exp(s_flnr(veg_type) * lnc(p)) ) * params_inst%fnr * params_inst%act25 * &
+               vcmax25top = lnc(p) * ( i_flnr(patch%itype(p)) * exp(s_flnr(patch%itype(p)) * lnc(p)) ) * params_inst%fnr * params_inst%act25 * &
                     dayl_factor(p)
                ! for trees 
             end if     
@@ -1703,11 +1692,7 @@ contains
                !using new form for respiration base rate from Atkin
                !communication. 
                if ( lnc(p) > 0.0_r8 ) then
-                  if (col%itype(c) == icol_road_tree) then
-                      lmr25top = params_inst%lmr_intercept_atkin(5) + (lnc(p) * 0.2061_r8) - (0.0402_r8 * (t10(p)-tfrz))
-                  else 
-                      lmr25top = params_inst%lmr_intercept_atkin(ivt(p)) + (lnc(p) * 0.2061_r8) - (0.0402_r8 * (t10(p)-tfrz))
-                  end if
+                  lmr25top = params_inst%lmr_intercept_atkin(ivt(p)) + (lnc(p) * 0.2061_r8) - (0.0402_r8 * (t10(p)-tfrz))
                else
                   lmr25top = 0.0_r8
                end if
@@ -1750,18 +1735,18 @@ contains
 
             lmr25 = lmr25top * nscaler
 
-            if(use_luna.and.c3flag(p).and.crop(veg_type)== 0) then
+            if(use_luna.and.c3flag(p).and.crop(patch%itype(p))== 0) then
                 if(.not.use_cn)then ! If CN is on, use leaf N to predict respiration (above). Otherwise, use Vcmax term from LUNA.  RF
                   lmr25 = leaf_mr_vcm * photosyns_inst%vcmx25_z_patch(p,iv)
                 endif
             endif
           
             if (c3flag(p)) then
-               lmr_z(p,iv) = lmr25 * ft(tveg_tgrnd, params_inst%lmrha) * fth(tveg_tgrnd, params_inst%lmrhd, &
+               lmr_z(p,iv) = lmr25 * ft(t_veg(p), params_inst%lmrha) * fth(t_veg(p), params_inst%lmrhd, &
                     params_inst%lmrse, lmrc)
             else
-               lmr_z(p,iv) = lmr25 * 2._r8**((tveg_tgrnd-(tfrz+25._r8))/10._r8)
-               lmr_z(p,iv) = lmr_z(p,iv) / (1._r8 + exp( 1.3_r8*(tveg_tgrnd-(tfrz+55._r8)) ))
+               lmr_z(p,iv) = lmr25 * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
+               lmr_z(p,iv) = lmr_z(p,iv) / (1._r8 + exp( 1.3_r8*(t_veg(p)-(tfrz+55._r8)) ))
             end if
             
             ! write (6,'(A,I5)') '-------------------(p):par_z(p,iv)------------------- ', p
@@ -1781,7 +1766,7 @@ contains
 
             else                                     ! day time
 
-               if(use_luna.and.c3flag(p).and.crop(veg_type)== 0)then
+               if(use_luna.and.c3flag(p).and.crop(patch%itype(p))== 0)then
                   vcmax25 = photosyns_inst%vcmx25_z_patch(p,iv)
                   jmax25 = photosyns_inst%jmx25_z_patch(p,iv)
                   tpu25 = params_inst%tpu25ratio * vcmax25 
@@ -1807,19 +1792,19 @@ contains
                vcmaxc = fth25 (params_inst%vcmaxhd, vcmaxse)
                jmaxc  = fth25 (params_inst%jmaxhd, jmaxse)
                tpuc   = fth25 (params_inst%tpuhd, tpuse)
-               vcmax_z(p,iv) = vcmax25 * ft(tveg_tgrnd, params_inst%vcmaxha) * fth(tveg_tgrnd, &
+               vcmax_z(p,iv) = vcmax25 * ft(t_veg(p), params_inst%vcmaxha) * fth(t_veg(p), &
                     params_inst%vcmaxhd, vcmaxse, vcmaxc)
-               jmax_z(p,iv) = jmax25 * ft(tveg_tgrnd, params_inst%jmaxha) * fth(tveg_tgrnd, &
+               jmax_z(p,iv) = jmax25 * ft(t_veg(p), params_inst%jmaxha) * fth(t_veg(p), &
                     params_inst%jmaxhd, jmaxse, jmaxc)
-               tpu_z(p,iv) = tpu25 * ft(tveg_tgrnd, params_inst%tpuha) * fth(tveg_tgrnd, params_inst%tpuhd, tpuse, tpuc)
+               tpu_z(p,iv) = tpu25 * ft(t_veg(p), params_inst%tpuha) * fth(t_veg(p), params_inst%tpuhd, tpuse, tpuc)
 
                if (.not. c3flag(p)) then
-                  vcmax_z(p,iv) = vcmax25 * 2._r8**((tveg_tgrnd-(tfrz+25._r8))/10._r8)
-                  vcmax_z(p,iv) = vcmax_z(p,iv) / (1._r8 + exp( 0.2_r8*((tfrz+15._r8)-tveg_tgrnd) ))
-                  vcmax_z(p,iv) = vcmax_z(p,iv) / (1._r8 + exp( 0.3_r8*(tveg_tgrnd-(tfrz+40._r8)) ))
+                  vcmax_z(p,iv) = vcmax25 * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
+                  vcmax_z(p,iv) = vcmax_z(p,iv) / (1._r8 + exp( 0.2_r8*((tfrz+15._r8)-t_veg(p)) ))
+                  vcmax_z(p,iv) = vcmax_z(p,iv) / (1._r8 + exp( 0.3_r8*(t_veg(p)-(tfrz+40._r8)) ))
                end if
 
-               kp_z(p,iv) = kp25 * 2._r8**((tveg_tgrnd-(tfrz+25._r8))/10._r8)
+               kp_z(p,iv) = kp25 * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
             end if
 
             ! Adjust for soil water
@@ -1872,11 +1857,7 @@ contains
                if (      stomatalcond_mtd == stomatalcond_mtd_bb1987 )then
                   rs_z(p,iv) = min(rsmax0, 1._r8/bbb(p) * cf)
                else if ( stomatalcond_mtd == stomatalcond_mtd_medlyn2011 )then
-                  if (col%itype(c) == icol_road_tree) then
-                      rs_z(p,iv) = min(rsmax0, 1._r8/medlynintercept(5) * cf)
-                  else 
-                      rs_z(p,iv) = min(rsmax0, 1._r8/medlynintercept(veg_type) * cf)
-                  end if
+                  rs_z(p,iv) = min(rsmax0, 1._r8/medlynintercept(patch%itype(p)) * cf)
                end if
                ci_z(p,iv) = 0._r8
                rh_leaf(p) = 0._r8
@@ -1932,7 +1913,7 @@ contains
                   if (stomatalcond_mtd == stomatalcond_mtd_bb1987) then
                      gs_mol(p,iv) = bbb(p)
                   else if ( stomatalcond_mtd == stomatalcond_mtd_medlyn2011 )then
-                     gs_mol(p,iv) = medlynintercept(veg_type)
+                     gs_mol(p,iv) = medlynintercept(patch%itype(p))
                   end if
                end if
 
@@ -2604,7 +2585,6 @@ contains
     ! photosynthesis model, I have decided to add these relevant variables to
     ! the relevant data types.
     !
-    use column_varcon       , only : icol_road_tree
     
     !!ARGUMENTS:
     real(r8)             , intent(in)    :: ci       ! intracellular leaf CO2 (Pa)
@@ -2630,7 +2610,6 @@ contains
     real(r8) :: term                 ! intermediate in Medlyn stomatal model
     real(r8) :: aquad, bquad, cquad  ! terms for quadratic equations
     real(r8) :: r1, r2               ! roots of quadratic equation
-    integer  :: c2
     !------------------------------------------------------------------------------
 
     associate(&
@@ -2680,13 +2659,7 @@ contains
       end if
 
       ! Gross photosynthesis. First co-limit ac and aj. Then co-limit ap
-      c2=patch%column(p)
-      
-      if (col%itype(c2) == icol_road_tree) then
-          aquad = params_inst%theta_cj(5)
-      else 
-          aquad = params_inst%theta_cj(ivt(p))
-      end if
+      aquad = params_inst%theta_cj(ivt(p))
       bquad = -(ac(p,iv) + aj(p,iv))
       cquad = ac(p,iv) * aj(p,iv)
       call quadratic (aquad, bquad, cquad, r1, r2)
@@ -2764,7 +2737,7 @@ contains
     use clm_varpar        , only : nlevsoi
     use pftconMod         , only : nbrdlf_dcd_tmp_shrub, npcropmin
     use ColumnType        , only : col
-
+    use column_varcon     , only : icol_road_tree
     !
     ! !ARGUMENTS:
     type(bounds_type)      , intent(in)    :: bounds
@@ -2832,7 +2805,8 @@ contains
     real(r8) :: lmrc           ! scaling factor for high temperature inhibition (25 C = 1.0)
 
     ! Other
-    integer  :: f,p,c,iv          ! indices
+    integer  :: f,p,c,iv            ! indices
+    logical  :: use_leafn           ! use CN leaf nitrogen rather than SLA and leaf C:N
     real(r8) :: cf                ! s m**2/umol -> s/m
     real(r8) :: rsmax0            ! maximum stomatal resistance [s/m]
     real(r8) :: gb                ! leaf boundary layer conductance (m/s)
@@ -3006,7 +2980,7 @@ contains
          tgcm       => temperature_inst%thm_patch            , & ! Input:  [real(r8) (:)   ]  air temperature at agcm reference height (kelvin)
          nrad       => surfalb_inst%nrad_patch               , & ! Input:  [integer  (:)   ]  pft number of canopy layers, above snow for radiative transfer
          tlai_z     => surfalb_inst%tlai_z_patch             , & ! Input:  [real(r8) (:,:) ]  pft total leaf area index for canopy layer
-         tlai       => canopystate_inst%tlai_patch           , & ! Input:  [real(r8)(:)    ]  one-sided leaf area index, no burying by snow  
+         tlai       => canopystate_inst%tlai_patch           , & ! Input:  [real(r8)(:)    ]  one-sided leaf area index, no burying by snow
          c3flag     => photosyns_inst%c3flag_patch           , & ! Output: [logical  (:)   ]  true if C3 and false if C4
          ac         => photosyns_inst%ac_phs_patch           , & ! Output: [real(r8) (:,:,:) ]  Rubisco-limited gross photosynthesis (umol CO2/m**2/s)
          aj         => photosyns_inst%aj_phs_patch           , & ! Output: [real(r8) (:,:,:) ]  RuBP-limited gross photosynthesis (umol CO2/m**2/s)
@@ -3099,11 +3073,7 @@ contains
       do f = 1, fn
          p = filterp(f)
          c = patch%column(p)
-         
-         !write (6,'(A,I5)') '-------------------(p):par_z_sunsha(p,iv)------------------- ', p
-         !write (6,'(A,1X,*(F10.5,1X))') 'par_z_sun(p,:)', par_z_sun(p,:)
-         !write (6,'(A,1X,*(F10.5,1X))') 'par_z_sha(p,:)', par_z_sha(p,:)
-         
+
          do j = 1,nlevsoi
 
 ! calculate conversion from conductivity to conductance
@@ -3112,11 +3082,11 @@ contains
             root_biomass_density = max(c_to_b*1._r8,root_biomass_density)
 
           ! Root length density: m root per m3 soil
-            root_cross_sec_area = rpi*root_radius(ivt(p))**2
-            root_length_density = root_biomass_density / (root_density(ivt(p)) * root_cross_sec_area)
+            root_cross_sec_area = rpi*root_radius(patch%itype(p))**2
+            root_length_density = root_biomass_density / (root_density(patch%itype(p)) * root_cross_sec_area)
 
             ! Root-area index (RAI)
-            rai(j) = (tsai(p)+tlai(p)) * froot_leaf(ivt(p)) * rootfr(p,j)
+            rai(j) = (tsai(p)+tlai(p)) * froot_leaf(patch%itype(p)) * rootfr(p,j)
 
 ! fix coarse root_average_length to specified length
             croot_average_length = croot_lateral_length
@@ -3131,7 +3101,7 @@ contains
                fs(j)=  plc(smp(c,j),p,root,veg)
             
 ! krmax is root conductance per area per length
-            root_conductance = (fs(j)*rai(j)*params_inst%krmax(ivt(p)))/(croot_average_length + z(c,j))
+            root_conductance = (fs(j)*rai(j)*params_inst%krmax(patch%itype(p)))/(croot_average_length + z(c,j))
 
             soil_conductance = max(soil_conductance, 1.e-16_r8)
             root_conductance = max(root_conductance, 1.e-16_r8)
@@ -3209,16 +3179,17 @@ contains
 
       do f = 1, fn
          p = filterp(f)
+         c = patch%column(p)
 
-         if (lnc_opt .eqv. .false.) then     
-            ! Leaf nitrogen concentration at the top of the canopy (g N leaf / m**2 leaf)
-            lnc(p) = 1._r8 / (slatop(patch%itype(p)) * leafcn(patch%itype(p)))
-         end if   
+         ! The urban road tree is not carried by the CN vegetation state, so leafn(p) is
+         ! NaN for it even when use_cn is true. Always fix its leaf nitrogen from SLA and
+         ! the leaf C:N ratio, as in the lnc_opt = .false. case.
+         use_leafn = lnc_opt .and. col%itype(c) /= icol_road_tree
 
-         ! Using the actual nitrogen allocated to the leaf after
-         ! uptake rather than fixing leaf nitrogen based on SLA and CN
-         ! ratio
-         if (lnc_opt .eqv. .true.) then                                                     
+         if (use_leafn) then
+            ! Using the actual nitrogen allocated to the leaf after
+            ! uptake rather than fixing leaf nitrogen based on SLA and CN
+            ! ratio
             ! nlevcan and nrad(p) look like the same variable ?? check this later
             sum_nscaler = 0.0_r8                                                    
             laican = 0.0_r8                                                         
@@ -3251,11 +3222,14 @@ contains
                ! from m2 ground to m2 leaf; dividing by sum_nscaler to
                ! convert total leaf N to leaf N at canopy top
                lnc(p) = leafn(p) / (tlai(p) * sum_nscaler)
-            else                                                                    
-               lnc(p) = 0.0_r8                                                      
-            end if                                                                  
+            else
+               lnc(p) = 0.0_r8
+            end if
 
-         end if                                                                     
+         else
+            ! Leaf nitrogen concentration at the top of the canopy (g N leaf / m**2 leaf)
+            lnc(p) = 1._r8 / (slatop(patch%itype(p)) * leafcn(patch%itype(p)))
+         end if
          lnc(p) = min(lnc(p),10._r8)
 
          ! reduce_dayl_factor .eqv. .false.  
@@ -3339,7 +3313,7 @@ contains
                !using new form for respiration base rate from Atkin
                !communication. 
                if ( lnc(p) > 0.0_r8 ) then
-                  lmr25top = params_inst%lmr_intercept_atkin(ivt(p)) + (lnc(p) * 0.2061_r8) - (0.0402_r8 * (t10(p)-tfrz))
+                  lmr25top = params_inst%lmr_intercept_atkin(patch%itype(p)) + (lnc(p) * 0.2061_r8) - (0.0402_r8 * (t10(p)-tfrz))
                else
                   lmr25top = 0.0_r8
                end if

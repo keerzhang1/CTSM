@@ -25,6 +25,7 @@ module TemperatureType
      ! Temperatures
      real(r8), pointer :: t_stem_patch             (:)   ! patch stem temperatu\re (Kelvin)
      real(r8), pointer :: t_veg_patch              (:)   ! patch vegetation temperature (Kelvin)
+     real(r8), pointer :: error_total_patch              (:)   ! patch urban tree canopy energy residual added to eflx_sh_veg: the Newton-Raphson linearization and truncation terms, plus the canopy water limit correction (W/m**2)
      real(r8), pointer :: t_skin_patch             (:)   ! patch skin temperature (Kelvin)
      real(r8), pointer :: t_veg_day_patch          (:)   ! patch daytime  accumulative vegetation temperature (Kelvinx*nsteps), LUNA specific, from midnight to current step
      real(r8), pointer :: t_veg_night_patch        (:)   ! patch night-time accumulative vegetation temperature (Kelvin*nsteps), LUNA specific, from midnight to current step
@@ -351,6 +352,7 @@ contains
     ! Temperatures
     allocate(this%t_stem_patch             (begp:endp))                      ; this%t_stem_patch             (:)   = nan
     allocate(this%t_veg_patch              (begp:endp))                      ; this%t_veg_patch              (:)   = nan
+    allocate(this%error_total_patch              (begp:endp))                      ; this%error_total_patch              (:)   = nan
     allocate(this%t_skin_patch             (begp:endp))                      ; this%t_skin_patch             (:)   = nan
     if(use_luna) then
      allocate(this%t_veg_day_patch         (begp:endp))                      ; this%t_veg_day_patch          (:)   = spval
@@ -688,9 +690,15 @@ contains
     endif
 
     this%t_veg_patch(begp:endp) = spval
+    ! we could set urb to special value; then we create t_veg_urb for urban specifically for output
     call hist_addfld1d (fname='TV', units='K',  &
          avgflag='A', long_name='vegetation temperature', &
          ptr_patch=this%t_veg_patch)
+
+    this%error_total_patch(begp:endp) = spval
+    call hist_addfld1d (fname='ERR_TOT', units='W/m2',  &
+         avgflag='A', long_name='urban tree canopy energy residual added to the leaf sensible heat flux (Newton-Raphson linearization and truncation plus canopy water limit correction)', &
+         ptr_patch=this%error_total_patch)
 
     this%t_skin_patch(begp:endp) = spval
     call hist_addfld1d(fname='TSKIN', units='K',  &
@@ -1806,7 +1814,10 @@ contains
        if (col%itype(c) == icol_shadewall  ) this%emg_col(c) = em_wall_lun(l)
        if (col%itype(c) == icol_road_imperv) this%emg_col(c) = em_improad_lun(l)
        if (col%itype(c) == icol_road_perv  ) this%emg_col(c) = em_perroad_lun(l)
-       if (col%itype(c) == icol_road_tree  ) this%emg_col(c) = em_tree_urb_lun(l)
+       ! this this%emg_col(c) of road tree is used in soil temperatue calculation
+       ! emissivity of pervious road should be used
+       !if (col%itype(c) == icol_road_tree  ) this%emg_col(c) = em_tree_urb_lun(l)
+       if (col%itype(c) == icol_road_tree  ) this%emg_col(c) = em_perroad_lun(l)
     end do
 
     ! Initialize dynbal_baseline_heat_col: for some columns, this is set elsewhere in

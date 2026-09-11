@@ -1540,6 +1540,7 @@ contains
     use column_varcon  , only : icol_road_perv, icol_road_imperv, icol_road_tree
     use clm_varpar     , only : nlevsno
     use UrbanParamsType, only : IsSimpleBuildTemp, IsProgBuildTemp
+    use UrbanFluxesMod , only : MergeUrbanPervTreePair
     !
     ! !ARGUMENTS:
     implicit none
@@ -1576,7 +1577,7 @@ contains
     real(r8) :: lwrad_emit_h2osfc(bounds%begc:bounds%endc)             !
     real(r8) :: eflx_gnet_snow                                         !
     real(r8) :: eflx_gnet_soil                                         !
-    real(r8) :: eflx_gnet_h2osfc                                       !
+    real(r8) :: eflx_gnet_h2osfc
     !-----------------------------------------------------------------------
 
     ! Enforce expected array sizes
@@ -1602,7 +1603,6 @@ contains
          qflx_ev_h2osfc          => waterfluxbulk_inst%qflx_ev_h2osfc_patch     , & ! Input:  [real(r8) (:)   ]  evaporation flux from h2osfc (mm H2O/s) [+ to atm]
          qflx_evap_soi           => waterfluxbulk_inst%qflx_evap_soi_patch      , & ! Input:  [real(r8) (:)   ]  soil evaporation (mm H2O/s) (+ = to atm)
          qflx_tran_veg           => waterfluxbulk_inst%qflx_tran_veg_patch      , & ! Input:  [real(r8) (:)   ]  vegetation transpiration (mm H2O/s) (+ = to atm)
-         
          emg                     => temperature_inst%emg_col                , & ! Input:  [real(r8) (:)   ]  ground emissivity                       
          t_h2osfc                => temperature_inst%t_h2osfc_col           , & ! Input:  [real(r8) (:)   ]  surface water temperature               
          t_grnd                  => temperature_inst%t_grnd_col             , & ! Input:  [real(r8) (:)   ]  ground surface temperature [K]          
@@ -1627,7 +1627,7 @@ contains
          eflx_anthro             => energyflux_inst%eflx_anthro_patch       , & ! Input:  [real(r8) (:)   ]  total anthropogenic heat flux (W/m**2)  
          eflx_gnet               => energyflux_inst%eflx_gnet_patch         , & ! Output: [real(r8) (:)   ]  net ground heat flux into the surface (W/m**2)
          dgnetdT                 => energyflux_inst%dgnetdT_patch           , & ! Output: [real(r8) (:)   ]  temperature derivative of ground net heat flux  
-         
+         lwnet_tree_perroad     => solarabs_inst%lwnet_tree_perroad_lun     , & ! Input:  [real(r8) (:) ]  net longwave flux at pervious road beneath the tree canopy
          sabg                    => solarabs_inst%sabg_patch                , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by ground (W/m**2)
          sabg_soil               => solarabs_inst%sabg_soil_patch           , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by soil (W/m**2)
          sabg_snow               => solarabs_inst%sabg_snow_patch           , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by snow (W/m**2)
@@ -1704,11 +1704,19 @@ contains
             end if
             ! Include transpiration term because needed for previous road
             ! and include wasteheat and traffic flux
-            eflx_gnet(p) = sabg(p) + dlrad(p)  &
-                 - eflx_lwrad_net(p) &
-                 - (eflx_sh_grnd(p) + qflx_evap_soi(p)*htvp(c) + qflx_tran_veg(p)*hvap) &
-                 + eflx_wasteheat_patch(p) + eflx_heat_from_ac_patch(p) + eflx_traffic_patch(p) &
-                 + eflx_ventilation_patch(p)
+
+            if (col%itype(c) == icol_road_tree) then
+               eflx_gnet(p) = sabg(p) + dlrad(p) - lwnet_tree_perroad(l) &
+                  - (eflx_sh_grnd(p) + qflx_evap_soi(p)*htvp(c)) &
+                  + eflx_wasteheat_patch(p) + eflx_heat_from_ac_patch(p) + eflx_traffic_patch(p) &
+                  + eflx_ventilation_patch(p)
+            else
+               eflx_gnet(p) = sabg(p) + dlrad(p) - eflx_lwrad_net(p) &
+                  - (eflx_sh_grnd(p) + qflx_evap_soi(p)*htvp(c) + qflx_tran_veg(p)*hvap) &
+                  + eflx_wasteheat_patch(p) + eflx_heat_from_ac_patch(p) + eflx_traffic_patch(p) &
+                  + eflx_ventilation_patch(p)
+            end if
+
             if ( IsSimpleBuildTemp() ) then
                eflx_anthro(p)   = eflx_wasteheat_patch(p) + eflx_traffic_patch(p)
             end if
@@ -1764,13 +1772,44 @@ contains
                sabg_lyr_col(c,j) = sabg_lyr_col(c,j) + sabg_lyr(p,j) * patch%wtcol(p)
             enddo
          else
-
             hs_top(c)      = hs_top(c) + eflx_gnet(p)*patch%wtcol(p)
             hs_top_snow(c) = hs_top_snow(c) + eflx_gnet(p)*patch%wtcol(p)
+            ! For the road_tree column, sabg(p) is already the under-tree pervious-road
+            ! ground absorption (set in UrbanRadiationMod), consistent with the eflx_gnet
+            ! computation above, so no separate pervious-road lookup is needed.
             sabg_lyr_col(c,lyr_top) = sabg_lyr_col(c,lyr_top) + sabg(p) * patch%wtcol(p)
 
          endif
       enddo
+
+      ! The urban pervious road and the urban road trees stand on the same ground in
+      ! the canyon, so their soil columns have to warm and cool together even though
+      ! they are separate columns with their own canopy, radiation and turbulent
+      ! fluxes. Replace the ground heat flux and its temperature derivative by their
+      ! area weighted average over the pair, so that the two columns are handed the
+      ! same surface forcing and the tridiagonal solve returns the same soil
+      ! temperature profile for both.
+      !
+      ! Everything downstream of here - tk, cv, fact, frac_sno_eff, frac_h2osfc,
+      ! c_h2osfc - is a function of column state only, so those stay identical on
+      ! their own once the state does and do not need merging.
+      !
+      ! Note the consequence for the energy balance: eflx_soil_grnd in SoilFluxesMod
+      ! remains each patch's own residual, but the soil absorbed the pair mean, so
+      ! errsoi_col no longer closes for either column individually - only for the
+      ! weighted mean of the two. This is the same relationship that errsoi_patch has
+      ! to errsoi_col for natural vegetation patches sharing one column.
+
+      call MergeUrbanPervTreePair(bounds, dhsdT      (begc:endc))
+      call MergeUrbanPervTreePair(bounds, hs_soil    (begc:endc))
+      call MergeUrbanPervTreePair(bounds, hs_h2osfc  (begc:endc))
+      call MergeUrbanPervTreePair(bounds, hs_top     (begc:endc))
+      call MergeUrbanPervTreePair(bounds, hs_top_snow(begc:endc))
+
+      call MergeUrbanPervTreePair(bounds, sabg_lyr_col(begc:endc,-nlevsno+1:1), -nlevsno+1)
+
+      ! hs is deliberately not merged: it is a local of this routine that is
+      ! accumulated but never read, so merging it would have no effect.
 
     end associate
 

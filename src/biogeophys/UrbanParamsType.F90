@@ -10,7 +10,7 @@ module UrbanParamsType
   use abortutils   , only : endrun
   use decompMod    , only : bounds_type, subgrid_level_gridcell, subgrid_level_landunit
   use clm_varctl   , only : iulog, fsurdat
-  use clm_varcon   , only : grlnd, spval
+  use clm_varcon   , only : grlnd, spval, ispval
   use LandunitType , only : lun
   ! KZ: mark for delete after debugging   
   use clm_time_manager  , only : get_nstep  
@@ -25,10 +25,13 @@ module UrbanParamsType
   public  :: CheckUrban        ! Check validity of urban points
   public  :: IsSimpleBuildTemp ! If using the simple building temperature method
   public  :: IsProgBuildTemp   ! If using the prognostic building temperature method
+  public  :: UrbanPhenology   ! 
   !
   !-------------------[kz.1]Ray tracing test-------------------------  
   ! PRIVATE MEMBER FUNCTIONS
   private :: montecarlo_view_factors    ! Calculates the view factors between all 'surfaces'  
+  private :: ComputeViewFactors        ! Compute Monte Carlo view factors for one urban landunit
+  private :: ComputeUrbanRoughness     ! Compute displacement height and roughness length for one urban landunit
   private :: corner_up         ! Determines if a ray strikes the current wall layer or not at the upstream building edge
   private :: corner_dn         ! Determines if a ray strikes a roof or not at the downstream edge of a building
   private :: init_random_seed  ! Initializes the random seed for ray tracing calculations
@@ -38,7 +41,8 @@ module UrbanParamsType
   ! !PRIVATE TYPE
   type urbinp_type
      real(r8), pointer :: canyon_hwr      (:,:)  
-     real(r8), pointer :: tree_lai_urb    (:,:)  
+     real(r8), pointer :: tree_lai_urb    (:,:,:)  
+     integer, pointer :: tree_pft_urb    (:,:) 
      real(r8), pointer :: wtroad_tree    (:,:)      
      real(r8), pointer :: tree_bht_urb     (:,:)  
      real(r8), pointer :: tree_tht_urb     (:,:)      
@@ -211,6 +215,10 @@ module UrbanParamsType
      real(r8), allocatable :: alb_wall_dir        (:,:) ! lun direct  wall albedo
      real(r8), allocatable :: alb_wall_dif        (:,:) ! lun diffuse wall albedo
 
+     real(r8), allocatable :: tree_elaisai_per_uroad        (:) !
+     real(r8), allocatable :: tree_lai_per_vega        (:) !
+     integer, allocatable :: tree_pft_urb        (:) !
+
      integer , pointer     :: nlev_improad        (:)   ! lun number of impervious road layers (-)
      real(r8), pointer     :: tk_wall             (:,:) ! lun thermal conductivity of urban wall (W/m/K)
      real(r8), pointer     :: tk_roof             (:,:) ! lun thermal conductivity of urban roof (W/m/K)
@@ -225,8 +233,8 @@ module UrbanParamsType
      real(r8), pointer     :: eflx_traffic_factor (:)   ! lun multiplicative traffic factor for sensible heat flux from urban traffic (-)
    contains
 
-     procedure, public :: Init 
-     
+     procedure, public :: Init
+
   end type urbanparams_type
   !
   ! !Urban control variables
@@ -258,7 +266,6 @@ contains
     use shr_infnan_mod  , only : nan => shr_infnan_nan, assignment(=)
     use clm_varpar      , only : numrad, nlevurb
     use clm_varctl      , only : use_vancouver, use_mexicocity
-    use clm_varcon      , only : vkc
     use column_varcon   , only : icol_roof, icol_sunwall, icol_shadewall
     use column_varcon   , only : icol_road_perv, icol_road_imperv, icol_road_perv, icol_road_tree
     use landunit_varcon , only : isturb_MIN
@@ -270,12 +277,9 @@ contains
     !
     ! !LOCAL VARIABLES:   
     integer             :: j,l,c,p,g       ! indices
-    integer             :: nc,fl,ib        ! indices 
+    integer             :: nc,fl,ib, im        ! indices 
     integer             :: dindx           ! urban density type index
     integer             :: ier             ! error status
-    real(r8), parameter :: alpha = 4.43_r8 ! coefficient used to calculate z_d_town
-    real(r8), parameter :: beta = 1.0_r8   ! coefficient used to calculate z_d_town
-    real(r8), parameter :: C_d = 1.2_r8    ! drag coefficient as used in Grimmond and Oke (1999)
     real(r8)            :: plan_ai         ! plan area index - ratio building area to plan area (-)
     real(r8)            :: frontal_ai      ! frontal area index of buildings (-)
     real(r8)            :: wall_to_plan_area_ratio  ! provided by PLUMBER site input data
@@ -283,138 +287,14 @@ contains
     integer		:: begc, endc
     integer		:: begp, endp
     integer             :: begg, endg
+    ! Variables for monthly interpolation of urban tree LAI (mirrors SatellitePhenologyMod)
+    integer             :: months(2)             ! the two months to interpolate between (1-12)
+    real(r8)            :: timwt(2)              ! interpolation weights (sum to 1)
+    integer, parameter  :: nzcanm = 5            ! max vertical levels at urban resolution (for view-factor array allocation)
     !---------------------------------------------------------------------
     
 !-------------------[kz.3]Ray tracing test-------------------------  
-    integer, parameter  :: nzcanm = 5        ! Maximum number of vertical levels at urban resolution
-    integer             :: maxbhind          ! Maximum vertical layer for highest building or tree
-    integer             :: maxind            ! Index of the highest level with roofs or the highest layer with tree foliage, whichever is higher
-    real(r8)            :: lad(nzcanm)       ! Leaf area density in the canyon column [m-1]
-    real(r8)            :: lads(nzcanm)      ! Leaf area density in the canyon column [m-1] for shortwave calcs
-    real(r8)            :: ladl(nzcanm)      ! Leaf area density in the canyon column [m-1] for longwave calcs
-    real(r8)            :: omega(nzcanm)     ! Leaf clumping index (Eq. 15 in Krayenhoff et al. 2020)
-    ! ToDo: replace dzcan with ht_roof; replace wcan, wbui  
-    real(r8)            :: dzcan             ! Height of buildings [m]
-    real(r8)            :: pb_in(nzcanm)     ! Probability to have a building with an height equal or higher than each level
-    real(r8)            :: ss_in(nzcanm)     ! Roof fraction at each level 
-    real(r8)            :: wcan              ! Width of the canyons [m]
-    real(r8)            :: wbui              ! Width of the buildings [m]
-    real(r8)            :: wtroad_tree          ! Canopy cover within the canyon (between-building) space
-    real(r8)            :: dray              ! Ray step [m]
-    real(r8)            :: hsky              ! A height scaling factor for sky ray calculations
-    integer             :: nrays             ! Number of rays from foliage layer (Number from surfaces will be half)
-    integer             :: nsky              ! A parameter controlling the number of rays starting from the sky
-    real(r8)            :: h1                ! tree crown bottom height
-    real(r8)            :: h2                ! tree crown vertical height
 
-    !Output of view factor calculation
-    !------
-    ! Area-weighted longwave view factors
-    real(r8)            :: fww1d(nzcanm, nzcanm)  ! Longwave radiation view factor from wall to wall 
-    real(r8)            :: fvv1d(nzcanm, nzcanm)  ! Longwave radiation view factor from vegetation to vegetation 
-    real(r8)            :: fwv1d(nzcanm, nzcanm)  ! Longwave radiation view factor from wall to vegetation 
-    real(r8)            :: fvw1d(nzcanm, nzcanm)  ! Longwave radiation view factor from vegetation to wall 
-    real(r8)            :: fwr1d(nzcanm, nzcanm)  ! Longwave radiation view factor from wall to roof 
-    real(r8)            :: frw1d(nzcanm, nzcanm)  ! Longwave radiation view factor from roof to wall 
-    real(r8)            :: fvr1d(nzcanm, nzcanm)  ! Longwave radiation view factor from vegetation to roof 
-    real(r8)            :: frv1d(nzcanm, nzcanm)  ! Longwave radiation view factor from roof to vegetation 
-    real(r8)            :: fwg1d(nzcanm)          ! Longwave radiation view factor from wall to ground 
-    real(r8)            :: fgw1d(nzcanm)          ! Longwave radiation view factor from ground to wall 
-    real(r8)            :: fgv1d(nzcanm)          ! Longwave radiation view factor from ground to vegetation 
-    real(r8)            :: fsw1d(nzcanm)          ! Longwave radiation view factor from sky to wall 
-    real(r8)            :: fvg1d(nzcanm)          ! Longwave radiation view factor from vegetation to ground 
-    real(r8)            :: fsr1d(nzcanm)          ! Longwave radiation view factor from sky to roof 
-    real(r8)            :: fsv1d(nzcanm)          ! Longwave radiation view factor from sky to vegetation 
-    real(r8)            :: fws1d(nzcanm)          ! Longwave radiation view factor from wall to sky 
-    real(r8)            :: fvs1d(nzcanm)          ! Longwave radiation view factor from vegetation to sky 
-    real(r8)            :: frs1d(nzcanm)          ! Longwave radiation view factor from roof to sky 
-    real(r8)            :: fsg1d                  ! Longwave radiation view factor from sky to ground         
-    real(r8)            :: fts1d                  ! Longwave radiation view factor from ground to sky 
-    
-    ! Area-weighted shortwave view factors
-    real(r8)            :: kww1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from wall to wall 
-    real(r8)            :: kvv1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from vegetation to vegetation 
-    real(r8)            :: kwv1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from wall to vegetation 
-    real(r8)            :: kvw1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from vegetation to wall 
-    real(r8)            :: kwr1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from wall to roof 
-    real(r8)            :: krw1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from roof to wall 
-    real(r8)            :: kvr1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from vegetation to roof 
-    real(r8)            :: krv1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from roof to vegetation 
-    real(r8)            :: kwg1d(nzcanm)          ! Shortwave radiation view factor from wall to ground 
-    real(r8)            :: kgw1d(nzcanm)          ! Shortwave radiation view factor from ground to wall 
-    real(r8)            :: kgv1d(nzcanm)          ! Shortwave radiation view factor from ground to vegetation 
-    real(r8)            :: ksw1d(nzcanm)          ! Shortwave radiation view factor from sky to wall 
-    real(r8)            :: kvg1d(nzcanm)          ! Shortwave radiation view factor from vegetation to ground 
-    real(r8)            :: ksr1d(nzcanm)          ! Shortwave radiation view factor from sky to roof 
-    real(r8)            :: ksv1d(nzcanm)          ! Shortwave radiation view factor from sky to vegetation 
-    real(r8)            :: kws1d(nzcanm)          ! Shortwave radiation view factor from wall to sky 
-    real(r8)            :: kvs1d(nzcanm)          ! Shortwave radiation view factor from vegetation to sky 
-    real(r8)            :: krs1d(nzcanm)          ! Shortwave radiation view factor from roof to sky     
-    real(r8)            :: ksg1d                  ! Shortwave radiation view factor from sky to ground         
-    real(r8)            :: kts1d                  ! Shortwave radiation view factor from ground to sky   
-    
-    ! Unweighted longwave radiation view factors (for initialization)
-    real(r8)            :: vfww_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from wall to wall
-    real(r8)            :: vfvv_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from vegetation to vegetation
-    real(r8)            :: vfwv_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from wall to vegetation
-    real(r8)            :: vfvw_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from vegetation to wall
-    real(r8)            :: vfwr_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from wall to roof
-    real(r8)            :: vfrw_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from roof to wall
-    real(r8)            :: vfvr_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from vegetation to roof
-    real(r8)            :: vfrv_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from roof to vegetation
-    real(r8)            :: vfwt_f(nzcanm)             ! Unweighted longwave radiation view factor from wall to ground
-    real(r8)            :: vftw_f(nzcanm)             ! Unweighted longwave radiation view factor from ground to wall
-    real(r8)            :: vftv_f(nzcanm)             ! Unweighted longwave radiation view factor from ground to vegetation
-    real(r8)            :: vfvt_f(nzcanm)             ! Unweighted longwave radiation view factor from vegetation to ground
-    real(r8)            :: vfsw_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to wall
-    real(r8)            :: vfsr_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to roof
-    real(r8)            :: vfsv_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to vegetation
-    real(r8)            :: vfst_f                     ! Unweighted longwave radiation view factor from sky to ground    
-    real(r8)            :: svft_f                     ! Unweighted longwave sky view factor for ground
-
-    ! Unweighted shortwave radiation view factors (for initialization)
-    real(r8)            :: vfww_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from wall to wall
-    real(r8)            :: vfvv_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from vegetation to vegetation
-    real(r8)            :: vfwv_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from wall to vegetation
-    real(r8)            :: vfvw_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from vegetation to wall
-    real(r8)            :: vfwr_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from wall to roof
-    real(r8)            :: vfrw_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from roof to wall
-    real(r8)            :: vfvr_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from vegetation to roof
-    real(r8)            :: vfrv_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from roof to vegetation
-    real(r8)            :: vfwt_k(nzcanm)             ! Unweighted shortwave radiation view factor from wall to ground
-    real(r8)            :: vftw_k(nzcanm)             ! Unweighted shortwave radiation view factor from ground to wall
-    real(r8)            :: vftv_k(nzcanm)             ! Unweighted shortwave radiation view factor from ground to vegetation
-    real(r8)            :: vfvt_k(nzcanm)             ! Unweighted shortwave radiation view factor from vegetation to ground
-    real(r8)            :: vfsw_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to wall
-    real(r8)            :: vfsr_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to roof
-    real(r8)            :: vfsv_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to vegetation
-    real(r8)            :: vfst_k                     ! Unweighted shortwave radiation view factor from sky to ground
-    real(r8)            :: svft_k                     ! Unweighted shortwave sky view factor for ground
-    
-    ! Unweighted sky view factors (for initialization)
-    real(r8)            :: svfw_f(nzcanm)             ! Unweighted longwave sky view factor for wall
-    real(r8)            :: svfv_f(nzcanm)             ! Unweighted longwave sky view factor for vegetation
-    real(r8)            :: svfr_f(nzcanm)             ! Unweighted longwave sky view factor for roof
-    real(r8)            :: svfw_k(nzcanm)             ! Unweighted shortwave sky view factor for wall
-    real(r8)            :: svfv_k(nzcanm)             ! Unweighted shortwave sky view factor for vegetation
-    real(r8)            :: svfr_k(nzcanm)             ! Unweighted shortwave sky view factor for roof
-    real(r8)            :: rnum                       ! A temporary random number to generate various tree geometry for test purpose
-
-    real(r8)            :: k_opt   ! canopy light extinction parameter
-    real(r8)            :: p_2d    ! optical porosity (direct beam transmission through canopy)
-    real(r8)            :: p_3d    ! volumetric/aerodynamic porosity
-    real(r8)            :: A_pv    ! tree plan area
-    real(r8)            :: A_pb    ! building plan area
-    real(r8)            :: A_tot    ! total plan area
-    real(r8)            :: r_tree  ! tree radius
-    real(r8)            :: ht_tree  ! tree height
-    real(r8)            :: bv_drag_ratio    ! ratio between vegetation drag CDv and building drag CDb
-    ! TODO: confirm the usage of sheltered vs unsheltered frontal area of building and tree
-    real(r8)            :: frontal_b_unsh ! unsheltered frontal area of building
-    real(r8)            :: frontal_v_unsh ! unsheltered frontal area of tree
-    real(r8)            :: frontal_b ! sheltered frontal area of building
-    real(r8)            :: frontal_v ! sheltered frontal area of tree
-    real(r8)            :: plan_ai_eff ! effective plan area index
 !-------------------[kz.3]Ray tracing test-------------------------   
     
     begp = bounds%begp; endp = bounds%endp
@@ -440,6 +320,9 @@ contains
     allocate(this%em_roof             (begl:endl))          ; this%em_roof             (:)   = nan
     allocate(this%em_improad          (begl:endl))          ; this%em_improad          (:)   = nan
     allocate(this%em_perroad          (begl:endl))          ; this%em_perroad          (:)   = nan
+    allocate(this%tree_elaisai_per_uroad          (begl:endl))          ; this%tree_elaisai_per_uroad         (:)   = nan
+    allocate(this%tree_pft_urb          (begl:endl))          ; this%tree_pft_urb         (:)   = ispval
+    allocate(this%tree_lai_per_vega          (begl:endl))          ; this%tree_lai_per_vega         (:)   = nan
     allocate(this%em_tree_urb          (begl:endl))          ; this%em_tree_urb          (:)   = nan
     allocate(this%em_wall             (begl:endl))          ; this%em_wall             (:)   = nan
     allocate(this%alb_roof_dir        (begl:endl,numrad))   ; this%alb_roof_dir        (:,:) = nan
@@ -557,36 +440,8 @@ contains
     allocate(this%z_0_town_out         (begl:endl))                        ; this%z_0_town_out     (:)     = nan
     allocate(this%plan_ai_out         (begl:endl))                        ; this%plan_ai_out     (:)     = nan
     allocate(this%frontal_ai_out         (begl:endl))                        ; this%frontal_ai_out     (:)     = nan
-    
-   !------------------------------------------------------------------------------
-   ! These values give a single-layer urban canyon for view factor calculation
-   !------------------------------------------------------------------------------
-   ! Initialize 
-    maxbhind=2
-    maxind=2
-    ss_in=0._r8
-    pb_in=0._r8
-    lad=0._r8
-    wtroad_tree=0._r8         
-    omega=0._r8           
-    dray=0._r8 
-    h1=0.0_r8
-    h2=0.0_r8
-    
-    ss_in(2)=1._r8
-    pb_in(1)=1._r8
-    pb_in(2)=1._r8
-    nrays=50000
-    
-    ! Could change these values if view factors from sky are not accurate, especially nsky
-    nsky=1
-    hsky=1.5_r8
 
-    !if (debug_write) then
-    !    write(6,*)'nrays = ',nrays
-    !end if
-!-------------------[kz.4]Ray tracing test-------------------------  
-          
+
     do l = bounds%begl,bounds%endl
 
        if (lun%urbpoi(l)) then
@@ -615,11 +470,21 @@ contains
           this%em_tree_urb(l) = urbinp%em_tree_urb(g,dindx)
           this%em_wall   (l) = urbinp%em_wall   (g,dindx)
 
+         ! Bracketing months and interpolation weights for the current date
+         call GetMonthlyInterpWeights(next_time_step=.false., months=months, timwt=timwt)
+
+         this%tree_lai_per_vega(l) = timwt(1)*urbinp%tree_lai_urb(g,dindx,months(1)) &
+                                   + timwt(2)*urbinp%tree_lai_urb(g,dindx,months(2))
+
+         ! initialize tree_elaisai_per_uroad using the tree LAI with no snow effect. This will be updated in the urban phenology module to account for snow effect on tree LAI.
+         this%tree_elaisai_per_uroad(l) = this%tree_lai_per_vega(l)*urbinp%wtroad_tree(g,dindx)
+         this%tree_pft_urb(l) = urbinp%tree_pft_urb(g,dindx)
+
           ! Landunit level initialization for urban wall and roof layers and interfaces
 
           lun%canyon_hwr(l)   = urbinp%canyon_hwr(g,dindx)
 !-------------------[kz.5]Ray tracing test-------------------------            
-          lun%tree_lai_urb(l)          = urbinp%tree_lai_urb(g,dindx)
+          lun%tree_lai_urb_monthly(l,:)          = urbinp%tree_lai_urb(g,dindx,:)
           lun%wtroad_tree(l)     = urbinp%wtroad_tree(g,dindx)       
           lun%tree_bht_urb(l)          = urbinp%tree_bht_urb(g,dindx)
           lun%tree_tht_urb(l)     = urbinp%tree_tht_urb(g,dindx)       
@@ -641,72 +506,34 @@ contains
           this%thick_roof(l)     = urbinp%thick_roof(g,dindx)
           this%nlev_improad(l)   = urbinp%nlev_improad(g,dindx)
           this%t_building_min(l) = urbinp%t_building_min(g,dindx)
-!-------------------[kz.6]Ray tracing test-------------------------
-          ! Currently I output the calculated view factor first, and then save then as 
-          ! temperature_inst%***(e.g. kww1d_out1() in the TemperatureType.F90. This may not be the neatest way but works.    
-          !-----------------use CLM surface data to calculate view factor -------------------------
-          dzcan=lun%ht_roof(l)
-          wcan=lun%ht_roof(l)/lun%canyon_hwr(l)        
-          wbui = lun%ht_roof(l)/(lun%canyon_hwr(l)*(1._r8-lun%wtlunit_roof(l))/lun%wtlunit_roof(l))
 
-         lun%has_trees(l)= (lun%tree_lai_urb(l) > 1.e-6_r8) .and. &
-            (lun%wtroad_tree(l)  > 1.e-6_r8) .and. &
-            (lun%tree_tht_urb(l) > 1.e-6_r8)
-
-         if (.not. lun%has_trees(l)) then
-            lun%tree_lai_urb(l) = 0.0_r8
-            lun%wtroad_tree(l)  = 0.0_r8
-            lun%tree_bht_urb(l) = 0.0_r8
-            lun%tree_tht_urb(l) = 0.0_r8
+          ! confirm: what variables belong to lun% and what belongs to this%
+          ! when wtroad_tree is small, LAI should be zero
+          ! but it is possible to have zero LAI while non-zero wtroad_tree (winter case)
+          if ((lun%wtroad_tree(l)  < 1.e-3_r8) .or. (lun%tree_bht_urb(l) < 0.1_r8) .or. (lun%tree_tht_urb(l) < 0.01_r8)) then 
+               lun%wtroad_tree(l)  = 0.0_r8
+               lun%tree_lai_urb_monthly(l,:) = 0.0_r8
+               this%tree_lai_per_vega(l) = 0._r8
+               this%tree_elaisai_per_uroad(l) = 0._r8
          end if
 
-          call RANDOM_NUMBER(rnum)
+         if (this%tree_lai_per_vega(l) < 0.05_r8) then 
+               this%tree_lai_per_vega(l) = 0._r8
+               this%tree_elaisai_per_uroad(l) = 0._r8
+         end if
 
-          if (lun%has_trees(l)) then
-             !Eq. 15 in Krayenhoff et al. 2020
-             !Use LAI per road area between buildings, which is what used in the Krayenhoff et al. 2020 paper.
-             omega=-1.0_r8 / (0.5_r8 * lun%tree_lai_urb(l)) * log(1.0_r8 - lun%wtroad_tree(l) * &
-                   (1.0_r8 - exp(-0.5_r8 * lun%tree_lai_urb(l)/lun%wtroad_tree(l))))
-          else
-             omega = 0._r8
-          endif            
-
-          dray=0.05_r8*min(min(dzcan,wcan),wbui)/dzcan
-
-          ! TODO: when tree lai and tree height are both 0, the lad should be 0, and A_v1 and A_v2 should be 0?
-          if (lun%has_trees(l)) then
-            if ((lun%tree_bht_urb(l)+lun%tree_tht_urb(l))<= lun%ht_roof(l)) then
-               ! LAD is in respect to the realistic tree span, not the roof height
-               ! corrected
-               ! confirm: corrected the lun%A_v1(l) formula
-               lad(1)=max(lun%tree_lai_urb(l)/lun%tree_tht_urb(l), 1e-6_r8)
-               ! corrected: when there is no tree above roof, lad (2) is 0
-               lad(2) = 0._r8
-               ! TODO confirm formula of A_v1 and its unit [m]?
-               ! Note: this is two-sided leaf area!
-               lun%A_v1(l)=max(wcan*lad(1)*omega(1)*lun%tree_tht_urb(l)*2._r8, 1e-6_r8)
-               lun%A_v2(l)=0._r8 
-            else if ((lun%tree_bht_urb(l)+lun%tree_tht_urb(l)) > lun%ht_roof(l)) then
-               !   lad(1)=max(lun%tree_lai_urb(l)/lun%tree_tht_urb(l)*(lun%ht_roof(l)-lun%tree_bht_urb(l))/lun%ht_roof(l), 1e-6_r8)
-               !   lad(2) =max(lun%tree_lai_urb(l)/lun%tree_tht_urb(l)*(lun%tree_bht_urb(l)+lun%tree_tht_urb(l)-lun%ht_roof(l))/lun%ht_roof(l), 1e-6_r8)
-
-               ! confirm: corrected the lun%A_v1(l) formula
-               ! the lad in the first and second layer should be the same and should be in respect to the realistic tree span
-               lad(1)=max(lun%tree_lai_urb(l)/lun%tree_tht_urb(l), 1e-6_r8)
-               lad(2) =max(lun%tree_lai_urb(l)/lun%tree_tht_urb(l), 1e-6_r8)
-               lun%A_v1(l)=max(wcan*lad(1)*omega(1)*(lun%ht_roof(l)-lun%tree_bht_urb(l))*2._r8, 1e-6_r8)
-               lun%A_v2(l)=max(wcan*lad(2)*omega(2)*(lun%tree_bht_urb(l)+lun%tree_tht_urb(l)-lun%ht_roof(l))*2._r8, 1e-6_r8)   
-            end if  
-          else
-             lad(1) = 0.0_r8
-             lad(2) = 0.0_r8
-             lun%A_v1(l) = 0.0_r8   ! Floor only — never used as a real area when  has_trees=.false.
-             lun%A_v2(l) = 0.0_r8
+          if ((this%tree_lai_per_vega(l) > 0.0_r8) .and. (lun%tree_bht_urb(l) < 0.1_r8)) then
+              write (iulog,*) 'The bottom of tree crown should be higher than 0.1 when tree exist. tree crown bottom height, tree LAI =',lun%tree_bht_urb(l),this%tree_lai_per_vega(l)
+              write (iulog,*) 'clm model is stopping'
+              call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
           end if
-          ! These are unused but keep for now:
-          lads=lad  ! for shortwave calcs (usually equal to "lad")
-          ladl=lad  ! lfor longwave calcs (usually equal to "lad")
-          
+
+          if ((this%tree_lai_per_vega(l) > 0.0_r8) .and. (lun%tree_tht_urb(l) < 0.01_r8)) then
+              write (iulog,*) 'The tree crown depth should be larger than 0.01 when tree exist. tree crown depth, tree LAI =',lun%tree_tht_urb(l),this%tree_lai_per_vega(l)
+              write (iulog,*) 'clm model is stopping'
+              call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
+          end if
+
           if (lun%tree_bht_urb(l)+lun%tree_tht_urb(l) > 2.0_r8*lun%ht_roof(l)) then
               write (iulog,*) 'The maximum tree height should be lower than two times of building height. tree height, ht_roof =',lun%tree_bht_urb(l)+lun%tree_tht_urb(l),lun%ht_roof(l)
               write (iulog,*) 'clm model is stopping'
@@ -714,126 +541,13 @@ contains
           end if
 
           if (lun%tree_bht_urb(l) > lun%ht_roof(l)) then
-              write (iulog,*) 'The bottom of tree crown  should be lower than building height. tree crown bottom height, ht_roof =',lun%tree_bht_urb(l),lun%ht_roof(l)
+              write (iulog,*) 'The bottom of tree crown should be lower than building height. tree crown bottom height, ht_roof =',lun%tree_bht_urb(l),lun%ht_roof(l)
               write (iulog,*) 'clm model is stopping'
               call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
           end if
           
-          wtroad_tree=lun%wtroad_tree(l)
-          h1=lun%tree_bht_urb(l)
-          h2=lun%tree_tht_urb(l)
-          
-          ! calculate view factor
-          ! checked the input sequence
-          call montecarlo_view_factors(nzcanm,dzcan,wcan,wbui,&
-                  wtroad_tree,lad,lads,ladl,omega,ss_in,pb_in,dray,maxind,&
-                          maxbhind,nrays,nsky,hsky,h1,h2,&
-                          fww1d,fvv1d,fwv1d,fvw1d,fwr1d,frw1d,fvr1d,&
-                          frv1d,fwg1d,fgw1d,fgv1d,fsw1d,fvg1d,fsg1d,fsr1d,&
-                          fsv1d,kww1d,kvv1d,kwv1d,kvw1d,kwr1d,krw1d,kvr1d,&
-                          krv1d,kwg1d,kgw1d,kgv1d,ksw1d,kvg1d,ksg1d,ksr1d,&
-                          ksv1d,kws1d,kvs1d,kts1d,krs1d,fws1d,fvs1d,fts1d,frs1d,&
-                          vfww_f,vfvv_f,vfwv_f,vfvw_f,vfwr_f,vfrw_f,vfvr_f,&
-                          vfrv_f,vfwt_f,vftw_f,vftv_f,vfsw_f,vfvt_f,vfst_f,vfsr_f,&
-                          vfsv_f,vfww_k,vfvv_k,vfwv_k,vfvw_k,vfwr_k,vfrw_k,vfvr_k,&
-                          vfrv_k,vfwt_k,vftw_k,vftv_k,vfsw_k,vfvt_k,vfst_k,vfsr_k,&
-                          vfsv_k,svfw_k,svfv_k,svft_k,svfr_k,svfw_f,svfv_f,svft_f,svfr_f,l)
-          this%fww1d_out(l,:,:)      = fww1d(:,:)
-          this%fvv1d_out(l,:,:)      = fvv1d(:,:)
-          this%fwv1d_out(l,:,:)      = fwv1d(:,:)
-          this%fvw1d_out(l,:,:)      = fvw1d(:,:)
-          this%fwr1d_out(l,:,:)      = fwr1d(:,:)
-          this%frw1d_out(l,:,:)      = frw1d(:,:)
-          this%fvr1d_out(l,:,:)      = fvr1d(:,:)
-          this%frv1d_out(l,:,:)      = frv1d(:,:)
-          
-          this%fwg1d_out(l,:)      = fwg1d(:)
-          this%fgw1d_out(l,:)      = fgw1d(:)
-          this%fgv1d_out(l,:)      = fgv1d(:)
-          this%fsw1d_out(l,:)      = fsw1d(:)
-          this%fvg1d_out(l,:)      = fvg1d(:)
-          this%fsr1d_out(l,:)      = fsr1d(:)
-          this%fsv1d_out(l,:)      = fsv1d(:)
-          this%fws1d_out(l,:)      = fws1d(:)
-          this%fvs1d_out(l,:)      = fvs1d(:)
-          this%frs1d_out(l,:)      = frs1d(:) 
-          this%fsg1d_out(l)        = fsg1d
-          this%fts1d_out(l)        = fts1d        
-          
-          this%kww1d_out(l,:,:)      = kww1d(:,:)
-          this%kvv1d_out(l,:,:)      = kvv1d(:,:)
-          this%kwv1d_out(l,:,:)      = kwv1d(:,:)
-          this%kvw1d_out(l,:,:)      = kvw1d(:,:)
-          this%kwr1d_out(l,:,:)      = kwr1d(:,:)
-          this%krw1d_out(l,:,:)      = krw1d(:,:)
-          this%kvr1d_out(l,:,:)      = kvr1d(:,:)
-          this%krv1d_out(l,:,:)      = krv1d(:,:)
-          
-          this%kwg1d_out(l,:)      = kwg1d(:)
-          this%kgw1d_out(l,:)      = kgw1d(:)
-          this%kgv1d_out(l,:)      = kgv1d(:)
-          this%ksw1d_out(l,:)      = ksw1d(:)
-          this%kvg1d_out(l,:)      = kvg1d(:)
-          this%ksr1d_out(l,:)      = ksr1d(:)
-          this%ksv1d_out(l,:)      = ksv1d(:)
-          this%kws1d_out(l,:)      = kws1d(:)
-          this%kvs1d_out(l,:)      = kvs1d(:)
-          this%krs1d_out(l,:)      = krs1d(:) 
-          this%ksg1d_out(l)        = ksg1d
-          this%kts1d_out(l)        = kts1d   
-          
-          this%vfww_f_out(l,:,:)      = vfww_f(:,:)
-          this%vfvv_f_out(l,:,:)      = vfvv_f(:,:)
-          this%vfwv_f_out(l,:,:)      = vfwv_f(:,:)
-          this%vfvw_f_out(l,:,:)      = vfvw_f(:,:)
-          this%vfwr_f_out(l,:,:)      = vfwr_f(:,:)
-          this%vfrw_f_out(l,:,:)      = vfrw_f(:,:)
-          this%vfvr_f_out(l,:,:)      = vfvr_f(:,:)
-          this%vfrv_f_out(l,:,:)      = vfrv_f(:,:)
-          this%vfwt_f_out(l,:)        = vfwt_f(:)
-          this%vftw_f_out(l,:)        = vftw_f(:)
-          this%vftv_f_out(l,:)        = vftv_f(:)
-          this%vfvt_f_out(l,:)        = vfvt_f(:)
-          this%vfsw_f_out(l,:)        = vfsw_f(:)
-          this%vfsr_f_out(l,:)        = vfsr_f(:)
-          this%vfsv_f_out(l,:)        = vfsv_f(:)
-          this%vfst_f_out(l)          = vfst_f
-          
-
-          this%vfww_k_out(l,:,:)      = vfww_k(:,:)
-          this%vfvv_k_out(l,:,:)      = vfvv_k(:,:)
-          this%vfwv_k_out(l,:,:)      = vfwv_k(:,:)
-          this%vfvw_k_out(l,:,:)      = vfvw_k(:,:)
-          this%vfwr_k_out(l,:,:)      = vfwr_k(:,:)
-          this%vfrw_k_out(l,:,:)      = vfrw_k(:,:)
-          this%vfvr_k_out(l,:,:)      = vfvr_k(:,:)
-          this%vfrv_k_out(l,:,:)      = vfrv_k(:,:)
-          this%vfwt_k_out(l,:)        = vfwt_k(:)
-          this%vftw_k_out(l,:)        = vftw_k(:)
-          this%vftv_k_out(l,:)        = vftv_k(:)
-          this%vfvt_k_out(l,:)        = vfvt_k(:)
-          this%vfsw_k_out(l,:)        = vfsw_k(:)
-          this%vfsr_k_out(l,:)        = vfsr_k(:)
-          this%vfsv_k_out(l,:)        = vfsv_k(:)
-          this%vfst_k_out(l)          = vfst_k
-
-          this%svfw_f_out(l,:)        = svfw_f(:)
-          this%svfv_f_out(l,:)        = svfv_f(:)
-          this%svfr_f_out(l,:)        = svfr_f(:)
-          this%svfw_k_out(l,:)        = svfw_k(:)
-          this%svfv_k_out(l,:)        = svfv_k(:)
-          this%svfr_k_out(l,:)        = svfr_k(:)
-
-          this%svft_f_out(l)          = svft_f
-          this%svft_k_out(l)          = svft_k
-
-         !   write(6,*) '----------------view factors------------ '
-         !   write(6,*) 'svfr_k(:) = ', svfr_k(:)
-         !   write(6,*) 'svft_f = ', svft_f
-         !   write(6,*) 'vfrv_k(:,:) = ', vfrv_k(:,:)
-         !   write(6,*) 'ksr1d(:) = ', ksr1d(:)
-
-!-------------------[kz.6]Ray tracing test------------------------- 
+          ! Compute Monte Carlo view factors for this urban landunit
+          call ComputeViewFactors(this, l)
           
           ! Inferred from Sailor and Lu 2004
           if (urban_traffic) then
@@ -878,67 +592,12 @@ contains
 
           ! Use relationship derived from Porson (2010) and Masson (2020)
           frontal_ai = lun%wall_to_plan_area_ratio(l)/rpi
-
-          ! Calculate displacement heightt
-          if (use_vancouver) then
-             lun%z_d_town(l) = 3.5_r8
-          else if (use_mexicocity) then
-             lun%z_d_town(l) = 10.9_r8
-          else
-             ! The same assumption as in UT&C
-             r_tree=0.25_r8*lun%wtroad_tree(l)*lun%ht_roof(l)/lun%canyon_hwr(l)
-             ! corrected tree height 
-             ht_tree=lun%tree_bht_urb(l)+lun%tree_tht_urb(l)
-             k_opt=0.5_r8
- 
-             p_2d=exp(-k_opt*lun%tree_lai_urb(l))
-             p_3d=p_2d**0.4_r8
-             A_pv=4.0_r8*r_tree
-             A_pb=lun%ht_roof(l)/lun%canyon_hwr(l)*lun%wtlunit_roof(l)/(1-lun%wtlunit_roof(l))
-             A_tot=A_pb+lun%ht_roof(l)/lun%canyon_hwr(l)
-             bv_drag_ratio = (-1.251_r8*p_3d**2_r8+0.489_r8*p_3d+0.803_r8)/C_d
-             ! corrected the building height variable
-             lun%ht_can_eff(l) = (lun%ht_roof(l)*A_pb+ht_tree*(1.0_r8-p_3d)*A_pv)/(A_pb+(1.0_r8-p_3d)*A_pv)
-
-            ! The unsheltered and actual frontal area may be swaped in Meili's SI
-             ! I *think* unsheltered fromtal area is the part above z-zd, and actual frontal area is ht_roof
-             ! there is no need to calculate the unsheltered frontal area but I'll keep them for now
-             ! It's best to confirm with Kent and Meili about the definition of unsheltered and actual frontal area.
-             plan_ai_eff = (A_pb+(1.0_r8-p_3d)*A_pv)/A_tot
-             lun%z_d_town(l) = (1._r8 + alpha**(-plan_ai_eff) * (plan_ai_eff - 1._r8)) * lun%ht_can_eff(l)
-
-             ! I think the frontal area of tree can also be adjusted
-             frontal_b = lun%ht_can_eff(l)
-             frontal_v = 2_r8 * r_tree
-
-             frontal_b_unsh = frontal_b * (lun%ht_can_eff(l) - lun%z_d_town(l))/lun%ht_can_eff(l)
-             frontal_v_unsh = frontal_b * (lun%ht_can_eff(l) - lun%z_d_town(l))/lun%ht_can_eff(l)
-            
-             !write (6,'(A,I5)') '-------------------(l):before frontal_b------------------- ', l
-             !write (6,'(A,I5)') '-------------------time step----------------- ', get_nstep()
-             !write (6,'(A,1X,*(F12.5,1X))') 'A_pb, bv_drag_ratio ', A_pb, bv_drag_ratio
-             !write (6,'(A,1X,*(F12.5,1X))') 'ht_tree, A_pv ', ht_tree, A_pv
-             !write (6,'(A,1X,*(F12.5,1X))') 'lun%wtlunit_roof(l), A_pb ', lun%wtlunit_roof(l), A_pb
-             !write (6,'(A,1X,*(F12.5,1X))') 'frontal_b_unsh, frontal_v_unsh ', frontal_b_unsh, frontal_v_unsh
-             !write (6,'(A,1X,*(F12.5,1X))') 'lun%ht_can_eff(l), lun%z_d_town(l) ', lun%ht_can_eff(l), lun%z_d_town(l)
-
-                     
-          end if
-
-          ! Calculate the roughness length
-          if (use_vancouver) then
-             lun%z_0_town(l) = 0.35_r8
-          else if (use_mexicocity) then
-             lun%z_0_town(l) = 2.2_r8
-          else
-             lun%z_0_town(l) = lun%ht_can_eff(l) * (1._r8 - lun%z_d_town(l) / lun%ht_can_eff(l)) * &
-                  exp(-(1/(vkc**2)*0.5_r8*beta*C_d*(1.0_r8 - lun%z_d_town(l)/lun%ht_can_eff(l))*(frontal_b+bv_drag_ratio*frontal_v)/A_tot)**(-0.5_r8))
-          end if
-
+          
           this%plan_ai_out(l)=plan_ai
           this%frontal_ai_out(l)=frontal_ai
-          this%z_d_town_out(l)=lun%z_d_town(l)
-          this%z_0_town_out(l)=lun%z_0_town(l)
+
+          ! Calculate aerodynamic displacement height and roughness length
+          call ComputeUrbanRoughness(this, l)
 
          !   write(6,*) '----------------urban roughness------------ '
          !   write(6,*) 'plan_ai(l) = ', plan_ai
@@ -1056,19 +715,611 @@ contains
   end subroutine Init
 
   !-----------------------------------------------------------------------
+  subroutine ComputeViewFactors(this, l)
+    !
+    ! !DESCRIPTION:
+    ! Compute the Monte Carlo radiative view factors for one urban landunit l,
+    ! given its canyon geometry and (already interpolated) urban tree LAI
+    ! (this%tree_elaisai_per_uroad). Sets up the single-layer urban canyon, derives
+    ! the leaf area density and clumping, calls montecarlo_view_factors, and
+    ! stores the resulting view factors into this%*_out(l,...).
+    !
+    ! !ARGUMENTS:
+    class(urbanparams_type) , intent(inout) :: this
+    integer                 , intent(in)    :: l     ! landunit index
+    !
+    ! !LOCAL VARIABLES:
+    integer, parameter  :: nzcanm = 5        ! Maximum number of vertical levels at urban resolution
+    integer             :: maxbhind          ! Maximum vertical layer for highest building or tree
+    integer             :: maxind            ! Index of the highest level with roofs or the highest layer with tree foliage, whichever is higher
+    real(r8)            :: lad(nzcanm)       ! Leaf area density in the canyon column [m-1]
+    real(r8)            :: lads(nzcanm)      ! Leaf area density in the canyon column [m-1] for shortwave calcs
+    real(r8)            :: ladl(nzcanm)      ! Leaf area density in the canyon column [m-1] for longwave calcs
+    real(r8)            :: omega(nzcanm)     ! Leaf clumping index (Eq. 15 in Krayenhoff et al. 2020)
+    ! ToDo: replace dzcan with ht_roof; replace wcan, wbui  
+    real(r8)            :: dzcan             ! Height of buildings [m]
+    real(r8)            :: pb_in(nzcanm)     ! Probability to have a building with an height equal or higher than each level
+    real(r8)            :: ss_in(nzcanm)     ! Roof fraction at each level 
+    real(r8)            :: wcan              ! Width of the canyons [m]
+    real(r8)            :: wbui              ! Width of the buildings [m]
+    real(r8)            :: wtroad_tree          ! Canopy cover within the canyon (between-building) space
+    real(r8)            :: dray              ! Ray step [m]
+    real(r8)            :: hsky              ! A height scaling factor for sky ray calculations
+    integer             :: nrays             ! Number of rays from foliage layer (Number from surfaces will be half)
+    integer             :: nsky              ! A parameter controlling the number of rays starting from the sky
+    real(r8)            :: h1                ! tree crown bottom height
+    real(r8)            :: h2                ! tree crown vertical height
+
+    !Output of view factor calculation
+    !------
+    ! Area-weighted longwave view factors
+    real(r8)            :: fww1d(nzcanm, nzcanm)  ! Longwave radiation view factor from wall to wall 
+    real(r8)            :: fvv1d(nzcanm, nzcanm)  ! Longwave radiation view factor from vegetation to vegetation 
+    real(r8)            :: fwv1d(nzcanm, nzcanm)  ! Longwave radiation view factor from wall to vegetation 
+    real(r8)            :: fvw1d(nzcanm, nzcanm)  ! Longwave radiation view factor from vegetation to wall 
+    real(r8)            :: fwr1d(nzcanm, nzcanm)  ! Longwave radiation view factor from wall to roof 
+    real(r8)            :: frw1d(nzcanm, nzcanm)  ! Longwave radiation view factor from roof to wall 
+    real(r8)            :: fvr1d(nzcanm, nzcanm)  ! Longwave radiation view factor from vegetation to roof 
+    real(r8)            :: frv1d(nzcanm, nzcanm)  ! Longwave radiation view factor from roof to vegetation 
+    real(r8)            :: fwg1d(nzcanm)          ! Longwave radiation view factor from wall to ground 
+    real(r8)            :: fgw1d(nzcanm)          ! Longwave radiation view factor from ground to wall 
+    real(r8)            :: fgv1d(nzcanm)          ! Longwave radiation view factor from ground to vegetation 
+    real(r8)            :: fsw1d(nzcanm)          ! Longwave radiation view factor from sky to wall 
+    real(r8)            :: fvg1d(nzcanm)          ! Longwave radiation view factor from vegetation to ground 
+    real(r8)            :: fsr1d(nzcanm)          ! Longwave radiation view factor from sky to roof 
+    real(r8)            :: fsv1d(nzcanm)          ! Longwave radiation view factor from sky to vegetation 
+    real(r8)            :: fws1d(nzcanm)          ! Longwave radiation view factor from wall to sky 
+    real(r8)            :: fvs1d(nzcanm)          ! Longwave radiation view factor from vegetation to sky 
+    real(r8)            :: frs1d(nzcanm)          ! Longwave radiation view factor from roof to sky 
+    real(r8)            :: fsg1d                  ! Longwave radiation view factor from sky to ground         
+    real(r8)            :: fts1d                  ! Longwave radiation view factor from ground to sky 
+    
+    ! Area-weighted shortwave view factors
+    real(r8)            :: kww1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from wall to wall 
+    real(r8)            :: kvv1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from vegetation to vegetation 
+    real(r8)            :: kwv1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from wall to vegetation 
+    real(r8)            :: kvw1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from vegetation to wall 
+    real(r8)            :: kwr1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from wall to roof 
+    real(r8)            :: krw1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from roof to wall 
+    real(r8)            :: kvr1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from vegetation to roof 
+    real(r8)            :: krv1d(nzcanm, nzcanm)  ! Shortwave radiation view factor from roof to vegetation 
+    real(r8)            :: kwg1d(nzcanm)          ! Shortwave radiation view factor from wall to ground 
+    real(r8)            :: kgw1d(nzcanm)          ! Shortwave radiation view factor from ground to wall 
+    real(r8)            :: kgv1d(nzcanm)          ! Shortwave radiation view factor from ground to vegetation 
+    real(r8)            :: ksw1d(nzcanm)          ! Shortwave radiation view factor from sky to wall 
+    real(r8)            :: kvg1d(nzcanm)          ! Shortwave radiation view factor from vegetation to ground 
+    real(r8)            :: ksr1d(nzcanm)          ! Shortwave radiation view factor from sky to roof 
+    real(r8)            :: ksv1d(nzcanm)          ! Shortwave radiation view factor from sky to vegetation 
+    real(r8)            :: kws1d(nzcanm)          ! Shortwave radiation view factor from wall to sky 
+    real(r8)            :: kvs1d(nzcanm)          ! Shortwave radiation view factor from vegetation to sky 
+    real(r8)            :: krs1d(nzcanm)          ! Shortwave radiation view factor from roof to sky     
+    real(r8)            :: ksg1d                  ! Shortwave radiation view factor from sky to ground         
+    real(r8)            :: kts1d                  ! Shortwave radiation view factor from ground to sky   
+    
+    ! Unweighted longwave radiation view factors (for initialization)
+    real(r8)            :: vfww_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from wall to wall
+    real(r8)            :: vfvv_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from vegetation to vegetation
+    real(r8)            :: vfwv_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from wall to vegetation
+    real(r8)            :: vfvw_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from vegetation to wall
+    real(r8)            :: vfwr_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from wall to roof
+    real(r8)            :: vfrw_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from roof to wall
+    real(r8)            :: vfvr_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from vegetation to roof
+    real(r8)            :: vfrv_f(nzcanm,nzcanm)      ! Unweighted longwave radiation view factor from roof to vegetation
+    real(r8)            :: vfwt_f(nzcanm)             ! Unweighted longwave radiation view factor from wall to ground
+    real(r8)            :: vftw_f(nzcanm)             ! Unweighted longwave radiation view factor from ground to wall
+    real(r8)            :: vftv_f(nzcanm)             ! Unweighted longwave radiation view factor from ground to vegetation
+    real(r8)            :: vfvt_f(nzcanm)             ! Unweighted longwave radiation view factor from vegetation to ground
+    real(r8)            :: vfsw_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to wall
+    real(r8)            :: vfsr_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to roof
+    real(r8)            :: vfsv_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to vegetation
+    real(r8)            :: vfst_f                     ! Unweighted longwave radiation view factor from sky to ground    
+    real(r8)            :: svft_f                     ! Unweighted longwave sky view factor for ground
+
+    ! Unweighted shortwave radiation view factors (for initialization)
+    real(r8)            :: vfww_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from wall to wall
+    real(r8)            :: vfvv_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from vegetation to vegetation
+    real(r8)            :: vfwv_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from wall to vegetation
+    real(r8)            :: vfvw_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from vegetation to wall
+    real(r8)            :: vfwr_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from wall to roof
+    real(r8)            :: vfrw_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from roof to wall
+    real(r8)            :: vfvr_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from vegetation to roof
+    real(r8)            :: vfrv_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from roof to vegetation
+    real(r8)            :: vfwt_k(nzcanm)             ! Unweighted shortwave radiation view factor from wall to ground
+    real(r8)            :: vftw_k(nzcanm)             ! Unweighted shortwave radiation view factor from ground to wall
+    real(r8)            :: vftv_k(nzcanm)             ! Unweighted shortwave radiation view factor from ground to vegetation
+    real(r8)            :: vfvt_k(nzcanm)             ! Unweighted shortwave radiation view factor from vegetation to ground
+    real(r8)            :: vfsw_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to wall
+    real(r8)            :: vfsr_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to roof
+    real(r8)            :: vfsv_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to vegetation
+    real(r8)            :: vfst_k                     ! Unweighted shortwave radiation view factor from sky to ground
+    real(r8)            :: svft_k                     ! Unweighted shortwave sky view factor for ground
+    
+    ! Unweighted sky view factors (for initialization)
+    real(r8)            :: svfw_f(nzcanm)             ! Unweighted longwave sky view factor for wall
+    real(r8)            :: svfv_f(nzcanm)             ! Unweighted longwave sky view factor for vegetation
+    real(r8)            :: svfr_f(nzcanm)             ! Unweighted longwave sky view factor for roof
+    real(r8)            :: svfw_k(nzcanm)             ! Unweighted shortwave sky view factor for wall
+    real(r8)            :: svfv_k(nzcanm)             ! Unweighted shortwave sky view factor for vegetation
+    real(r8)            :: svfr_k(nzcanm)             ! Unweighted shortwave sky view factor for roof
+    real(r8)            :: rnum                       ! A temporary random number to generate various tree geometry for test purpose
+    !-----------------------------------------------------------------------
+
+    ! Single-layer urban canyon setup for the view factor calculation
+    maxbhind=2
+    maxind=2
+    ss_in=0._r8
+    pb_in=0._r8
+    lad=0._r8
+    wtroad_tree=0._r8         
+    omega=0._r8           
+    dray=0._r8 
+    h1=0.0_r8
+    h2=0.0_r8
+    
+    ss_in(2)=1._r8
+    pb_in(1)=1._r8
+    pb_in(2)=1._r8
+    nrays=50000
+    
+    ! Could change these values if view factors from sky are not accurate, especially nsky
+    nsky=1
+    hsky=1.5_r8
+
+   dzcan=lun%ht_roof(l)
+   wcan=lun%ht_roof(l)/lun%canyon_hwr(l)        
+   wbui = lun%ht_roof(l)/(lun%canyon_hwr(l)*(1._r8-lun%wtlunit_roof(l))/lun%wtlunit_roof(l))
+   call RANDOM_NUMBER(rnum)
+
+   if (this%tree_elaisai_per_uroad(l) > 1e-6_r8) then
+      !Eq. 15 in Krayenhoff et al. 2020
+      !Use LAI per road area between buildings, which is what used in the Krayenhoff et al. 2020 paper.
+      omega=-1.0_r8 / (0.5_r8 * this%tree_elaisai_per_uroad(l) ) * log(1.0_r8 - lun%wtroad_tree(l) * &
+            (1.0_r8 - exp(-0.5_r8 * this%tree_elaisai_per_uroad(l)/lun%wtroad_tree(l))))
+   else
+      omega = 0._r8
+   endif            
+
+   dray=0.05_r8*min(min(dzcan,wcan),wbui)/dzcan
+
+   ! TODO: when tree lai and tree height are both 0, the lad should be 0, and A_v1 and A_v2 should be 0?
+   if (this%tree_elaisai_per_uroad(l) > 1e-6_r8) then
+      if ((lun%tree_bht_urb(l)+lun%tree_tht_urb(l))<= lun%ht_roof(l)) then
+         ! LAD is in respect to the realistic tree span, not the roof height
+         ! corrected
+         ! confirm: corrected the lun%A_v1(l) formula
+         lad(1)=max(this%tree_elaisai_per_uroad(l)/lun%tree_tht_urb(l), 1e-6_r8)
+         ! corrected: when there is no tree above roof, lad (2) is 0
+         lad(2) = 0._r8
+         ! TODO confirm formula of A_v1 and its unit [m]?
+         ! Note: this is two-sided leaf area!
+         lun%A_v1(l)=max(wcan*lad(1)*omega(1)*lun%tree_tht_urb(l)*2._r8, 1e-6_r8)
+         lun%A_v2(l)=0._r8 
+      else if ((lun%tree_bht_urb(l)+lun%tree_tht_urb(l)) > lun%ht_roof(l)) then
+         ! confirm: corrected the lun%A_v1(l) formula
+         ! the lad in the first and second layer should be the same and should be in respect to the realistic tree span
+         lad(1)=max(this%tree_elaisai_per_uroad(l)/lun%tree_tht_urb(l), 1e-6_r8)
+         lad(2) =max(this%tree_elaisai_per_uroad(l)/lun%tree_tht_urb(l), 1e-6_r8)
+         lun%A_v1(l)=max(wcan*lad(1)*omega(1)*(lun%ht_roof(l)-lun%tree_bht_urb(l))*2._r8, 1e-6_r8)
+         lun%A_v2(l)=max(wcan*lad(2)*omega(2)*(lun%tree_bht_urb(l)+lun%tree_tht_urb(l)-lun%ht_roof(l))*2._r8, 1e-6_r8)   
+      end if  
+   else
+      lad(1) = 0.0_r8
+      lad(2) = 0.0_r8
+      lun%A_v1(l) = 0.0_r8   ! Floor only 
+      lun%A_v2(l) = 0.0_r8
+   end if
+   ! These are unused but keep for now:
+   lads=lad  ! for shortwave calcs (usually equal to "lad")
+   ladl=lad  ! lfor longwave calcs (usually equal to "lad")
+   
+   wtroad_tree=lun%wtroad_tree(l)
+   h1=lun%tree_bht_urb(l)
+   h2=lun%tree_tht_urb(l)
+   
+   ! calculate view factor
+   ! checked the input sequence
+   call montecarlo_view_factors(nzcanm,dzcan,wcan,wbui,&
+         wtroad_tree,lad,lads,ladl,this%tree_elaisai_per_uroad(l),omega,ss_in,pb_in,dray,maxind,&
+                  maxbhind,nrays,nsky,hsky,h1,h2,&
+                  fww1d,fvv1d,fwv1d,fvw1d,fwr1d,frw1d,fvr1d,&
+                  frv1d,fwg1d,fgw1d,fgv1d,fsw1d,fvg1d,fsg1d,fsr1d,&
+                  fsv1d,kww1d,kvv1d,kwv1d,kvw1d,kwr1d,krw1d,kvr1d,&
+                  krv1d,kwg1d,kgw1d,kgv1d,ksw1d,kvg1d,ksg1d,ksr1d,&
+                  ksv1d,kws1d,kvs1d,kts1d,krs1d,fws1d,fvs1d,fts1d,frs1d,&
+                  vfww_f,vfvv_f,vfwv_f,vfvw_f,vfwr_f,vfrw_f,vfvr_f,&
+                  vfrv_f,vfwt_f,vftw_f,vftv_f,vfsw_f,vfvt_f,vfst_f,vfsr_f,&
+                  vfsv_f,vfww_k,vfvv_k,vfwv_k,vfvw_k,vfwr_k,vfrw_k,vfvr_k,&
+                  vfrv_k,vfwt_k,vftw_k,vftv_k,vfsw_k,vfvt_k,vfst_k,vfsr_k,&
+                  vfsv_k,svfw_k,svfv_k,svft_k,svfr_k,svfw_f,svfv_f,svft_f,svfr_f,l)
+   this%fww1d_out(l,:,:)      = fww1d(:,:)
+   this%fvv1d_out(l,:,:)      = fvv1d(:,:)
+   this%fwv1d_out(l,:,:)      = fwv1d(:,:)
+   this%fvw1d_out(l,:,:)      = fvw1d(:,:)
+   this%fwr1d_out(l,:,:)      = fwr1d(:,:)
+   this%frw1d_out(l,:,:)      = frw1d(:,:)
+   this%fvr1d_out(l,:,:)      = fvr1d(:,:)
+   this%frv1d_out(l,:,:)      = frv1d(:,:)
+   
+   this%fwg1d_out(l,:)      = fwg1d(:)
+   this%fgw1d_out(l,:)      = fgw1d(:)
+   this%fgv1d_out(l,:)      = fgv1d(:)
+   this%fsw1d_out(l,:)      = fsw1d(:)
+   this%fvg1d_out(l,:)      = fvg1d(:)
+   this%fsr1d_out(l,:)      = fsr1d(:)
+   this%fsv1d_out(l,:)      = fsv1d(:)
+   this%fws1d_out(l,:)      = fws1d(:)
+   this%fvs1d_out(l,:)      = fvs1d(:)
+   this%frs1d_out(l,:)      = frs1d(:) 
+   this%fsg1d_out(l)        = fsg1d
+   this%fts1d_out(l)        = fts1d        
+   
+   this%kww1d_out(l,:,:)      = kww1d(:,:)
+   this%kvv1d_out(l,:,:)      = kvv1d(:,:)
+   this%kwv1d_out(l,:,:)      = kwv1d(:,:)
+   this%kvw1d_out(l,:,:)      = kvw1d(:,:)
+   this%kwr1d_out(l,:,:)      = kwr1d(:,:)
+   this%krw1d_out(l,:,:)      = krw1d(:,:)
+   this%kvr1d_out(l,:,:)      = kvr1d(:,:)
+   this%krv1d_out(l,:,:)      = krv1d(:,:)
+   
+   this%kwg1d_out(l,:)      = kwg1d(:)
+   this%kgw1d_out(l,:)      = kgw1d(:)
+   this%kgv1d_out(l,:)      = kgv1d(:)
+   this%ksw1d_out(l,:)      = ksw1d(:)
+   this%kvg1d_out(l,:)      = kvg1d(:)
+   this%ksr1d_out(l,:)      = ksr1d(:)
+   this%ksv1d_out(l,:)      = ksv1d(:)
+   this%kws1d_out(l,:)      = kws1d(:)
+   this%kvs1d_out(l,:)      = kvs1d(:)
+   this%krs1d_out(l,:)      = krs1d(:) 
+   this%ksg1d_out(l)        = ksg1d
+   this%kts1d_out(l)        = kts1d   
+   
+   this%vfww_f_out(l,:,:)      = vfww_f(:,:)
+   this%vfvv_f_out(l,:,:)      = vfvv_f(:,:)
+   this%vfwv_f_out(l,:,:)      = vfwv_f(:,:)
+   this%vfvw_f_out(l,:,:)      = vfvw_f(:,:)
+   this%vfwr_f_out(l,:,:)      = vfwr_f(:,:)
+   this%vfrw_f_out(l,:,:)      = vfrw_f(:,:)
+   this%vfvr_f_out(l,:,:)      = vfvr_f(:,:)
+   this%vfrv_f_out(l,:,:)      = vfrv_f(:,:)
+   this%vfwt_f_out(l,:)        = vfwt_f(:)
+   this%vftw_f_out(l,:)        = vftw_f(:)
+   this%vftv_f_out(l,:)        = vftv_f(:)
+   this%vfvt_f_out(l,:)        = vfvt_f(:)
+   this%vfsw_f_out(l,:)        = vfsw_f(:)
+   this%vfsr_f_out(l,:)        = vfsr_f(:)
+   this%vfsv_f_out(l,:)        = vfsv_f(:)
+   this%vfst_f_out(l)          = vfst_f
+   
+
+   this%vfww_k_out(l,:,:)      = vfww_k(:,:)
+   this%vfvv_k_out(l,:,:)      = vfvv_k(:,:)
+   this%vfwv_k_out(l,:,:)      = vfwv_k(:,:)
+   this%vfvw_k_out(l,:,:)      = vfvw_k(:,:)
+   this%vfwr_k_out(l,:,:)      = vfwr_k(:,:)
+   this%vfrw_k_out(l,:,:)      = vfrw_k(:,:)
+   this%vfvr_k_out(l,:,:)      = vfvr_k(:,:)
+   this%vfrv_k_out(l,:,:)      = vfrv_k(:,:)
+   this%vfwt_k_out(l,:)        = vfwt_k(:)
+   this%vftw_k_out(l,:)        = vftw_k(:)
+   this%vftv_k_out(l,:)        = vftv_k(:)
+   this%vfvt_k_out(l,:)        = vfvt_k(:)
+   this%vfsw_k_out(l,:)        = vfsw_k(:)
+   this%vfsr_k_out(l,:)        = vfsr_k(:)
+   this%vfsv_k_out(l,:)        = vfsv_k(:)
+   this%vfst_k_out(l)          = vfst_k
+
+   this%svfw_f_out(l,:)        = svfw_f(:)
+   this%svfv_f_out(l,:)        = svfv_f(:)
+   this%svfr_f_out(l,:)        = svfr_f(:)
+   this%svfw_k_out(l,:)        = svfw_k(:)
+   this%svfv_k_out(l,:)        = svfv_k(:)
+   this%svfr_k_out(l,:)        = svfr_k(:)
+
+   this%svft_f_out(l)          = svft_f
+   this%svft_k_out(l)          = svft_k
+
+  end subroutine ComputeViewFactors
+
+  !-----------------------------------------------------------------------
+  subroutine ComputeUrbanRoughness(this, l)
+    !
+    ! !DESCRIPTION:
+    ! Compute the aerodynamic displacement height (z_d_town) and roughness
+    ! length (z_0_town) for one urban landunit l, following Macdonald (1998)
+    ! as used in Grimmond and Oke (1999), including the tree effect via the
+    ! (already interpolated) urban tree LAI (this%tree_elaisai_per_uroad).
+    !
+    ! !USES:
+    use clm_varctl , only : use_vancouver, use_mexicocity
+    use clm_varcon , only : vkc
+    !
+    ! !ARGUMENTS:
+    class(urbanparams_type) , intent(inout) :: this
+    integer                 , intent(in)    :: l     ! landunit index
+    !
+    ! !LOCAL VARIABLES:
+    real(r8), parameter :: alpha = 4.43_r8 ! coefficient used to calculate z_d_town
+    real(r8), parameter :: beta = 1.0_r8   ! coefficient used to calculate z_d_town
+    real(r8), parameter :: C_d = 1.2_r8    ! drag coefficient as used in Grimmond and Oke (1999)
+    real(r8)            :: k_opt   ! canopy light extinction parameter
+    real(r8)            :: p_2d    ! optical porosity (direct beam transmission through canopy)
+    real(r8)            :: p_3d    ! volumetric/aerodynamic porosity
+    real(r8)            :: A_pv    ! tree plan area
+    real(r8)            :: A_pb    ! building plan area
+    real(r8)            :: A_tot    ! total plan area
+    real(r8)            :: r_tree  ! tree radius
+    real(r8)            :: ht_tree  ! tree height
+    real(r8)            :: bv_drag_ratio    ! ratio between vegetation drag CDv and building drag CDb
+    ! TODO: confirm the usage of sheltered vs unsheltered frontal area of building and tree
+    real(r8)            :: frontal_b_unsh ! unsheltered frontal area of building
+    real(r8)            :: frontal_v_unsh ! unsheltered frontal area of tree
+    real(r8)            :: frontal_b ! sheltered frontal area of building
+    real(r8)            :: frontal_v ! sheltered frontal area of tree
+    real(r8)            :: plan_ai_eff ! effective plan area index
+    !-----------------------------------------------------------------------
+   ! Calculate displacement heightt
+   if (use_vancouver) then
+      lun%z_d_town(l) = 3.5_r8
+   else if (use_mexicocity) then
+      lun%z_d_town(l) = 10.9_r8
+   else
+      ! The same assumption as in UT&C
+      r_tree=0.25_r8*lun%wtroad_tree(l)*lun%ht_roof(l)/lun%canyon_hwr(l)
+      ! corrected tree height 
+      ht_tree=lun%tree_bht_urb(l)+lun%tree_tht_urb(l)
+      k_opt=0.5_r8
+      ! Doublecheck: here I think we should use tree_elaisai_per_uroad(l)
+      p_2d=exp(-k_opt*this%tree_elaisai_per_uroad(l))
+      p_3d=p_2d**0.4_r8
+      A_pv=4.0_r8*r_tree
+      A_pb=lun%ht_roof(l)/lun%canyon_hwr(l)*lun%wtlunit_roof(l)/(1-lun%wtlunit_roof(l))
+      A_tot=A_pb+lun%ht_roof(l)/lun%canyon_hwr(l)
+      bv_drag_ratio = (-1.251_r8*p_3d**2_r8+0.489_r8*p_3d+0.803_r8)/C_d
+      ! corrected the building height variable
+      lun%ht_can_eff(l) = (lun%ht_roof(l)*A_pb+ht_tree*(1.0_r8-p_3d)*A_pv)/(A_pb+(1.0_r8-p_3d)*A_pv)
+
+   ! The unsheltered and actual frontal area may be swaped in Meili's SI
+      ! I *think* unsheltered fromtal area is the part above z-zd, and actual frontal area is ht_roof
+      ! there is no need to calculate the unsheltered frontal area but I'll keep them for now
+      ! It's best to confirm with Kent and Meili about the definition of unsheltered and actual frontal area.
+      plan_ai_eff = (A_pb+(1.0_r8-p_3d)*A_pv)/A_tot
+      lun%z_d_town(l) = (1._r8 + alpha**(-plan_ai_eff) * (plan_ai_eff - 1._r8)) * lun%ht_can_eff(l)
+
+      ! I think the frontal area of tree can also be adjusted
+      frontal_b = lun%ht_can_eff(l)
+      frontal_v = 2_r8 * r_tree
+
+      frontal_b_unsh = frontal_b * (lun%ht_can_eff(l) - lun%z_d_town(l))/lun%ht_can_eff(l)
+      frontal_v_unsh = frontal_b * (lun%ht_can_eff(l) - lun%z_d_town(l))/lun%ht_can_eff(l)
+   
+      !write (6,'(A,I5)') '-------------------(l):before frontal_b------------------- ', l
+      !write (6,'(A,I5)') '-------------------time step----------------- ', get_nstep()
+      !write (6,'(A,1X,*(F12.5,1X))') 'A_pb, bv_drag_ratio ', A_pb, bv_drag_ratio
+      !write (6,'(A,1X,*(F12.5,1X))') 'ht_tree, A_pv ', ht_tree, A_pv
+      !write (6,'(A,1X,*(F12.5,1X))') 'lun%wtlunit_roof(l), A_pb ', lun%wtlunit_roof(l), A_pb
+      !write (6,'(A,1X,*(F12.5,1X))') 'frontal_b_unsh, frontal_v_unsh ', frontal_b_unsh, frontal_v_unsh
+      !write (6,'(A,1X,*(F12.5,1X))') 'lun%ht_can_eff(l), lun%z_d_town(l) ', lun%ht_can_eff(l), lun%z_d_town(l)
+
+            
+   end if
+
+   ! Calculate the roughness length
+   if (use_vancouver) then
+      lun%z_0_town(l) = 0.35_r8
+   else if (use_mexicocity) then
+      lun%z_0_town(l) = 2.2_r8
+   else
+      lun%z_0_town(l) = lun%ht_can_eff(l) * (1._r8 - lun%z_d_town(l) / lun%ht_can_eff(l)) * &
+         exp(-(1/(vkc**2)*0.5_r8*beta*C_d*(1.0_r8 - lun%z_d_town(l)/lun%ht_can_eff(l))*(frontal_b+bv_drag_ratio*frontal_v)/A_tot)**(-0.5_r8))
+   end if
+
+   this%z_d_town_out(l)=lun%z_d_town(l)
+   this%z_0_town_out(l)=lun%z_0_town(l)
+  end subroutine ComputeUrbanRoughness
+
+  !-----------------------------------------------------------------------
+  subroutine UrbanPhenology(bounds, num_urbantreep, filter_urbantreep, urbanparams_inst, &
+       canopystate_inst, waterdiagnosticbulk_inst)
+    !
+    ! !DESCRIPTION:
+    ! Time-interpolate the prescribed monthly urban road-tree LAI
+    ! (lun%tree_lai_urb_monthly) to the current date and update the
+    ! per-vegetation-area and per-road-area tree LAI (tree_lai_per_vega,
+    ! tree_elaisai_per_uroad). Intended to be called every month or every week (decide later) so the urban
+    ! tree LAI follows its seasonal cycle, analogous to SatellitePhenology for
+    ! natural vegetation. Monthly values are treated as valid at mid-month.
+    !
+    ! !USES:
+    use pftconMod               , only : noveg, nbrdlf_dcd_brl_shrub
+    use PatchType               , only : patch
+    use CanopyStateType         , only : canopystate_type
+    use WaterDiagnosticBulkType , only : waterdiagnosticbulk_type
+    !
+    ! !ARGUMENTS:
+    type(bounds_type)              , intent(in)    :: bounds
+    integer                        , intent(in)    :: num_urbantreep       ! number of urban tree patches in filter
+    integer                        , intent(in)    :: filter_urbantreep(:) ! urban tree patch filter
+    type(urbanparams_type)         , intent(inout) :: urbanparams_inst
+    type(canopystate_type)         , intent(inout) :: canopystate_inst
+    type(waterdiagnosticbulk_type) , intent(in)    :: waterdiagnosticbulk_inst
+    !
+    ! !LOCAL VARIABLES:
+    integer  :: f                     ! filter index
+    integer  :: p, c               ! patch, column, gridcell indices
+    integer  :: l                     ! landunit index
+    integer  :: months(2)             ! the two months to interpolate between (1-12)
+    real(r8) :: timwt(2)              ! interpolation weights (sum to 1)
+    real(r8) :: ol                    ! thickness of canopy layer covered by snow (m)
+    real(r8) :: fb                    ! fraction of canopy layer covered by snow
+    !-----------------------------------------------------------------------
+
+    associate(                                             &
+         tree_lai_urb_monthly => lun%tree_lai_urb_monthly, & ! Input:  [real(r8) (:,:)] monthly LAI of road tree (m2/m2)
+         wtroad_tree          => lun%wtroad_tree         , & ! Input:  [real(r8) (:)  ] weight of road tree column to total road
+         tree_lai_per_vega    => urbanparams_inst%tree_lai_per_vega  , & ! Output: [real(r8) (:)  ] interpolated LAI per vegetation area
+         tree_elaisai_per_uroad   => urbanparams_inst%tree_elaisai_per_uroad   ,& ! Output: [real(r8) (:)  ] interpolated LAI per road area
+         h1            => lun%tree_bht_urb                      , & ! Input:  [real(r8) (:)   ]  the height of of tree crown base
+         h2            => lun%tree_tht_urb                       , & ! Input:  [real(r8) (:)   ]  the depth of of tree crown    
+         frac_sno           => waterdiagnosticbulk_inst%frac_sno_col   , & ! Input:  [real(r8) (:) ] fraction of ground covered by snow (0 to 1)
+         snow_depth         => waterdiagnosticbulk_inst%snow_depth_col , & ! Input:  [real(r8) (:) ] snow height (m)
+         tlai               => canopystate_inst%tlai_patch    ,          & ! Output: [real(r8) (:) ] one-sided leaf area index, no burying by snow
+         tsai               => canopystate_inst%tsai_patch    ,          & ! Output: [real(r8) (:) ] one-sided stem area index, no burying by snow
+         elai               => canopystate_inst%elai_patch    ,          & ! Output: [real(r8) (:) ] one-sided leaf area index with burying by snow
+         esai               => canopystate_inst%esai_patch    ,          & ! Output: [real(r8) (:) ] one-sided stem area index with burying by snow
+         htop               => canopystate_inst%htop_patch    ,          & ! Output: [real(r8) (:) ] canopy top (m)
+         hbot               => canopystate_inst%hbot_patch    ,          & ! Output: [real(r8) (:) ] canopy bottom (m)
+         frac_veg_nosno_alb => canopystate_inst%frac_veg_nosno_alb_patch & ! Output: [integer  (:) ] fraction of vegetation not covered by snow (0 OR 1) [-]
+         )
+
+      ! Bracketing months and interpolation weights for the upcoming time step.
+      ! These depend only on the date, so compute them once for all landunits.
+      call GetMonthlyInterpWeights(next_time_step=.true., months=months, timwt=timwt)
+
+      do f = 1, num_urbantreep
+         p = filter_urbantreep(f)
+         c = patch%column(p)
+         l = patch%landunit(p)
+
+         ! urbanparams has a guardian statement to makesure the tree_lai_urb_monthly=0 when wtroad_tree(l)/h1(l) is too small
+         tree_lai_per_vega(l)  = timwt(1)*tree_lai_urb_monthly(l,months(1)) &
+                                 + timwt(2)*tree_lai_urb_monthly(l,months(2))
+
+         ! Discuss this threshold; whether to apply it for urban trees
+         if (tree_lai_per_vega(l) < 0.05_r8) then
+            tree_lai_per_vega(l) = 0._r8
+            tlai(p) = 0.0_r8
+            tsai(p) = 0.0_r8
+         else
+            tsai(p) = 0.1_r8
+            tlai(p) = tree_lai_per_vega(l) ! LAI per tree area (vegetated area)
+         end if
+
+         htop(p) =  h1(l) + h2(l)
+         hbot(p) =  h1(l)
+      
+         if ((tree_lai_per_vega(l) > 0.0_r8) .and. (hbot(p)< 0.1_r8)) then
+            write (iulog,*) 'The bottom of tree crown should be higher than 0.1 when tree exist. tree crown bottom height, tree LAI =',hbot(p),tree_lai_per_vega(l)
+            write (iulog,*) 'clm model is stopping'
+            call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
+         end if
+
+        ! adjust lai and sai for burying by snow. if exposed lai and sai
+         ! are less than 0.05, set equal to zero to prevent numerical
+         ! problems associated with very small lai and sai.
+
+         ! snow burial fraction for short vegetation (e.g. grasses, crops) changes with vegetation height
+         ! accounts for a 20% bending factor, as used in Lombardozzi et al. (2018) GRL 45(18), 9889-9897
+
+         ! NOTE: The following snow burial code is duplicated in CNVegStructUpdateMod.
+         ! Changes in one place should be accompanied by similar changes in the other.
+
+         if (patch%itype(p) > noveg .and. patch%itype(p) <= nbrdlf_dcd_brl_shrub ) then
+            ol = min( max(snow_depth(c)-hbot(p), 0._r8), htop(p)-hbot(p))
+            fb = 1._r8 - ol / max(1.e-06_r8, htop(p)-hbot(p))
+         else
+            fb = 1._r8 - (max(min(snow_depth(c),max(0.05_r8,htop(p)*0.8_r8)),0._r8)/(max(0.05_r8,htop(p)*0.8_r8)))
+         endif
+
+         ! area weight by snow covered fraction
+         ! Not we do this no matter what use_fates_sp is
+         ! if(.not.use_fates_sp)then
+
+         ! Do not set these in FATES_SP mode as they turn on the 'vegsol' filter and also
+         ! are duplicated by the FATE variables (in the FATES IFP indexing space)
+         elai(p) = max(tlai(p)*(1.0_r8 - frac_sno(c)) + tlai(p)*fb*frac_sno(c), 0.0_r8)
+         esai(p) = max(tsai(p)*(1.0_r8 - frac_sno(c)) + tsai(p)*fb*frac_sno(c), 0.0_r8)
+
+         ! when tlai < 0.05, elai is always < 0.05 and set to 0 
+         if (elai(p) < 0.05_r8) elai(p) = 0._r8
+         if (esai(p) < 0.05_r8) esai(p) = 0._r8
+
+         tree_elaisai_per_uroad(l) = (elai(p) + esai(p))*wtroad_tree(l)
+         ! Fraction of vegetation free of snow
+
+         if ((elai(p) + esai(p)) >= 0.05_r8) then
+            frac_veg_nosno_alb(p) = 1
+         else
+            frac_veg_nosno_alb(p) = 0
+         end if
+
+         ! The urban tree LAI (tree_elaisai_per_uroad) has just been updated, so
+         ! recompute the radiative view factors and the aerodynamic parameters
+         ! (displacement height, roughness length) for this landunit, both of
+         ! which depend on the tree LAI.
+         call ComputeViewFactors(urbanparams_inst, l)
+         call ComputeUrbanRoughness(urbanparams_inst, l)
+      end do
+
+    end associate
+
+  end subroutine UrbanPhenology
+  !-----------------------------------------------------------------------
+  subroutine GetMonthlyInterpWeights(next_time_step, months, timwt)
+    !
+    ! !DESCRIPTION:
+    ! Compute the two bracketing months and their linear time-interpolation
+    ! weights for mid-month-anchored monthly data, following the scheme in
+    ! SatellitePhenologyMod. Monthly values are treated as valid at mid-month.
+    ! If next_time_step is .true., the weights/months are for the end of the
+    ! current time step (nstep+1); otherwise for the current date.
+    !
+    ! !USES:
+    use clm_time_manager , only : get_curr_date, get_step_size_real
+    !
+    ! !ARGUMENTS:
+    logical , intent(in)  :: next_time_step  ! .true. => offset by one time step
+    integer , intent(out) :: months(2)       ! the two months to interpolate between (1-12)
+    real(r8), intent(out) :: timwt(2)         ! interpolation weights (sum to 1)
+    !
+    ! !LOCAL VARIABLES:
+    integer  :: kyr, kmo, kda, ksec   ! year, month, day, seconds of current date
+    integer  :: it(2)                 ! bracketing month offsets (0/1 and 1/2)
+    real(r8) :: t                     ! fractional position through current month
+    real(r8) :: dtime                 ! land model time step (s)
+    integer, parameter :: ndaypm(12) = &
+         (/31,28,31,30,31,30,31,31,30,31,30,31/) ! days per month
+    !-----------------------------------------------------------------------
+
+    if (next_time_step) then
+       dtime = get_step_size_real()
+       call get_curr_date(kyr, kmo, kda, ksec, offset=int(dtime))
+    else
+       call get_curr_date(kyr, kmo, kda, ksec)
+    end if
+
+    ! Fractional position through the current month, measured at mid-day
+    t = (kda-0.5_r8) / ndaypm(kmo)
+    ! if t < 0.5, it(1)=0 (first half of month); otherwise it(1)=1
+    it(1) = t + 0.5_r8
+    it(2) = it(1) + 1
+    ! months(1) and months(2) are the two months to interpolate between
+    months(1) = kmo + it(1) - 1
+    months(2) = kmo + it(2) - 1
+    if (months(1) <  1) months(1) = 12
+    if (months(2) > 12) months(2) = 1
+    ! two linear interpolation weights (always summing to 1)
+    timwt(1) = (it(1)+0.5_r8) - t
+    timwt(2) = 1._r8 - timwt(1)
+
+  end subroutine GetMonthlyInterpWeights
+
+  !-----------------------------------------------------------------------
   subroutine UrbanInput(begg, endg, mode)
     !
     ! !DESCRIPTION: 
     ! Allocate memory and read in urban input data
     !
     ! !USES:
-    use clm_varpar      , only : numrad, nlevurb
+    use clm_varpar      , only : numrad, nlevurb, nmonth
     use landunit_varcon , only : numurbl
     use fileutils       , only : getavu, relavu, getfil, opnfil
     use spmdMod         , only : masterproc
     use domainMod       , only : ldomain
-    use ncdio_pio       , only : file_desc_t, ncd_io, ncd_inqvdlen, ncd_inqfdims 
+    use ncdio_pio       , only : file_desc_t, ncd_io, ncd_inqvdlen, ncd_inqfdims
     use ncdio_pio       , only : ncd_pio_openfile, ncd_pio_closefile, ncd_inqdid, ncd_inqdlen
+    use shr_infnan_mod  , only : nan => shr_infnan_nan, assignment(=)
     !
     ! !ARGUMENTS:
     implicit none
@@ -1080,6 +1331,8 @@ contains
     type(file_desc_t)  :: ncid       ! netcdf id
     integer :: dimid                 ! netCDF id
     integer :: nw,n,k,i,j,ni,nj,ns   ! indices
+    real(r8), pointer :: tree_lai_urb_1mon(:,:) ! single-month slice of TREE_LAI_URB [gridcell, numurbl]
+                                                ! (pointer, not allocatable: ncd_io's 2d dummy is a pointer)
     integer :: nlevurb_i             ! input grid: number of urban vertical levels
     integer :: numrad_i              ! input grid: number of solar bands (VIS/NIR)
     integer :: numurbl_i             ! input grid: number of urban landunits
@@ -1122,7 +1375,8 @@ contains
        ! Allocate dynamic memory
 !-------------------[kz.7]Ray tracing test-------------------------     
        allocate(urbinp%canyon_hwr(begg:endg, numurbl), &  
-                urbinp%tree_lai_urb(begg:endg, numurbl), &  
+                urbinp%tree_lai_urb(begg:endg, numurbl, nmonth), &
+                urbinp%tree_pft_urb(begg:endg, numurbl), &
                 urbinp%wtroad_tree(begg:endg, numurbl), &     
                 urbinp%tree_bht_urb(begg:endg, numurbl), &     
                 urbinp%tree_tht_urb(begg:endg, numurbl), &     
@@ -1165,6 +1419,11 @@ contains
           call endrun(msg="Allocation error "//errmsg(sourcefile, __LINE__))
        endif
 
+       ! TREE_LAI_URB is read one month at a time below (it has a record dimension on
+       ! the fsurdat file). Initialize to nan so that a month that never gets filled
+       ! shows up immediately rather than being silently used as whatever was in memory.
+       urbinp%tree_lai_urb(:,:,:) = nan
+
        call ncd_inqfdims (ncid, isgrid2d, ni, nj, ns)
        if (ldomain%ns /= ns .or. ldomain%ni /= ni .or. ldomain%nj /= nj) then
           write(iulog,*)trim(subname), 'ldomain and input file do not match dims '
@@ -1197,10 +1456,31 @@ contains
           call endrun(msg=errmsg(sourcefile, __LINE__))
        endif
 !-------------------[kz.8]Ray tracing test-------------------------
-       call ncd_io(ncid=ncid, varname='TREE_LAI_URB', flag='read', data=urbinp%tree_lai_urb,&
+       ! TREE_LAI_URB is dimensioned (time, numurbl, lat, lon) on the fsurdat file, with
+       ! time as the record dimension. Record variables must be read one slice at a time
+       ! with an explicit nt index - a single call without nt fills only the first month
+       ! and leaves the rest untouched. This follows the MONTHLY_LAI read in
+       ! SatellitePhenologyMod.
+       allocate(tree_lai_urb_1mon(begg:endg, numurbl), stat=ier)
+       if (ier /= 0) then
+          call endrun(msg="Allocation error "//errmsg(sourcefile, __LINE__))
+       endif
+
+       do k = 1, nmonth
+          call ncd_io(ncid=ncid, varname='TREE_LAI_URB', flag='read', data=tree_lai_urb_1mon,&
+              dim1name=grlnd, nt=k, readvar=readvar)
+          if (.not. readvar) then
+            call endrun( msg='ERROR: TREE_LAI_URB NOT on fsurdat file '//errmsg(sourcefile, __LINE__))
+          end if
+          urbinp%tree_lai_urb(begg:endg, :, k) = tree_lai_urb_1mon(begg:endg, :)
+       end do
+
+       deallocate(tree_lai_urb_1mon)
+
+       call ncd_io(ncid=ncid, varname='TREE_PFT_URB', flag='read', data=urbinp%tree_pft_urb,&
            dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
-         call endrun( msg='ERROR: TREE_LAI_URB NOT on fsurdat file '//errmsg(sourcefile, __LINE__))
+         call endrun( msg='ERROR: TREE_PFT_URB NOT on fsurdat file '//errmsg(sourcefile, __LINE__))
        end if
 
        call ncd_io(ncid=ncid, varname='TREE_BHT_URB', flag='read', data=urbinp%tree_bht_urb,&
@@ -1431,6 +1711,7 @@ contains
        deallocate(urbinp%canyon_hwr, &
 !-------------------[kz.9]Ray tracing test-------------------------        
                   urbinp%tree_lai_urb, &     
+                  urbinp%tree_pft_urb, &    
                   urbinp%wtroad_tree, & 
                   urbinp%tree_bht_urb, &    
                   urbinp%tree_tht_urb, &     
@@ -1513,12 +1794,13 @@ contains
              if ( .not. urban_valid(nl) .or. &
                   urbinp%canyon_hwr(nl,n)            <= 0._r8 .or. &
 !-------------------[kz.10]Ray tracing test-------------------------                    
-                  urbinp%tree_lai_urb(nl,n)                   < 0._r8 .or. &
+                  any(urbinp%tree_lai_urb(nl,n,:)             < 0._r8) .or. &
+                  ! note that urban tree pft cannot be 0
+                  urbinp%tree_pft_urb(nl,n)              <= 0 .or. &   
                   urbinp%wtroad_tree(nl,n)              < 0._r8 .or. &   
                   urbinp%tree_bht_urb(nl,n)              < 0._r8 .or. &   
                   urbinp%tree_tht_urb(nl,n)              < 0._r8 .or. &   
 !-------------------[kz.10]Ray tracing test-------------------------                                     
-                  urbinp%em_improad(nl,n)            <= 0._r8 .or. &
                   urbinp%em_perroad(nl,n)            <= 0._r8 .or. &
                   urbinp%em_tree_urb(nl,n)            <= 0._r8 .or. &
                   urbinp%em_roof(nl,n)               <= 0._r8 .or. &
@@ -1573,7 +1855,8 @@ contains
        write(iulog,*)'urban_valid:     ',urban_valid(nindx)
        write(iulog,*)'canyon_hwr:      ',urbinp%canyon_hwr(nindx,dindx)
 !-------------------[kz.11]Ray tracing test-------------------------         
-       write(iulog,*)'tree_lai_urb:             ',urbinp%tree_lai_urb(nindx,dindx)
+       write(iulog,*)'tree_lai_urb:             ',urbinp%tree_lai_urb(nindx,dindx,:)
+        write(iulog,*)'tree_pft_urb:             ',urbinp%tree_pft_urb(nindx,dindx)
        write(iulog,*)'wtroad_tree:        ',urbinp%wtroad_tree(nindx,dindx)   
        write(iulog,*)'tree_bht_urb:        ',urbinp%tree_bht_urb(nindx,dindx)   
        write(iulog,*)'tree_tht_urb:        ',urbinp%tree_tht_urb(nindx,dindx)   
@@ -1621,7 +1904,7 @@ contains
 
   !----------------------------------------------------------------------- 
   subroutine montecarlo_view_factors(nzcanm,dzcan,wcan,wbui,&
-      wtroad_tree,lad,lads,ladl,omega,ss,pb,dray,maxind,maxbhind,n,nsky,hsky,h1,h2,&
+      wtroad_tree,lad,lads,ladl,lai,omega,ss,pb,dray,maxind,maxbhind,n,nsky,hsky,h1,h2,&
       fww1d,fvv1d,fwv1d,fvw1d,fwr1d,frw1d,fvr1d,frv1d,fwg1d,fgw1d,fgv1d,fsw1d,fvg1d,fsg1d,fsr1d,&
       fsv1d,kww1d,kvv1d,kwv1d,kvw1d,kwr1d,krw1d,kvr1d,krv1d,kwg1d,kgw1d,kgv1d,ksw1d,kvg1d,ksg1d,ksr1d,&
       ksv1d,kws1d,kvs1d,kts1d,krs1d,fws1d,fvs1d,fts1d,frs1d,vfww_f,vfvv_f,vfwv_f,vfvw_f,vfwr_f,vfrw_f,vfvr_f,&
@@ -1643,6 +1926,7 @@ contains
     real(r8)        , intent(in) :: wtroad_tree       ! Fraction of canyon-floor/road area occupied or covered by tree canopy [-]
     real(r8)        , intent(in) :: lad(nzcanm)      ! In-crown LAD where foliage exists
     real(r8)        , intent(in) :: lads(nzcanm)     ! In-crown LAD where foliage exists shortwave calcs
+    real(r8)        , intent(in) :: lai     ! LAI
     real(r8)        , intent(in) :: ladl(nzcanm)     ! In-crown LAD where foliage exists longwave calcs
     real(r8)        , intent(in) :: omega(nzcanm)    ! Leaf clumping index     
     ! TODO: check if it's better to declare with nzcanm+1 
@@ -1894,8 +2178,7 @@ contains
     ! how would kbs influenced final view factor results?
     kbs_vf=1.0_r8/2.0_r8
     
-    ! if has_trees is true, all tree variables should be > 1e-6; otherwise, lad_tree should be zero.
-    if (wtroad_tree > 1e-6_r8) then
+    if (lai > 1e-6_r8) then
       lad_tree=lad/wtroad_tree
     else
       lad_tree=0.0_r8
@@ -1979,6 +2262,7 @@ contains
        ! Get xxhr, zzhr, hemi32r
        !----------------------------------------------------------------------------
        ! hemispherical distribution (for sfcs)
+       ! z2 has been flipped to be positive in the preferential reflection part; will this influence hemispherical distribution?
        if (z2 > 0._r8) then
           ! random hemispherical angles with cosine probability density (Lambert's cosine law)
           call RANDOM_NUMBER(rnum)
@@ -2650,18 +2934,18 @@ contains
        svft_f=svft
        vfst_f=vfst
 
-      write(iulog,*) '--- ray tracing ---'
-      write(iulog,*) 'A_g             = ', A_g
-      write(iulog,*) 'A_w_max             = ', A_w_max
-      write(iulog,*) 'A_v1            = ', A_v(1)
-      write(iulog,*) 'A_v2            = ', A_v(2)
-      write(iulog,*) 'A_r_max             = ', A_r_max
-      write(iulog,*) 'A_s             = ', A_s
-      write(iulog,*) 'fsg1d(l)        = ', fsg1d,vfst
-      write(iulog,*) 'fsw1d(l,1)      = ', fsw1d(1),vfsw(1)
-      write(iulog,*) 'fsr1d(l,2)         = ', fsr1d(2),vfsr(2)
-      write(iulog,*) 'fsv1d(l,1)       = ', fsv1d(1),vfsv(1)
-      write(iulog,*) 'fsv1d(l,2)       = ', fsv1d(2),vfsv(2)
+      ! write(iulog,*) '--- ray tracing ---'
+      ! write(iulog,*) 'A_g             = ', A_g
+      ! write(iulog,*) 'A_w_max             = ', A_w_max
+      ! write(iulog,*) 'A_v1            = ', A_v(1)
+      ! write(iulog,*) 'A_v2            = ', A_v(2)
+      ! write(iulog,*) 'A_r_max             = ', A_r_max
+      ! write(iulog,*) 'A_s             = ', A_s
+      ! write(iulog,*) 'fsg1d(l)        = ', fsg1d,vfst
+      ! write(iulog,*) 'fsw1d(l,1)      = ', fsw1d(1),vfsw(1)
+      ! write(iulog,*) 'fsr1d(l,2)         = ', fsr1d(2),vfsr(2)
+      ! write(iulog,*) 'fsv1d(l,1)       = ', fsv1d(1),vfsv(1)
+      ! write(iulog,*) 'fsv1d(l,2)       = ', fsv1d(2),vfsv(2)
 
        
     endif

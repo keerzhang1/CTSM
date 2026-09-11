@@ -542,6 +542,7 @@ contains
     real(r8) :: wtlunit_roof  ! weight of roof with respect to landunit
     real(r8) :: wtroad_perv   ! weight of pervious road column with respect to total road
     real(r8) :: wtroad_tree   ! weight of road tree column with respect to total road
+    integer  :: tree_pft_urb   !urban road tree PFT index from fsurdat
     integer  :: ier           ! error status 
     !------------------------------------------------------------------------
 
@@ -570,6 +571,7 @@ contains
        wtlunit_roof = urbinp%wtlunit_roof(gi,n)
        wtroad_perv  = urbinp%wtroad_perv(gi,n)
        wtroad_tree  = urbinp%wtroad_tree(gi,n)
+       tree_pft_urb  = urbinp%tree_pft_urb(gi,n)
 
        call add_landunit(li=li, gi=gi, ltype=ltype, wtgcell=wtlunit2gcell)
 
@@ -599,8 +601,12 @@ contains
           end if
 
           call add_column(ci=ci, li=li, ctype=ctype, wtlunit=wtcol2lunit)
-
-          call add_patch(pi=pi, ci=ci, ptype=noveg, wtcol=1.0_r8)
+          
+          if (ctype == icol_road_tree) then
+             call add_patch(pi=pi, ci=ci, ptype=tree_pft_urb, wtcol=1.0_r8)   
+          else
+             call add_patch(pi=pi, ci=ci, ptype=noveg, wtcol=1.0_r8)
+          end if
 
        end do   ! end of loop through urban columns-pfts
     end if

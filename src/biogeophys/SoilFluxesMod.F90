@@ -6,11 +6,8 @@ module SoilFluxesMod
   !
   ! !USES:
   use shr_kind_mod	, only : r8 => shr_kind_r8
-  use shr_log_mod	, only : errMsg => shr_log_errMsg
   use decompMod		, only : bounds_type
-  use abortutils	, only : endrun
   use perf_mod		, only : t_startf, t_stopf
-  use clm_varctl	, only : iulog
   use clm_varpar	, only : nlevsno, nlevgrnd, nlevurb
   use atm2lndType	, only : atm2lnd_type
   use CanopyStateType   , only : canopystate_type
@@ -35,7 +32,7 @@ module SoilFluxesMod
 contains
 
   !-----------------------------------------------------------------------
-  subroutine SoilFluxes (bounds, num_urbanl, filter_urbanl, &
+  subroutine SoilFluxes (bounds, &
        num_urbanp, filter_urbanp, &
        num_nolakec, filter_nolakec, num_nolakep, filter_nolakep, &
        atm2lnd_inst, solarabs_inst, temperature_inst, canopystate_inst, &
@@ -46,7 +43,7 @@ contains
     !
     ! !USES:
     use clm_time_manager , only : get_step_size_real
-    use clm_varcon       , only : hvap, cpair, grav, vkc, tfrz, sb 
+    use clm_varcon       , only : hvap, tfrz, sb
     use landunit_varcon  , only : istsoil, istcrop
     use column_varcon    , only : icol_roof, icol_sunwall, icol_shadewall, icol_road_perv, icol_road_tree
     use subgridAveMod    , only : p2c
@@ -55,8 +52,6 @@ contains
     type(bounds_type)      , intent(in)    :: bounds    
     integer                , intent(in)    :: num_nolakec                      ! number of column non-lake points in column filter
     integer                , intent(in)    :: filter_nolakec(:)                ! column filter for non-lake points
-    integer                , intent(in)    :: num_urbanl                       ! number of urban landunits in clump
-    integer                , intent(in)    :: filter_urbanl(:)                 ! urban landunit filter
     integer                , intent(in)    :: num_urbanp                       ! number of urban pfts in clump
     integer                , intent(in)    :: filter_urbanp(:)                 ! urban pft filter
     integer                , intent(in)    :: num_nolakep                      ! number of column non-lake points in pft filter
@@ -97,10 +92,9 @@ contains
          sabg_soil               => solarabs_inst%sabg_soil_patch           , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by soil (W/m**2)
          sabg_snow               => solarabs_inst%sabg_snow_patch           , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by snow (W/m**2)
          sabg                    => solarabs_inst%sabg_patch                , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by ground (W/m**2)
-
          emg                     => temperature_inst%emg_col                , & ! Input:  [real(r8) (:)   ]  ground emissivity                       
 !         emv                     => temperature_inst%emv_patch              , & ! Input:  [real(r8) (:)   ]  vegetation emissivity
-!         t_veg                   => temperature_inst%t_veg_patch            , & ! Output: [real(r8) (:)   ]  vegetation temperature (Kelvin) 
+         t_veg                   => temperature_inst%t_veg_patch            , & ! Output: [real(r8) (:)   ]  vegetation temperature (Kelvin) 
          t_skin_patch            => temperature_inst%t_skin_patch           , & ! Output: [real(r8) (:)   ]  patch skin temperature (K)
          t_h2osfc                => temperature_inst%t_h2osfc_col           , & ! Input:  [real(r8) (:)   ]  surface water temperature               
          tssbef                  => temperature_inst%t_ssbef_col            , & ! Input:  [real(r8) (:,:) ]  soil/snow temperature before update   
@@ -122,7 +116,6 @@ contains
          ulrad                   => energyflux_inst%ulrad_patch             , & ! Input:  [real(r8) (:)   ]  upward longwave radiation above the canopy [W/m2]
          cgrnds                  => energyflux_inst%cgrnds_patch            , & ! Input:  [real(r8) (:)   ]  deriv, of soil sensible heat flux wrt soil temp [w/m2/k]
          cgrndl                  => energyflux_inst%cgrndl_patch            , & ! Input:  [real(r8) (:)   ]  deriv of soil latent heat flux wrt soil temp [w/m**2/k]
-         
          qflx_evap_can           => waterfluxbulk_inst%qflx_evap_can_patch      , & ! Output: [real(r8) (:)   ]  evaporation from leaves and stems (mm H2O/s) (+ = to atm)
          qflx_evap_soi           => waterfluxbulk_inst%qflx_evap_soi_patch      , & ! Output: [real(r8) (:)   ]  soil evaporation (mm H2O/s) (+ = to atm)
          qflx_evap_veg           => waterfluxbulk_inst%qflx_evap_veg_patch      , & ! Output: [real(r8) (:)   ]  vegetation evaporation (mm H2O/s) (+ = to atm)
@@ -135,7 +128,7 @@ contains
          qflx_ev_snow            => waterfluxbulk_inst%qflx_ev_snow_patch       , & ! In/Out: [real(r8) (:)   ]  evaporation flux from snow (mm H2O/s) [+ to atm]
          qflx_ev_soil            => waterfluxbulk_inst%qflx_ev_soil_patch       , & ! In/Out: [real(r8) (:)   ]  evaporation flux from soil (mm H2O/s) [+ to atm]
          qflx_ev_h2osfc          => waterfluxbulk_inst%qflx_ev_h2osfc_patch     , & ! In/Out: [real(r8) (:)   ]  evaporation flux from soil (mm H2O/s) [+ to atm]
-         
+         lwnet_tree_perroad     => solarabs_inst%lwnet_tree_perroad_lun     , & ! Input:  [real(r8) (:) ]  net (outgoing-incoming) longwave radiation (per unit ground area), pervious road beneath the tree canopy (W/m**2)
          eflx_sh_grnd            => energyflux_inst%eflx_sh_grnd_patch      , & ! Output: [real(r8) (:)   ]  sensible heat flux from ground (W/m**2) [+ to atm]
          eflx_sh_veg             => energyflux_inst%eflx_sh_veg_patch       , & ! Output: [real(r8) (:)   ]  sensible heat flux from leaves (W/m**2) [+ to atm]
          eflx_soil_grnd          => energyflux_inst%eflx_soil_grnd_patch    , & ! Output: [real(r8) (:)   ]  soil heat flux (W/m**2) [+ = into soil] 
@@ -299,6 +292,7 @@ contains
          ! top soil layer for urban columns (excluding pervious road, which 
          ! shouldn't be limited here b/c it uses the uses the soilwater
          ! equations, while the other urban columns do not)
+
          if (lun%urbpoi(patch%landunit(p)) .and. col%itype(c)/=icol_road_perv .and. col%itype(c)/=icol_road_tree .and. j == 1) then
             evaporation_limit = (h2osoi_ice(c,j)+h2osoi_liq(c,j))/dtime
             if (qflx_evap_soi(p) > evaporation_limit) then
@@ -354,19 +348,27 @@ contains
                eflx_soil_grnd_r(p) = eflx_soil_grnd(p)
             end if
          else
-            ! For all urban columns we use the net longwave radiation (eflx_lwrad_net) since
+            ! For all urban columns we use the net longwave radiation (eflx_lwrad_net or lwnet_tree_perroad) since
             ! the term (emg*sb*tssbef(col%snl+1)**4) is not the upward longwave flux because of 
             ! interactions between urban columns.
 
             eflx_lwrad_del(p) = 4._r8*emg(c)*sb*t_grnd0(c)**3*tinc(c)
 
+            if (col%itype(c) == icol_road_tree) then
+               eflx_soil_grnd(p) = sabg(p) + dlrad(p) &
+                  - lwnet_tree_perroad(l) - eflx_lwrad_del(p) &
+                  - (eflx_sh_grnd(p) + qflx_evap_soi(p)*htvp(c)) &
+                  + eflx_wasteheat_patch(p) + eflx_heat_from_ac_patch(p) + eflx_traffic_patch(p) &
+                  + eflx_ventilation_patch(p)
+            else
             ! Include transpiration term because needed for pervious road
             ! and wasteheat and traffic flux
-            eflx_soil_grnd(p) = sabg(p) + dlrad(p) &
-                 - eflx_lwrad_net(p) - eflx_lwrad_del(p) &
-                 - (eflx_sh_grnd(p) + qflx_evap_soi(p)*htvp(c) + qflx_tran_veg(p)*hvap) &
-                 + eflx_wasteheat_patch(p) + eflx_heat_from_ac_patch(p) + eflx_traffic_patch(p) &
-                 + eflx_ventilation_patch(p)
+               eflx_soil_grnd(p) = sabg(p) + dlrad(p) &
+                  - eflx_lwrad_net(p) - eflx_lwrad_del(p) &
+                  - (eflx_sh_grnd(p) + qflx_evap_soi(p)*htvp(c) + qflx_tran_veg(p)*hvap) &
+                  + eflx_wasteheat_patch(p) + eflx_heat_from_ac_patch(p) + eflx_traffic_patch(p) &
+                  + eflx_ventilation_patch(p)
+            end if
             eflx_soil_grnd_u(p) = eflx_soil_grnd(p)
          end if
 
@@ -386,7 +388,9 @@ contains
          end if
 
          ! Variables needed by history tape
-
+         ! this inlcude urban tree now. Maybe we should seperate into 
+         ! qflx_evap_can_r and qflx_evap_can_u
+         !if (.not. lun%urbpoi(l)) then
          qflx_evap_can(p)  = qflx_evap_veg(p) - qflx_tran_veg(p)
          eflx_lh_vege(p)   = (qflx_evap_veg(p) - qflx_tran_veg(p)) * hvap
          eflx_lh_vegt(p)   = qflx_tran_veg(p) * hvap
@@ -507,9 +511,11 @@ contains
       do fp = 1, num_urbanp
          p = filter_urbanp(fp)         
          c = patch%column(p)
-         
-         t_skin_patch(p) = t_soisno(c,col%snl(c)+1)
-  
+         if (col%itype(c) == icol_road_tree) then
+            t_skin_patch(p) = t_veg(p)
+         else
+            t_skin_patch(p) = t_soisno(c,col%snl(c)+1)
+         end if
       end do
 
       call t_stopf('bgp2_loop_4')

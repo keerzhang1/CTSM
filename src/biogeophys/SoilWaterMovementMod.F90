@@ -261,7 +261,9 @@ contains
     use ColumnType        , only : col
     use SoilWaterRetentionCurveMod, only : soil_water_retention_curve_type
     use clm_varcon        , only : denh2o, denice
-    use clm_varctl,  only : use_flexibleCN   
+    use clm_varctl,  only : use_flexibleCN, iulog
+    use clm_time_manager  , only : get_nstep
+    use column_varcon     , only : icol_road_tree
     !
     ! !ARGUMENTS:
     type(bounds_type)        , intent(in)    :: bounds                ! bounds
@@ -283,7 +285,8 @@ contains
     real(r8) :: xs(bounds%begc:bounds%endc)                !excess soil water above urban ponding limit
     real(r8) :: watmin
     integer  :: fc, c, j
-    
+    integer  :: nstep                                      ! time step number (for debug prints)
+
     !------------------------------------------------------------------------------
 
     associate(                                                         &
@@ -293,6 +296,24 @@ contains
       h2osoi_vol         =>    waterstatebulk_inst%h2osoi_vol_col        , & ! Output: [real(r8) (:,:) ] liquid water (kg/m2)
       h2osoi_liq         =>    waterstatebulk_inst%h2osoi_liq_col          & ! Output: [real(r8) (:,:) ] liquid water (kg/m2)
     )      
+
+    nstep = get_nstep()
+
+   !  ! Debug: inputs to the Richards solve for urban tree columns (once per step,
+   !  ! before the solve) - shows the transpiration sink and infiltration BC that
+   !  ! drive h2osoi_liq.
+   !  do fc = 1, num_hydrologyc
+   !     c = filter_hydrologyc(fc)
+   !     if (col%itype(c) == icol_road_tree) then
+   !        write(iulog,*) 'TREE SoilWater IN  nstep=',nstep,' c=',c, &
+   !             ' qflx_infl=',waterfluxbulk_inst%qflx_infl_col(c), &
+   !             ' qflx_tran_veg_col=',waterfluxbulk_inst%qflx_tran_veg_col(c)
+   !        write(iulog,*) '  qflx_rootsoi =',waterfluxbulk_inst%qflx_rootsoi_col(c,1:nlevsoi)
+   !        write(iulog,*) '  h2osoi_liq IN=',h2osoi_liq(c,1:nlevsoi)
+   !        write(iulog,*) '  watsat       =',soilstate_inst%watsat_col(c,1:nlevsoi)
+   !        write(iulog,*) '  dz           =',dz(c,1:nlevsoi)
+   !     end if
+   !  end do
 
     select case(soilwater_movement_method)
 
@@ -324,9 +345,18 @@ contains
 
     case default
 
-       call endrun(subname // ':: a SoilWater implementation must be specified!')          
+       call endrun(subname // ':: a SoilWater implementation must be specified!')
 
     end select
+
+   !  ! Debug: h2osoi_liq for urban tree columns immediately after the Richards solve
+   !  do fc = 1, num_hydrologyc
+   !     c = filter_hydrologyc(fc)
+   !     if (col%itype(c) == icol_road_tree) then
+   !        write(iulog,*) 'TREE SoilWater OUT nstep=',nstep,' c=',c
+   !        write(iulog,*) '  h2osoi_liq OUT=',h2osoi_liq(c,1:nlevsoi)
+   !     end if
+   !  end do
 
     if (use_flexibleCN) then
        !a work around of the negative liquid water. Jinyun Tang, Jan 14, 2015
@@ -1224,7 +1254,6 @@ contains
                  dqidw1(c,1:nlayers), &
                  dqodw1(c,1:nlayers), &
                  dqodw2(c,1:nlayers))
-
             ! RHS of system of equations
             call compute_RHS_moisture_form(c, nlayers, &           
                  qflx_rootsoi_col(c,1:nlayers), &

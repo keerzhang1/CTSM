@@ -97,7 +97,7 @@ contains
     
     !
     ! !LOCAL VARIABLES:
-    integer  :: fl,fp,fc,g,l,p,c,ib                                  ! indices
+    integer  :: fl,fp,fc,g,l,p,c,ib,iv                               ! indices
     integer  :: ic                                                   ! 0=unit incoming direct; 1=unit incoming diffuse
     integer  :: num_solar                                            ! counter
     real(r8) :: coszen             (bounds%begl:bounds%endl)         ! cosine solar zenith angle for next time step (landunit)
@@ -135,7 +135,6 @@ contains
     real(r8) :: alb_ar_tree_dir_s  (bounds%begl:bounds%endl, numrad) ! direct above-roof tree albedo with snow effects
     real(r8) :: alb_br_tree_dif_s  (bounds%begl:bounds%endl, numrad) ! diffuse below-roof tree albedo with snow effects
     real(r8) :: alb_ar_tree_dif_s  (bounds%begl:bounds%endl, numrad) ! diffuse above-roof tree albedo with snow effects
-
     real(r8) :: forc_solad             (bounds%begl:bounds%endl, numrad)         ! forced solar
     real(r8) :: alb_br_tree_dir_eff     (bounds%begl:bounds%endl, numrad) ! effective direct below-roof tree albedo (albedo + transmittance)
     real(r8) :: alb_ar_tree_dir_eff     (bounds%begl:bounds%endl, numrad) ! effective direct above-roof tree albedo (albedo + transmittance)
@@ -145,7 +144,10 @@ contains
     real(r8) :: rho_urbtree            (bounds%begp:bounds%endp, numrad) ! urban tree leaf albedo  
     real(r8) :: tau_urbtree     (bounds%begp:bounds%endp, numrad) ! urban tree leaf transmittance
     real(r8) :: coszen_patch    (bounds%begp:bounds%endp)             
-   ! Timekeeping variables can be deleted in the final version.
+    real(r8) :: cgrnds_perv(bounds%begl:bounds%endl, numrad) ! land unit level cgrnds for pervious road
+    real(r8) :: cgrndl_perv(bounds%begl:bounds%endl, numrad) ! land unit level cgrnds for pervious road    
+    
+    ! Timekeeping variables can be deleted in the final version.
     integer              :: start_time, end_time, clock_rate    ! Timekeeping variables
     real(r8)            :: elapsed_time                        ! Elapsed time   
     real(r8)           :: extkn        ! nitrogen allocation coefficient
@@ -156,10 +158,8 @@ contains
     !-----------------------------------------------------------------------
 
     associate(                                                        &
-         tree_lai_urb                 =>   lun%tree_lai_urb                          , & ! Input:  [real(r8) (:)   ]  LAI of road three            
          vcmaxcintsun  =>    surfalb_inst%vcmaxcintsun_patch     , & ! Output:  [real(r8) (:)   ]  leaf to canopy scaling coefficient, sunlit leaf vcmax
          vcmaxcintsha  =>    surfalb_inst%vcmaxcintsha_patch     , & ! Output:  [real(r8) (:)   ]  leaf to canopy scaling coefficient, shaded leaf vcmax
-         tlai       => canopystate_inst%tlai_patch           , & ! Output:  [real(r8)(:)    ]  one-sided leaf area index, no burying by snow  
 
          ctype              => col%itype                            , & ! Input:  [integer (:)    ]  column type                                        
          coli               => lun%coli                             , & ! Input:  [integer (:)    ]  beginning column index for landunit                
@@ -183,7 +183,9 @@ contains
          alb_perroad_dif    => urbanparams_inst%alb_perroad_dif     , & ! Input: [real(r8) (:,:) ]  diffuse pervious road albedo                    
          alb_wall_dir       => urbanparams_inst%alb_wall_dir        , & ! Input: [real(r8) (:,:) ]  direct wall albedo                              
          alb_wall_dif       => urbanparams_inst%alb_wall_dif        , & ! Input: [real(r8) (:,:) ]  diffuse wall albedo 
-
+         tree_elaisai_per_uroad       => urbanparams_inst%tree_elaisai_per_uroad        , & ! Input: [real(r8) (:,:) ]
+         elai                   => canopystate_inst%elai_patch                  , & ! Input:  [real(r8) (:)   ]  one-sided leaf area index with burying by snow
+         esai                   => canopystate_inst%esai_patch                  , & ! Input:  [real(r8) (:)   ]  one-sided stem area index with burying by snow   
          ! For now, the above-roof and below-roof tree albedo & transmittance are the same                            
          alb_br_tree_dir       => urbanparams_inst%alb_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct below-roof tree albedo  
          alb_br_tree_dif       => urbanparams_inst%alb_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse below-roof tree albedo  
@@ -192,8 +194,7 @@ contains
          tran_br_tree_dir       => urbanparams_inst%tran_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct below-roof tree transmittance
          tran_br_tree_dif       => urbanparams_inst%tran_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse below-roof tree transmittance
          tran_ar_tree_dir       => urbanparams_inst%tran_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct above-roof tree transmittance
-         tran_ar_tree_dif       => urbanparams_inst%tran_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse above-roof tree transmittance
-
+         tran_ar_tree_dif       => urbanparams_inst%tran_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse above-roof tree transmittance            
          sabs_roof_dir      =>    solarabs_inst%sabs_roof_dir_lun      , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by roof per unit roof area per unit incident flux
          sabs_sunwall_dir   =>    solarabs_inst%sabs_sunwall_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by sunwall per unit wall area per unit incident flux
          sabs_shadewall_dir =>    solarabs_inst%sabs_shadewall_dir_lun , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by shadewall per unit wall area per unit incident flux
@@ -246,7 +247,13 @@ contains
          ftdd               => surfalb_inst%ftdd_patch              , & ! Output:  [real(r8) (:,:) ]  down direct flux below canopy per unit direct flux
          ftid               => surfalb_inst%ftid_patch              , & ! Output:  [real(r8) (:,:) ]  down diffuse flux below canopy per unit direct flux
          ftii               => surfalb_inst%ftii_patch              , & ! Output:  [real(r8) (:,:) ]  down diffuse flux below canopy per unit diffuse flux
-         albgrd             => surfalb_inst%albgrd_col              , & ! Output: [real(r8) (:,:) ]  urban col ground albedo (direct) 
+         nrad               => surfalb_inst%nrad_patch              , & ! Input:   [integer  (:)   ]  number of canopy layers, above snow for radiative transfer
+         fabd_sun_z         => surfalb_inst%fabd_sun_z_patch        , & ! Output:  [real(r8) (:,:) ]  absorbed sunlit leaf direct  PAR (per unit lai+sai) for each canopy layer
+         fabd_sha_z         => surfalb_inst%fabd_sha_z_patch        , & ! Output:  [real(r8) (:,:) ]  absorbed shaded leaf direct  PAR (per unit lai+sai) for each canopy layer
+         fabi_sun_z         => surfalb_inst%fabi_sun_z_patch        , & ! Output:  [real(r8) (:,:) ]  absorbed sunlit leaf diffuse PAR (per unit lai+sai) for each canopy layer
+         fabi_sha_z         => surfalb_inst%fabi_sha_z_patch        , & ! Output:  [real(r8) (:,:) ]  absorbed shaded leaf diffuse PAR (per unit lai+sai) for each canopy layer
+         fsun_z             => surfalb_inst%fsun_z_patch            , & ! Output:  [real(r8) (:,:) ]  sunlit fraction of canopy layer
+         albgrd             => surfalb_inst%albgrd_col              , & ! Output: [real(r8) (:,:) ]  urban col ground albedo (direct)
          albgri             => surfalb_inst%albgri_col              , & ! Output: [real(r8) (:,:) ]  urban col ground albedo (diffuse)
          albd               => surfalb_inst%albd_patch              , & ! Output  [real(r8) (:,:) ]  urban pft surface albedo (direct)                         
          albi               => surfalb_inst%albi_patch              , & ! Output: [real(r8) (:,:) ]  urban pft surface albedo (diffuse)                        
@@ -304,8 +311,9 @@ contains
       do fp = 1,num_urbantreep
          p = filter_urbantreep(fp)
          l = patch%landunit(p)
-         tlai(p) = tree_lai_urb(l)
          ! leaf albedo for VIS and NIR are difference, but are the same for diffuse and direct solar 
+
+         ! TODO: calculate rho by mirroring the calculation of rho in TwoStream module
          rho_urbtree(p,:) = alb_br_tree_dir(l,:)
          tau_urbtree(p,:) = tran_br_tree_dir(l,:)
 
@@ -318,6 +326,29 @@ contains
 
 
       !------------------------------------------------------------------------
+      ! Zero the per-layer canopy radiation arrays for every urban tree patch.
+      ! TwoStream below only fills these for patches in filter_urbtreesol
+      ! (elai+esai > 0 and coszen > 0), so without this they would keep their
+      ! initial NaN or a stale value from an earlier sunlit, leafed-out step.
+      ! CanopySunShadeFracs reads them unconditionally for all road tree patches
+      ! via filter_nourbanwtreep and forms laisun_z = tlai_z*fsun_z, so a NaN
+      ! here propagates into laisun/laisha and on into Photosynthesis.
+      ! This mirrors the equivalent loop over num_nourbanp in SurfaceAlbedoMod.
+      ! nrad is set for all urban tree patches in SurfaceAlbedo, which runs
+      ! before UrbanAlbedo.
+      !------------------------------------------------------------------------
+      do fp = 1,num_urbantreep
+         p = filter_urbantreep(fp)
+         do iv = 1, nrad(p)
+            fabd_sun_z(p,iv) = 0._r8
+            fabd_sha_z(p,iv) = 0._r8
+            fabi_sun_z(p,iv) = 0._r8
+            fabi_sha_z(p,iv) = 0._r8
+            fsun_z(p,iv)     = 0._r8
+         end do
+      end do
+
+      !------------------------------------------------------------------------
       ! Create solar-urbantree filter, filter_urbtreesol and filter_nourbtreesol
       ! I referred to how filter_vegsol is created in SurfaceAlbedoMod
       !------------------------------------------------------------------------
@@ -327,9 +358,8 @@ contains
          p = filter_urbantreep(fp)
          l = patch%landunit(p)
             if (coszen_patch(p) > 0.0_r8) then
-               ! has_trees = true when lai > 1e-6, otherwise has_trees = false
-               if ((col%itype(patch%column(p)) == icol_road_tree) &
-                   .and. (tree_lai_urb(l) > 1e-6_r8)) then
+               if (col%itype(patch%column(p)) == icol_road_tree &
+                   .and. (elai(p) + esai(p)) > 0._r8) then
                   num_urbtreesol = num_urbtreesol + 1
                   filter_urbtreesol(num_urbtreesol) = p
                else
@@ -348,10 +378,10 @@ contains
          l = patch%landunit(p)
 
          vcmaxcintsun(p) = 0._r8
-         vcmaxcintsha(p) = (1._r8 - exp(-extkn*tree_lai_urb(l))) / extkn
+         vcmaxcintsha(p) = (1._r8 - exp(-extkn*elai(p))) / extkn
          ! the nlevcan is always 1 for urban tree columns
-         if (tree_lai_urb(l) > 0._r8) then
-            vcmaxcintsha(p) = vcmaxcintsha(p) / tree_lai_urb(l)
+         if (elai(p) > 0._r8) then
+            vcmaxcintsha(p) = vcmaxcintsha(p) / elai(p)
          else
             vcmaxcintsha(p) = 0._r8
          end if
@@ -515,7 +545,7 @@ contains
                h2(begl:endl),&
                A_v2(begl:endl),&
                A_v1(begl:endl),&
-               tree_lai_urb(begl:endl),&
+               tree_elaisai_per_uroad(begl:endl),&
                wtroad_tree(begl:endl) )   
                        
          end if
@@ -600,13 +630,6 @@ contains
                   alb_ar_tree_dif_s(l,ib) = alb_ar_tree_dif_eff(l,ib)*(1._r8-frac_sno(c))  &
                      + albsni_tree(l,ib)*frac_sno(c)                                   
                end if
-               ! if (ib == 2) then
-               !    write(iulog,*) 'TREE OPTICS DEBUG l=', l, ' ib=', ib
-               !    write(iulog,*) 'alb_br_tree_dir=', alb_br_tree_dir(l,ib), ' tran_br_tree_dir=', tran_br_tree_dir(l,ib), ' eff=', alb_br_tree_dir_eff(l,ib), ' snow_s=', alb_br_tree_dir_s(l,ib)
-               !    write(iulog,*) 'alb_ar_tree_dir=', alb_ar_tree_dir(l,ib), ' tran_ar_tree_dir=', tran_ar_tree_dir(l,ib), ' eff=', alb_ar_tree_dir_eff(l,ib), ' snow_s=', alb_ar_tree_dir_s(l,ib)
-               !    write(iulog,*) 'alb_br_tree_dif=', alb_br_tree_dif(l,ib), ' tran_br_tree_dif=', tran_br_tree_dif(l,ib), ' eff=', alb_br_tree_dif_eff(l,ib), ' snow_s=', alb_br_tree_dif_s(l,ib)
-               !    write(iulog,*) 'alb_ar_tree_dif=', alb_ar_tree_dif(l,ib), ' tran_ar_tree_dif=', tran_ar_tree_dif(l,ib), ' eff=', alb_ar_tree_dif_eff(l,ib), ' snow_s=', alb_ar_tree_dif_s(l,ib)
-               ! end if
             end do
          end do
 
@@ -626,6 +649,7 @@ contains
                   wtlunit_roof       (begl:endl), &
                   wtroad_perv        (begl:endl), &
                   wtroad_tree        (begl:endl), &
+                  tree_elaisai_per_uroad(begl:endl),&
                   sdir               (begl:endl, :), &
                   sdif               (begl:endl, :), &
                   alb_improad_dir_s  (begl:endl, :), &
@@ -706,21 +730,7 @@ contains
 ! end add new snicar
             end do
          end do
-    
-
-
-         ! do ib = 1, numrad
-         !    do fp = 1,num_urbantreep
-         !       p = filter_urbantreep(fp)
-         !       c = patch%column(p)
-         !       l = patch%landunit(p)
-               !write (6,'(A,I5)') '-------------------(l):before twostream------------------- ', l
-               !write (6,'(A,I5)') '-------------------time step----------------- ', get_nstep()
-               !write (6,'(A,I5)') '-------------------ib----------------- ', ib
-               !write (6,'(A,1X,*(F10.5,1X))') 'albgrd(c,ib) ', albgrd(c,ib)
-               !write (6,'(A,1X,*(F10.5,1X))') 'albgri(c,ib) ', albgri(c,ib)
-         !     end do 
-         ! end do
+   
 
          !------------------------------------------------------------------------
          ! I modified the filter to be filter_urbantreep
@@ -1055,14 +1065,13 @@ contains
       if (coszen(l) > 0._r8) then
          theta0(l) = asin(min( (1._r8/(canyon_hwr(l)*tan(max(zen(l),0.000001_r8)))), 1._r8 ))
          tanzen(l) = tan(zen(l))
-         ! lai > 1e-6 means has_trees is true
+
          if (lai(l) > 1e-6_r8) then
             sinzen(l) = sin(zen(l))
             ! Create a new variable solarabs_inst%sdir_force_lun for diagnosis, which is rasier to output
             do ib = 1,numrad
                sdir_force(l,ib)=forc_solad(l,ib)
             end do
-            ! When lai > 1e-6; h2(l) also > 1e-6
             LAD(l)=lai(l) / h2(l) ! leaf area density 
             !Eq. 15 in Krayenhoff et al. 2020
             omega(l)=-1.0_r8 / (0.5_r8 * lai(l)) * log(1.0_r8 - wtroad_tree(l) * &
@@ -1150,7 +1159,7 @@ contains
       end if 
    end do
 
-   ! Use the CLM5 analytical view factor calculation when has_trees is false (lai <= 1e-6); use new expressions with tree attenuation when has_trees is true
+   ! Use the CLM5 analytical view factor calculation when 
    do ib = 1,numrad
       do fl = 1,num_urbanl
          l = filter_urbanl(fl)
@@ -1172,37 +1181,6 @@ contains
                
                coszen_min=max(coszen(l),min_zen)
                sinzen_min=max(sinzen(l),min_zen)
-                           
-               ! printputs for diagnosis
-               ! if (debug_write_dir) then              
-               !    write (6,'(A,2F10.3)') '-------------------(l)------------------- ',l 
-               !    write (6,'(A,2F10.3)') 'zen(l) ',zen(l) 
-               !    write (6,'(A,2F10.3)') 'latdeg,londeg ',latdeg,londeg
-               !    write (6,'(A,2I10.3)') 'ca_order(l) ',ca_order(l) 
-               !    write (6,'(A,2F10.3)') 'wbui(l)',wbui(l)
-               !    write (6,'(A,2F10.3)') 'wcan(l),ht_roof(l)',wcan(l),ht_roof(l)
-               !    write (6,'(A,2F10.3)') 'h1(l),h2(l)',h1(l),h2(l)
-               !    write (6,'(A,2F10.3)') ' sinzen_min, coszen_min', sinzen_min,coszen_min
-               !    if (ca_order(l)==0) then
-               !       write (6,'(A,2F10.3)') 'theta_br_wr1(l): ',theta_br_wr1(l)
-               !       write (6,'(A,2F10.3)') 'theta_br_wr2(l): ',theta_br_wr2(l)
-               !       write (6,'(A,2F10.3)') 'theta_br_wr3(l): ',theta_br_wr3(l)
-                     
-               !       write (6,'(A,2F10.3)') 'zen_br_wr1(l): ',zen_br_wr1(l)
-               !       write (6,'(A,2F10.3)') 'zen_br_wr2(l): ',zen_br_wr2(l)
-               !       write (6,'(A,2F10.3)') 'zen_br_wr3(l): ',zen_br_wr3(l)  
-               !    else
-               !       write (6,'(A,2F10.3)') 'theta_ar_wr1(l): ',theta_ar_wr1(l) 
-               !       write (6,'(A,2F10.3)') 'theta_ar_wr2(l): ',theta_ar_wr2(l) 
-               !       write (6,'(A,2F10.3)') 'theta_ar_wr3(l): ',theta_ar_wr3(l) 
-               !       write (6,'(A,2F10.3)') 'theta_ar_wr4(l): ',theta_ar_wr4(l) 
-               !       write (6,'(A,2F10.3)') 'theta_ar_wr5(l): ',theta_ar_wr5(l)  
-                     
-               !       write (6,'(A,2F10.3)') 'theta_ar_roof1(l): ',theta_ar_roof1(l)
-               !       write (6,'(A,2F10.3)') 'theta_ar_roof2(l): ',theta_ar_roof2(l)
-               !       write (6,'(A,2F10.3)') 'theta_ar_roof3(l): ',theta_ar_roof3(l)
-               !    end if
-               ! end if  
                                  
                if (ca_order(l)==0) then !tree below roof
                   ! roof is not shaded
@@ -2079,7 +2057,7 @@ contains
     
   !-----------------------------------------------------------------------
   subroutine net_solar (bounds                                                                 , &
-       num_urbanl, filter_urbanl, coszen, canyon_hwr, ht_roof, A_v1,A_v2,wtlunit_roof, wtroad_perv,wtroad_tree, sdir, sdif                  , &
+       num_urbanl, filter_urbanl, coszen, canyon_hwr, ht_roof, A_v1,A_v2,wtlunit_roof, wtroad_perv,wtroad_tree,lai, sdir, sdif                  , &
        alb_improad_dir, alb_perroad_dir, alb_wall_dir, alb_roof_dir,alb_br_tree_dir,alb_ar_tree_dir  , &
        alb_improad_dif, alb_perroad_dif, alb_wall_dif, alb_roof_dif,alb_br_tree_dif,alb_ar_tree_dif  , &
        sdir_road, sdir_sunwall, sdir_shadewall,sdir_roof,                                                  &
@@ -2105,6 +2083,7 @@ contains
     real(r8), intent(in)    :: A_v2               ( bounds%begl: )             ! Leaf area for urban tree canopy above roof (m) [landunit]
     real(r8), intent(in)    :: wtroad_perv        ( bounds%begl: )      ! weight of pervious road wrt total road [landunit]
     real(r8), intent(in)    :: wtroad_tree        ( bounds%begl: )      ! weight of road tree wrt total road [landunit]
+    real(r8), intent(in)    :: lai                ( bounds%begl: )      ! leaf area index [landunit]
     real(r8), intent(in)    :: sdir               ( bounds%begl: , 1: ) ! direct beam solar radiation incident on horizontal surface [landunit, numrad]
     real(r8), intent(in)    :: sdif               ( bounds%begl: , 1: ) ! diffuse solar radiation on horizontal surface [landunit, numrad]
     real(r8), intent(in)    :: alb_improad_dir    ( bounds%begl: , 1: ) ! direct impervious road albedo [landunit, numrad]
@@ -2408,74 +2387,6 @@ contains
          ) 
 
       debug_write=.false.    
-
-      ! ! Debug: print all net_solar inputs for the failing landunit/band
-      ! if (.true.) then
-      !    write(iulog,*) '================ net_solar INPUT DEBUG ================'
-      !    write(iulog,*) 'num_urbanl = ', num_urbanl
-      !    do fl = 1, num_urbanl
-      !       l = filter_urbanl(fl)
-
-
-      !       write(iulog,*) '--------------------------------------------------------'
-      !       write(iulog,*) 'fl=', fl, ' l=', l
-      !       write(iulog,*) 'coszen=', coszen(l)
-      !       write(iulog,*) 'canyon_hwr=', canyon_hwr(l)
-      !       write(iulog,*) 'ht_roof=', ht_roof(l)
-      !       write(iulog,*) 'A_v1=', A_v1(l)
-      !       write(iulog,*) 'A_v2=', A_v2(l)
-      !       write(iulog,*) 'wtlunit_roof=', wtlunit_roof(l)
-      !       write(iulog,*) 'wtroad_perv=', wtroad_perv(l)
-      !       write(iulog,*) 'wtroad_tree=', wtroad_tree(l)
-
-      !       do ib = 1, numrad
-
-      !          write(iulog,*) '---------------- ib=', ib, ' ----------------'
-      !          write(iulog,*) 'sdir=', sdir(l,ib), ' sdif=', sdif(l,ib)
-
-      !          write(iulog,*) 'alb_improad_dir=', alb_improad_dir(l,ib)
-      !          write(iulog,*) 'alb_perroad_dir=', alb_perroad_dir(l,ib)
-      !          write(iulog,*) 'alb_wall_dir=', alb_wall_dir(l,ib)
-      !          write(iulog,*) 'alb_roof_dir=', alb_roof_dir(l,ib)
-      !          write(iulog,*) 'alb_br_tree_dir=', alb_br_tree_dir(l,ib)
-      !          write(iulog,*) 'alb_ar_tree_dir=', alb_ar_tree_dir(l,ib)
-
-      !          write(iulog,*) 'alb_improad_dif=', alb_improad_dif(l,ib)
-      !          write(iulog,*) 'alb_perroad_dif=', alb_perroad_dif(l,ib)
-      !          write(iulog,*) 'alb_wall_dif=', alb_wall_dif(l,ib)
-      !          write(iulog,*) 'alb_roof_dif=', alb_roof_dif(l,ib)
-      !          write(iulog,*) 'alb_br_tree_dif=', alb_br_tree_dif(l,ib)
-      !          write(iulog,*) 'alb_ar_tree_dif=', alb_ar_tree_dif(l,ib)
-
-      !          write(iulog,*) 'sdir_road=', sdir_road(l,ib)
-      !          write(iulog,*) 'sdir_sunwall=', sdir_sunwall(l,ib)
-      !          write(iulog,*) 'sdir_shadewall=', sdir_shadewall(l,ib)
-      !          write(iulog,*) 'sdir_roof=', sdir_roof(l,ib)
-      !          write(iulog,*) 'sdir_br_tree=', sdir_br_tree(l,ib)
-      !          write(iulog,*) 'sdir_ar_tree=', sdir_ar_tree(l,ib)
-
-      !          write(iulog,*) 'sdif_road=', sdif_road(l,ib)
-      !          write(iulog,*) 'sdif_sunwall=', sdif_sunwall(l,ib)
-      !          write(iulog,*) 'sdif_shadewall=', sdif_shadewall(l,ib)
-      !          write(iulog,*) 'sdif_roof=', sdif_roof(l,ib)
-      !          write(iulog,*) 'sdif_br_tree=', sdif_br_tree(l,ib)
-      !          write(iulog,*) 'sdif_ar_tree=', sdif_ar_tree(l,ib)
-
-      !          write(iulog,*) 'direct surface-area partition check:'
-      !          write(iulog,*) '  road + walls*hwr + br_tree*A_v1/wcan = ', &
-      !             sdir_road(l,ib) + (sdir_sunwall(l,ib)+sdir_shadewall(l,ib))*canyon_hwr(l) + &
-      !             sdir_br_tree(l,ib)*A_v1(l)
-      !          write(iulog,*) '  sdir input = ', sdir(l,ib)
-
-      !          write(iulog,*) 'diffuse surface-area partition check:'
-      !          write(iulog,*) '  road + walls*hwr + br_tree*A_v1/wcan + roof*wtroof + ar_tree*A_v2/wcan = ', &
-      !             sdif_road(l,ib) + (sdif_sunwall(l,ib)+sdif_shadewall(l,ib))*canyon_hwr(l) + &
-      !             sdif_br_tree(l,ib)*A_v1(l) + sdif_roof(l,ib)*wtlunit_roof(l) + sdif_ar_tree(l,ib)*A_v2(l)
-      !          write(iulog,*) '  sdif input = ', sdif(l,ib)
-      !       end do
-      !    end do
-      !    write(iulog,*) '============== end net_solar INPUT DEBUG =============='
-      ! end if
       do fl = 1,num_urbanl 
          l = filter_urbanl(fl)
          wtroad_imperv(l) = 1._r8 - wtroad_perv(l) - wtroad_tree(l)
@@ -3308,8 +3219,7 @@ contains
                   call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
                endif
                ! corrected a clear dir/dif typo; handled zero division error when tree area is zero
-               ! has_trees is true when wtroad_tree(l) > 1e-6_r8
-               if (wtroad_tree(l) > 1e-6_r8) then
+               if (lai(l) > 1e-6_r8) then
                   sref_tree_dir(l,ib) = (sref_br_tree_dir(l,ib)*A_v1(l) + sref_ar_tree_dir(l,ib)*A_v2(l))/(A_v1(l)+A_v2(l))
                   sref_tree_dif(l,ib) = (sref_br_tree_dif(l,ib)*A_v1(l) + sref_ar_tree_dif(l,ib)*A_v2(l))/(A_v1(l)+A_v2(l))
                   sabs_tree_dir(l,ib) = (sabs_br_tree_dir(l,ib)*A_v1(l) + sabs_ar_tree_dir(l,ib)*A_v2(l))/(A_v1(l)+A_v2(l))
@@ -3360,60 +3270,7 @@ contains
 
                 err = stot_dir(l) + stot_dif(l) &
                      - (sabs_canyon_dir(l,ib) + sabs_canyon_dif(l,ib) + sref_canyon_dir(l,ib) + sref_canyon_dif(l,ib))
-               !  if (debug_write) then
-               !    write(6,*) '--- Solar Absorption Diagnosis for l =', l, ', ib =', ib
-               !    write(6,*) 'A_g =', A_g(l), ', A_w =', A_w(l), ', A_r =', A_r(l), ', A_s =', A_s(l), ', A_v1 =', A_v1(l), ', A_v2 =', A_v2(l)
-               !    write(6,*) 'wtroad_imperv =', wtroad_imperv(l)
-
-               !    ! Direct
-               !    write(6,*) 'sabs_improad_dir =', sabs_improad_dir(l,ib)
-               !    write(6,*) 'sabs_sunwall_dir =', sabs_sunwall_dir(l,ib)
-               !    write(6,*) 'sabs_shadewall_dir =', sabs_shadewall_dir(l,ib)
-               !    write(6,*) 'sabs_roof_dir =', sabs_roof_dir(l,ib)
-               !    write(6,*) 'sabs_br_tree_dir =', sabs_br_tree_dir(l,ib)
-               !    write(6,*) 'sabs_ar_tree_dir =', sabs_ar_tree_dir(l,ib)
-
-               !    ! Diffuse
-               !    write(6,*) 'sabs_improad_dif =', sabs_improad_dif(l,ib)
-               !    write(6,*) 'sabs_sunwall_dif =', sabs_sunwall_dif(l,ib)
-               !    write(6,*) 'sabs_shadewall_dif =', sabs_shadewall_dif(l,ib)
-               !    write(6,*) 'sabs_roof_dif =', sabs_roof_dif(l,ib)
-               !    write(6,*) 'sabs_br_tree_dif =', sabs_br_tree_dif(l,ib)
-               !    write(6,*) 'sabs_ar_tree_dif =', sabs_ar_tree_dif(l,ib)
-                  
-
-               !    ! Incoming fluxes (sdir/sdif terms)
-               !    write(6,*) 'sdir_road =', sdir_road(l,ib)
-               !    write(6,*) 'sdir_sunwall =', sdir_sunwall(l,ib)
-               !    write(6,*) 'sdir_shadewall =', sdir_shadewall(l,ib)
-               !    write(6,*) 'sdir_roof =', sdir_roof(l,ib)
-               !    write(6,*) 'sdir_br_tree =', sdir_br_tree(l,ib)
-               !    write(6,*) 'sdir_ar_tree =', sdir_ar_tree(l,ib)
-               !    write(6,*) 'stot_dir =', stot_dir(l)
-
-               !    write(6,*) 'sdif_road =', sdif_road(l,ib)
-               !    write(6,*) 'sdif_sunwall =', sdif_sunwall(l,ib)
-               !    write(6,*) 'sdif_shadewall =', sdif_shadewall(l,ib)
-               !    write(6,*) 'sdif_roof =', sdif_roof(l,ib)
-               !    write(6,*) 'sdif_br_tree =', sdif_br_tree(l,ib)
-               !    write(6,*) 'sdif_ar_tree =', sdif_ar_tree(l,ib)
-                  
-
-               !    ! Reflected components
-               !    write(6,*) 'sabs_canyon_dir =', sabs_canyon_dir(l,ib)
-               !    write(6,*) 'sref_canyon_dir =', sref_canyon_dir(l,ib)
-               !    write(6,*) 'stot_dir =', stot_dir(l)
-               !    write(6,*) 'sabs_canyon_dif =', sabs_canyon_dif(l,ib)
-               !    write(6,*) 'sref_canyon_dif =', sref_canyon_dif(l,ib)               
-               !    write(6,*) 'stot_dif =', stot_dif(l)
-               !    ! Conservation error
-               !    write(6,*) 'err1 =', stot_dir(l) - (sabs_canyon_dir(l,ib) + sref_canyon_dir(l,ib) )
-               !    write(6,*) 'err2 =', stot_dif(l) - (sabs_canyon_dif(l,ib) + sref_canyon_dif(l,ib) )
-               !    write(6,*) 'err =', err
-               ! end if
-               !write(6,*) 'err (direct) =', stot_dir(l) - (sabs_canyon_dir(l,ib) + sref_canyon_dir(l,ib) )
-               !write(6,*) 'err (diffuse) =', stot_dif(l) - (sabs_canyon_dif(l,ib) + sref_canyon_dif(l,ib) )              
-               !write(6,*) 'err =', err
+ 
                 if (abs(err) > 0.001_r8 ) then
                   write(iulog,*)'urban net solar radiation balance error for ib=',ib,' err= ',err
                   write(iulog,*)' l= ',l,' ib= ',ib 

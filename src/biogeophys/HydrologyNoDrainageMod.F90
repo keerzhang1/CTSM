@@ -150,11 +150,10 @@ contains
     ! !USES:
     use clm_varcon           , only : denh2o, denice, hfus, grav, tfrz
     use landunit_varcon      , only : istwet, istsoil, istcrop, istdlak 
-    use column_varcon        , only : icol_roof, icol_road_imperv, icol_road_perv, icol_sunwall, icol_road_tree
-    use column_varcon        , only : icol_shadewall, icol_road_tree
+    use column_varcon        , only : icol_roof, icol_sunwall, icol_shadewall
     use clm_varctl           , only : use_cn
     use clm_varpar           , only : nlevgrnd, nlevsno, nlevsoi, nlevurb
-    use clm_time_manager     , only : get_step_size_real, get_nstep
+    use clm_time_manager     , only : get_step_size_real
     use SoilHydrologyMod     , only : CLMVICMap, SetSoilWaterFractions, SetFloodc
     use SoilHydrologyMod     , only : SetQflxInputs, RouteInfiltrationExcess
     use SoilHydrologyMod     , only : Infiltration, TotalSurfaceRunoff
@@ -166,6 +165,7 @@ contains
     use SoilWaterMovementMod , only : use_aquifer_layer
     use SoilWaterPlantSinkMod , only : Compute_EffecRootFrac_And_VertTranSink
     use SurfaceWaterMod      , only : UpdateH2osfc
+    use UrbanFluxesMod       , only : MergeUrbanPervTreePair
 
     !
     ! !ARGUMENTS:
@@ -338,11 +338,25 @@ contains
 
       call Compute_EffecRootFrac_And_VertTranSink(bounds, num_hydrologyc, &
            filter_hydrologyc, soilstate_inst, canopystate_inst, b_waterflux_inst, energyflux_inst)
-      
+
       if ( use_fates ) then
          call clm_fates%ComputeRootSoilFlux(bounds, num_hydrologyc, filter_hydrologyc, soilstate_inst, b_waterflux_inst)
       end if
-      
+
+      ! The urban road trees root into the same ground the pervious road sits on, so
+      ! their uptake has to be drawn from one shared soil water profile. Replace the
+      ! layer by layer root sink on each of the two columns by its area weighted
+      ! average over the pair, before SoilWater uses it as the sink term in the
+      ! Richards solve.
+      !
+      ! Merging here rather than inside SoilWaterPlantSinkMod covers all three of its
+      ! variants at once. 
+      !
+      ! qflx_tran_veg_col is left alone - it remains each column's own transpiration
+      ! for history output and the water balance.
+
+      call MergeUrbanPervTreePair(bounds, b_waterflux_inst%qflx_rootsoi_col(bounds%begc:bounds%endc,1:nlevsoi), 1)
+
       call SoilWater(bounds, num_hydrologyc, filter_hydrologyc, num_urbanc, filter_urbanc, &
            soilhydrology_inst, soilstate_inst, b_waterflux_inst, b_waterstate_inst, temperature_inst, &
            canopystate_inst, energyflux_inst, soil_water_retention_curve)

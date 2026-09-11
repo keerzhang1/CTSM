@@ -330,8 +330,6 @@ contains
     use SoilWaterRetentionCurveMod, only : soil_water_retention_curve_type
     use PatchType            , only : patch
     use clm_varctl           , only : iulog, use_hydrstress
-    use column_varcon       , only : icol_road_tree
-    use ColumnType     , only : col
     !
     ! !ARGUMENTS:
     implicit none
@@ -393,21 +391,10 @@ contains
 !scs
                call soil_water_retention_curve%soil_suction(c, j, s_node, soilstate_inst, smp_node)
 !scs
-               if (col%itype(c) == icol_road_tree) then
-                  smp_node = max(smpsc(5), smp_node)
-               else 
-                 smp_node = max(smpsc(patch%itype(p)), smp_node)
-               end if
-               
-               if (col%itype(c) == icol_road_tree) then
-                   rresis(p,j) = min( (eff_porosity(c,j)/watsat(c,j))* &
-                    (smp_node - smpsc(5)) / (smpso(5) - smpsc(5)), 1._r8)
-               else 
-                   rresis(p,j) = min( (eff_porosity(c,j)/watsat(c,j))* &
-                    (smp_node - smpsc(patch%itype(p))) / (smpso(patch%itype(p)) - smpsc(patch%itype(p))), 1._r8)
-               end if 
+               smp_node = max(smpsc(patch%itype(p)), smp_node)
 
-
+               rresis(p,j) = min( (eff_porosity(c,j)/watsat(c,j))* &
+               (smp_node - smpsc(patch%itype(p))) / (smpso(patch%itype(p)) - smpsc(patch%itype(p))), 1._r8)
 
                if (.not. (perchroot .or. perchroot_alt) ) then
                   rootr(p,j) = rootfr(p,j)*rresis(p,j)

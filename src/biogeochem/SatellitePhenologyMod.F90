@@ -101,7 +101,6 @@ contains
     use CanopyStateType         , only : canopystate_type
     use PatchType               , only : patch
     use clm_varctl              , only : use_fates_sp
-
     !
     ! !ARGUMENTS:
     type(bounds_type)              , intent(in)    :: bounds
@@ -116,7 +115,7 @@ contains
     real(r8) :: fb                                ! fraction of canopy layer covered by snow
     !-----------------------------------------------------------------------
 
-    associate(                                                           &
+    associate(                                                           &  
          frac_sno           => waterdiagnosticbulk_inst%frac_sno_col   , & ! Input:  [real(r8) (:) ] fraction of ground covered by snow (0 to 1)
          snow_depth         => waterdiagnosticbulk_inst%snow_depth_col , & ! Input:  [real(r8) (:) ] snow height (m)
          tlai               => canopystate_inst%tlai_patch    ,          & ! Output: [real(r8) (:) ] one-sided leaf area index, no burying by snow
@@ -160,6 +159,7 @@ contains
          htop(p) = timwt(1)*mhvt2t(p,1) + timwt(2)*mhvt2t(p,2)
          hbot(p) = timwt(1)*mhvb2t(p,1) + timwt(2)*mhvb2t(p,2)
 
+
          ! adjust lai and sai for burying by snow. if exposed lai and sai
          ! are less than 0.05, set equal to zero to prevent numerical
          ! problems associated with very small lai and sai.
@@ -184,6 +184,8 @@ contains
          ! are duplicated by the FATE variables (in the FATES IFP indexing space)
            elai(p) = max(tlai(p)*(1.0_r8 - frac_sno(c)) + tlai(p)*fb*frac_sno(c), 0.0_r8)
            esai(p) = max(tsai(p)*(1.0_r8 - frac_sno(c)) + tsai(p)*fb*frac_sno(c), 0.0_r8)
+
+           ! Discuss this threshold; whether to apply it for urban trees
            if (elai(p) < 0.05_r8) elai(p) = 0._r8
            if (esai(p) < 0.05_r8) esai(p) = 0._r8
 

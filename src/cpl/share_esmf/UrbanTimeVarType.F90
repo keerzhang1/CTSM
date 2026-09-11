@@ -296,6 +296,9 @@ contains
                 end if
              end if
           end do
+          
+          ! to turn off AC for all urban landunits
+          this%t_building_max(l) = 380.0_r8
        else
           this%t_building_max(l) = spval
           this%p_ac(l) = spval

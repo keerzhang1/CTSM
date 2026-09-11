@@ -19,6 +19,7 @@ module LandunitType
   use shr_kind_mod   , only : r8 => shr_kind_r8
   use shr_infnan_mod , only : nan => shr_infnan_nan, assignment(=)
   use clm_varcon     , only : ispval
+  use clm_varpar      , only : nmonth
   !
   ! !PUBLIC TYPES:
   implicit none
@@ -48,7 +49,7 @@ module LandunitType
      ! urban properties
      real(r8), pointer :: canyon_hwr   (:) ! urban landunit canyon height to width ratio (-)  
 
-     real(r8), pointer :: tree_lai_urb          (:) ! LAI of road tree (m2/m2) 
+     real(r8), pointer :: tree_lai_urb_monthly          (:,:) ! prescribed monthly LAI of road tree, per tree (vegetated) area (m2/m2); dim 2 = month 1-12
      real(r8), pointer :: tree_bht_urb     (:) ! the height of of tree crown base
      real(r8), pointer :: tree_tht_urb     (:) ! the height of of tree crown
      real(r8), pointer :: wtroad_perv  (:) ! urban landunit weight of pervious road column to total road (-)
@@ -68,7 +69,6 @@ module LandunitType
      real(r8), pointer :: stream_channel_length  (:) ! stream channel length (m)
      real(r8), pointer :: stream_channel_slope   (:) ! stream channel slope (m/m)
      real(r8), pointer :: stream_channel_number  (:) ! number of channels in landunit
-     logical, pointer :: has_trees     (:) ! whether this landunit has trees (1.0) or not (0.0) based on tree_lai_urb, wtroad_tree, and tree_tht_urb
 
    contains
 
@@ -115,7 +115,7 @@ contains
 
     ! The following is set in routine urbanparams_inst%Init in module UrbanParamsType
     allocate(this%canyon_hwr   (begl:endl)); this%canyon_hwr   (:) = nan
-    allocate(this%tree_lai_urb          (begl:endl)); this%tree_lai_urb          (:) = nan
+    allocate(this%tree_lai_urb_monthly          (begl:endl,nmonth)); this%tree_lai_urb_monthly          (:,:) = nan
     allocate(this%wtroad_tree     (begl:endl)); this%wtroad_tree     (:) = nan
     allocate(this%wtroad_perv  (begl:endl)); this%wtroad_perv  (:) = nan
     allocate(this%wall_to_plan_area_ratio  (begl:endl)); this%wall_to_plan_area_ratio  (:) = nan
@@ -128,7 +128,6 @@ contains
     allocate(this%tree_tht_urb     (begl:endl)); this%tree_tht_urb     (:) = nan
     allocate(this%A_v1     (begl:endl)); this%A_v1     (:) = nan
     allocate(this%A_v2     (begl:endl)); this%A_v2     (:) = nan
-    allocate(this%has_trees     (begl:endl)); this%has_trees     (:) = .false.
 
     ! Hillslope variables initialized in HillslopeHydrologyMod
     allocate(this%stream_channel_depth(begl:endl));  this%stream_channel_depth   (:) = nan
@@ -165,7 +164,7 @@ contains
     deallocate(this%glcpoi       )
     deallocate(this%active       )
     deallocate(this%canyon_hwr   )
-    deallocate(this%tree_lai_urb   )
+    deallocate(this%tree_lai_urb_monthly   )
     deallocate(this%wtroad_tree   )
     deallocate(this%tree_bht_urb   )
     deallocate(this%tree_tht_urb   )
@@ -184,7 +183,6 @@ contains
     deallocate(this%stream_channel_length)
     deallocate(this%stream_channel_slope)
     deallocate(this%stream_channel_number)
-    deallocate(this%has_trees     )
   end subroutine Clean
 
 end module LandunitType
