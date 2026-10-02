@@ -45,8 +45,21 @@ module UrbanAlbedoMod
   private :: SnowAlbedo       ! Snow albedos
   private :: incident_direct  ! Direct beam solar rad incident on walls and road in urban canyon
   private :: incident_diffuse ! Diffuse solar rad incident on walls and road in urban canyon 
-  private :: gaussian_quadrature   ! Direct beam solar rad incident on walls and road in urban canyon 
+  private :: gaussian_quadrature   ! Gauss-Legendre quadrature of a canyon-orientation integrand
   private :: net_solar        ! Solar radiation absorbed by road and both walls in urban canyon 
+
+  ! PRIVATE INTERFACES
+  ! Shape of the canyon-orientation integrands passed to gaussian_quadrature: theta is
+  ! the canyon orientation angle (radians) and l is the urban landunit index.
+  abstract interface
+     function urban_integrand(theta, l) result(value)
+       import :: r8
+       implicit none
+       real(r8), intent(in) :: theta
+       integer , intent(in) :: l
+       real(r8)             :: value
+     end function urban_integrand
+  end interface
   
   character(len=*), parameter, private :: sourcefile = &
        __FILE__
@@ -209,8 +222,8 @@ contains
          sabs_perroad_dif   =>    solarabs_inst%sabs_perroad_dif_lun   ,& ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by pervious road per unit ground area per unit incident flux
          sabs_br_tree_dif      =>    solarabs_inst%sabs_br_tree_dif_lun      , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by below-roof tree per unit tree area per unit incident flux
          sabs_ar_tree_dif      =>    solarabs_inst%sabs_ar_tree_dif_lun      , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by above-roof tree per unit tree area per unit incident flux
-         sabs_tree_dir   => solarabs_inst%sabs_tree_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by tree per unit tree area per unit incident flux
-         sabs_tree_dif   => solarabs_inst%sabs_tree_dif_lun   , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by tree per unit tree area per unit incident flux
+         sabs_tree_dir   => solarabs_inst%sabs_tree_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by road tree canopy per unit road-tree column area per unit incident flux
+         sabs_tree_dif   => solarabs_inst%sabs_tree_dif_lun   , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by road tree canopy per unit road-tree column area per unit incident flux
 
          sref_roof_dir   => solarabs_inst%sref_roof_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar reflected by roof per unit roof area per unit incident flux
          sref_sunwall_dir     => solarabs_inst%sref_sunwall_dir_lun     , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected by sunwall per unit wall area per unit incident flux
@@ -226,8 +239,8 @@ contains
          sref_perroad_dif     => solarabs_inst%sref_perroad_dif_lun     , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected by pervious road per unit ground area per unit incident flux
          sref_br_tree_dif     => solarabs_inst%sref_br_tree_dif_lun     , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected by below-roof tree per unit tree area per unit incident flux
          sref_ar_tree_dif     => solarabs_inst%sref_ar_tree_dif_lun     , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected by above-roof tree per unit tree area per unit incident flux
-         sref_tree_dir   => solarabs_inst%sref_tree_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar reflected  by pervious road per unit tree area per unit incident flux
-         sref_tree_dif   => solarabs_inst%sref_tree_dif_lun   , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected  by pervious road per unit tree area per unit incident flux
+         sref_tree_dir   => solarabs_inst%sref_tree_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar reflected  by road tree canopy per unit road-tree column area per unit incident flux
+         sref_tree_dif   => solarabs_inst%sref_tree_dif_lun   , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected  by road tree canopy per unit road-tree column area per unit incident flux
 
          sdir_road               => solarabs_inst%sdir_road_lun              , & ! Output:  [real(r8) (:,:) ] direct beam solar radiation incident on road per unit incident flux with tree attenuation [landunit, numrad]
          sdir_sunwall               => solarabs_inst%sdir_sunwall_lun            , & ! Output:  [real(r8) (:,:) ]  direct beam solar radiation incident on sun-lit wall per unit incident flux with tree attenuation [landunit, numrad]
@@ -317,7 +330,7 @@ contains
          rho_urbtree(p,:) = alb_br_tree_dir(l,:)
          tau_urbtree(p,:) = tran_br_tree_dir(l,:)
 
-         ! the effective "albedo" of below-roof and above-roof tree is the sum of the tree albedo and transmittance (used for multiple reflection)
+         ! the effective "albedo" of below-roof and above-roof tree is the sum of the tree albedo and transmittance (used for multiple reflection) for shortwave radiation
          alb_br_tree_dir_eff(l,:) =     alb_br_tree_dir(l,:) + tran_br_tree_dir(l,:)
          alb_ar_tree_dir_eff(l,:) =     alb_ar_tree_dir(l,:) + tran_ar_tree_dir(l,:)
          alb_br_tree_dif_eff(l,:) =     alb_br_tree_dif(l,:) + tran_br_tree_dif(l,:)
@@ -482,6 +495,7 @@ contains
             sabs_tree_dir(l,ib)   = 0._r8
             sabs_tree_dif(l,ib)   = 0._r8
 
+
             sref_roof_dir(l,ib)      = svfr_k(l,2)
             sref_roof_dif(l,ib)      = svfr_k(l,2)
             
@@ -567,7 +581,7 @@ contains
                  sdif_roof(begl:endl, :), &
                  sdif_ar_tree(begl:endl, :), &
                  sdif_br_tree(begl:endl, :), &
-                 urbanparams_inst,solarabs_inst)
+                 urbanparams_inst)
          end if
          
          ! Get snow albedos for roof and impervious and pervious road
@@ -703,8 +717,9 @@ contains
                   albgrd(c,ib) = sref_perroad_dir(l,ib)
                   albgri(c,ib) = sref_perroad_dif(l,ib)
                else if (ctype(c) == icol_road_tree) then
-                  albgrd(c,ib) = sref_tree_dir(l,ib)
-                  albgri(c,ib) = sref_tree_dif(l,ib)
+                  ! note that in solar radiation multiple reflection, the road tree and pervious road are treated as one surface
+                  albgrd(c,ib) = sref_tree_dir(l,ib)+sref_perroad_dir(l,ib)
+                  albgri(c,ib) = sref_tree_dif(l,ib)+sref_perroad_dif(l,ib)
                else if (ctype(c) == icol_road_imperv) then
                   albgrd(c,ib) = sref_improad_dir(l,ib)
                   albgri(c,ib) = sref_improad_dif(l,ib)
@@ -731,7 +746,6 @@ contains
             end do
          end do
    
-
          !------------------------------------------------------------------------
          ! I modified the filter to be filter_urbantreep
          ! The required input canopystate_inst%elai_patch/esai_patch is replanced by lai
@@ -740,13 +754,28 @@ contains
          ! The required input surfalb_inst%tlai_z_patch/tsai_z_patch/nrad_patch/albgrd_col/albgri_col all exist for urban tree
          ! The required input temperature_inst%t_veg_patch is replaced by t_grnd
          !------------------------------------------------------------------------
-         ! check whether this call would interferen any canyon-aware tree radiation; who overwrites whom?
-         ! correct: use filter_urbtreesol, num_urbtreesol instead of filter_urbantreep, num_urbantreep
+         ! TwoStream is run for the road tree only for the sunlit/shaded partition
+         ! (fabd/fabi and their _sun/_sha/_z parts, ftdd/ftid/ftii, fsun_z) that
+         ! CanopySunShadeFracs uses to split sabs_tree into parsun_z/parsha_z.
+         ! use filter_urbtreesol, num_urbtreesol instead of filter_urbantreep, num_urbantreep
          call TwoStream (bounds, filter_urbtreesol, num_urbtreesol, &
               coszen_patch(bounds%begp:bounds%endp), &
               rho_urbtree(bounds%begp:bounds%endp, :), &
               tau_urbtree(bounds%begp:bounds%endp, :), &
               canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst,solarabs_inst)
+
+         ! TwoStream also overwrites albd/albi with the albedo of a 1-D canopy over the
+         ! pervious road. The road tree column's albedo must stay the canyon value set
+         ! above (sref_tree + sref_perroad), since albd/albi give its reflected solar (fsr)
+         ! and the albedo sent to the atmosphere, and must match the canyon-model sabv/sabg.
+         do ib = 1,numrad
+            do fp = 1,num_urbtreesol
+               p = filter_urbtreesol(fp)
+               c = patch%column(p)
+               albd(p,ib) = albgrd(c,ib)
+               albi(p,ib) = albgri(c,ib)
+            end do
+         end do
 
               ! Determine values for non-vegetated patches where coszen > 0
          do ib = 1,numrad
@@ -869,22 +898,19 @@ contains
   function gaussian_quadrature(f, a, b, x, w,l) result(integral)
     ! calculate integration using gaussian quadrature nodes
     implicit none
+    procedure(urban_integrand) :: f     ! integrand; see the abstract interface above
     real(r8), intent(in) :: a, b        ! integration boundaries
     real(r8), intent(in) :: x(:), w(:)  ! nodes and weights
     real(r8) :: integral, quad_sum
     integer, intent(in) :: l
     integer :: i, n
-    
-    interface
-        function f(theta, l) result(value)
-            implicit none
-            integer, intent(in) :: l 
-            !real(r8), intent(in) :: theta
-            !real(r8) :: value
-            real(selected_real_kind(12)), intent(in) :: theta
-            real(selected_real_kind(12)) :: value            
-        end function f
-    end interface
+
+    ! Zero-width panel: the critical angles are clamped to theta_max by asin(min(...,1))
+    ! whenever the sun is high enough, so a == b is a normal case, not an error.
+    if (a == b) then
+       integral = 0.0_r8
+       return
+    end if
 
     n = size(x)
     quad_sum = 0.0_r8
@@ -922,7 +948,14 @@ contains
     ! with additional tree attenuation terms.
     ! 1. Masson, V. (2000) A physically-based scheme for the urban energy budget in 
     ! atmospheric models. Boundary-Layer Meteorology 94:357-397
-    ! 2. ***CLMU tree citation***
+    !
+    ! Tree foliage attenuates the direct beam by the Bouguer-Lambert-Beer law,
+    ! tau = exp(-Kbs*Omega*LAD*l) (Krayenhoff et al., 2014), with clumping index
+    ! Omega from Krayenhoff et al. (2020, Eq. 15). The crown spans h1..h1+h2 and
+    ! is either below roof (h1+h2 <= H) or extends above roof (h1 <= H, h1+h2 <= 2H).
+    ! Surface-average fluxes are integrated over canyon orientation analytically
+    ! where possible, otherwise by 4-point Gaussian quadrature.
+
     !  
     ! 
     ! !USES:
@@ -934,48 +967,56 @@ contains
     integer , intent(in)  :: num_urbanl                          ! number of urban landunits
     integer , intent(in)  :: filter_urbanl(:)                    ! urban landunit filter
     real(r8), intent(in)  :: canyon_hwr( bounds%begl: )          ! ratio of building height to street width [landunit]
-    real(r8), intent(in)  :: wtlunit_roof( bounds%begl: )        ! weight of roof with respect to landunit  [landunit]
+    real(r8), intent(in)  :: wtlunit_roof( bounds%begl: )        ! fraction of roof with respect to landunit  [landunit]
     real(r8), intent(in)  :: ht_roof( bounds%begl: )             ! height of urban roof (m) [landunit]
-    real(r8), intent(in) :: h1( bounds%begl: )      ! Height of tree canopy crown below roof (m)
+    real(r8), intent(in) :: h1( bounds%begl: )      ! Tree crown base height above ground (m)
     real(r8), intent(in) :: h2( bounds%begl: )      ! Depth of tree canopy crown (m)
-    real(r8), intent(in) :: lai( bounds%begl: )      ! tree lai
+    real(r8), intent(in) :: lai( bounds%begl: )      ! tree LAI+SAI per unit road area (m2 m-2)
     real(r8), intent(in) :: wtroad_tree( bounds%begl: )      ! tree fraction of road area 
 
-    real(r8), intent(in) :: A_v1( bounds%begl: )      ! leaf area index of below-roof tree 
-    real(r8), intent(in) :: A_v2( bounds%begl: )      !! leaf area index of above-roof tree 
+    real(r8), intent(in) :: A_v1( bounds%begl: )      ! two-sided, Omega-weighted leaf area per unit canyon length of below-roof tree (m)
+    real(r8), intent(in) :: A_v2( bounds%begl: )      ! two-sided, Omega-weighted leaf area per unit canyon length of above-roof tree (m)
     real(r8), intent(in)  :: coszen( bounds%begl: )              ! cosine solar zenith angle [landunit]
     real(r8), intent(in)  :: zen( bounds%begl: )                 ! solar zenith angle (radians) [landunit]
     real(r8), intent(in)  :: sdir( bounds%begl: , 1: )             ! direct beam solar radiation incident on horizontal surface [landunit, numrad]
     real(r8), intent(out) :: sdir_road( bounds%begl: , 1: )      ! direct beam solar radiation (per unit road area)incident on road per unit incident flux with tree attenuation [landunit, numrad]
     real(r8), intent(out) :: sdir_sunwall( bounds%begl: , 1: )   ! direct beam solar radiation (per unit wall area) incident on sunlit wall per unit incident flux with tree attenuation [landunit, numrad]
     real(r8), intent(out) :: sdir_shadewall( bounds%begl: , 1: ) ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux with tree attenuation [landunit, numrad]
-    real(r8), intent(out) :: sdir_roof( bounds%begl: , 1: )      ! direct beam solar radiation (per unit wall area) incident on roof per unit incident flux with tree attenuation [landunit, numrad] 
-    real(r8), intent(out) :: sdir_ar_tree( bounds%begl: , 1: )      ! direct beam solar radiation incident attenuated by above-roof tree before reaching to roof,wall, and road, per unit incident flux [landunit, numrad]
-    real(r8), intent(out) :: sdir_br_tree( bounds%begl: , 1: )      ! direct beam solar radiation incident attenuated by below-roof tree before reaching to wall and road, per unit incident flux [landunit, numrad]
+    real(r8), intent(out) :: sdir_roof( bounds%begl: , 1: )      ! direct beam solar radiation (per unit roof area) incident on roof per unit incident flux with tree attenuation [landunit, numrad]
+    real(r8), intent(out) :: sdir_ar_tree( bounds%begl: , 1: )      ! direct beam solar radiation incident on above-roof tree (per unit A_v2 leaf area), per unit incident flux [landunit, numrad]
+    real(r8), intent(out) :: sdir_br_tree( bounds%begl: , 1: )      ! direct beam solar radiation incident on below-roof tree (per unit A_v1 leaf area), per unit incident flux [landunit, numrad]
     ! temporary incoming incident direct solar flux for diagnosis purpose only   
     real(r8), intent(out) :: sdir_force( bounds%begl: , 1: )       ! direct beam radiation  (vis=forc_sols , nir=forc_soll ) for diagnosis   
     real(r8), intent(in) :: forc_solad(bounds%begl:, :)            ! direct beam radiation  (vis=forc_sols , nir=forc_soll ) for diagnosis     
 
     ! !LOCAL VARIABLES:
-    integer  :: fl,l,g,i,ib                     ! indices
+    integer  :: fl,l,ib                     ! indices
     ! In this scheme, we can perform numerical check of gaussian quadrature integration 
     !logical  :: numchk = .false.                ! true => perform numerical check of analytical solution
     real(r8) :: tanzen(bounds%begl:bounds%endl) ! tan(zenith angle)
-    real(r8) :: sinzen(bounds%begl:bounds%endl) ! sin(zenith angle)  
     real(r8)  ::  theta_max                      ! pi/2
-    ! check if these minimum angles are really necessary  
-    real(r8) :: tanzen_min                      ! minimum tan(zenith angle) (>0)
-    real(r8) :: coszen_min                      ! minimum cos(zenith angle) (>0)
-    real(r8) :: sinzen_min                      ! minimum sin(zenith angle) (>0)
-    real(r8) :: min_zen                         ! minimum threshold for tan(zen),cos(zen), and sin(zen)
-    ! I haven't added conservation check yet
-    real(r8) :: swall_projected_t               ! direct beam solar radiation (per unit ground area) incident on wall
+    ! Consistent zenith triple used by every tree expression below. cos(zen) is capped
+    ! once at grazing incidence and sin/tan are DERIVED from it, so that sin^2+cos^2 = 1
+    ! and tan = sin/cos hold exactly. Flooring the three independently (as an earlier
+    ! version did) breaks the critical-angle identity that every integrand relies on.
+    ! Each critical angle is theta_i = asin(w_i/(d_i*tanzen_c)), where w_i is a horizontal
+    ! width (wcan, wbui or wbui+wcan) and d_i the vertical depth the beam descends between
+    ! the two surfaces that angle separates (ht_roof, ht_roof-h1, h2, h1+h2, Tree_abr, ...).
+    ! That definition makes the two ways of writing the same slant path through the crown
+    ! agree at theta = theta_i:
+    !    w_i / (sin(theta_i)*sinzen_c) == d_i / coszen_c
+    ! The integrand exponents are differences of those two forms, so they vanish at
+    ! theta_i and stay non-positive over the panel each integrand is used on -- but only
+    ! while sin, cos and tan describe one and the same zenith angle.
+    real(r8) :: coszen_c(bounds%begl:bounds%endl) ! cos(zenith angle), capped at coszen_floor
+    real(r8) :: sinzen_c(bounds%begl:bounds%endl) ! sin(zenith angle), derived from coszen_c
+    real(r8) :: tanzen_c(bounds%begl:bounds%endl) ! tan(zenith angle), derived as sinzen_c/coszen_c
+   !  real(r8) :: theta0_c(bounds%begl:bounds%endl) ! Masson theta0 built from the capped zenith (tree branch only)
+    real(r8) :: min_zen                         ! minimum threshold for tan(zen) in the Masson theta0
+    real(r8), parameter :: coszen_floor = 0.001_r8 ! grazing-incidence cap: cos(zen) >= this (zen <= 89.94 deg)
+    real(r8), parameter :: eps_denom    = 1.e-6_r8 ! protects divisions by lengths, areas and extinction coefficients
+    real(r8) :: swall_projected_t              ! direct beam solar radiation (reprojected to be per unit ground area) incident on wall
     real(r8) :: err1(bounds%begl:bounds%endl)   ! energy conservation error
-    real(r8) :: sumr                            ! sum of sroad for each orientation (0 <= theta <= pi/2)
-    real(r8) :: sumw                            ! sum of swall for each orientation (0 <= theta <= pi/2)
-    real(r8) :: num                             ! number of orientations
-    
-    real(r8) :: theta                           ! canyon orientation relative to sun (0 <= theta <= pi/2)
     real(r8) :: wbui(bounds%begl:bounds%endl)   ! building width
     real(r8) :: wcan(bounds%begl:bounds%endl)   ! street width
     real(r8) :: omega(bounds%begl:bounds%endl)  ! leaf clumping index (Eq. 15 in Krayenhoff et al. 2020)     
@@ -983,12 +1024,10 @@ contains
     real(r8) :: Tree_at(bounds%begl:bounds%endl)       ! tree attenuation term (Kbs * Omega * LAD)
     real(r8) :: Tree_abr(bounds%begl:bounds%endl)      ! tree height above roof (h1+h2-ht_roof)
     integer  :: ca_order(bounds%begl:bounds%endl)      ! order of critical zenith angles [0,1,2,3,4]
-    real(r8) ::  sdir_tree_roof(bounds%begl:bounds%endl,numrad)! direct beam solar radiation (per unit wall area) attenuated by above roof tree before reaching to roof
-    real(r8) ::  sdir_tree_road(bounds%begl:bounds%endl,numrad)! direct beam solar radiation (per unit wall area) attenuated by above roof tree before reaching to road
-    real(r8) ::  sdir_tree_sunwall(bounds%begl:bounds%endl,numrad)! direct beam solar radiation (per unit wall area) attenuated by above roof tree before reaching to sun-lit wall
-    real(r8) ::  sdir_ar_tree_wr(bounds%begl:bounds%endl,numrad)! direct beam solar radiation (per unit wall area) attenuated by above roof tree before reaching to roof, wall or road 
-    real(r8) ::  sdir_br_tree_wr(bounds%begl:bounds%endl,numrad)! direct beam solar radiation (per unit wall area) attenuated by below roof tree before reaching to wall or road 
-    real(r8) ::  sdir_after_ar(bounds%begl:bounds%endl,numrad)! direct beam solar radiation (per unit wall area) attenuated by above roof tree before reaching to wall or road 
+    real(r8) ::  sdir_tree_roof(bounds%begl:bounds%endl,numrad)! local diagnostic: direct beam intercepted by above-roof tree before reaching roof (per unit A_v2 leaf area)
+    real(r8) ::  sdir_tree_road(bounds%begl:bounds%endl,numrad)! local diagnostic: direct beam intercepted by tree before reaching road (per unit A_v1+A_v2 leaf area)
+    real(r8) ::  sdir_tree_sunwall(bounds%begl:bounds%endl,numrad)! local diagnostic: direct beam intercepted by tree before reaching sunlit wall (per unit A_v1+A_v2 leaf area)
+    real(r8) ::  sdir_after_ar(bounds%begl:bounds%endl,numrad)! direct beam (per unit canyon ground area) reaching the roof-level plane (z = H) after passing the above-roof crown
 
     real(r8)  :: Kbs                                    ! Extinction coefficient for vegetation foliage
     ! In later stage of this development, we could add another function to calculate the gaussian quadrature weights and nodes for any numbers of nodes
@@ -1023,14 +1062,11 @@ contains
 
     ! these variables are used to calculate Masson2000 solution without tree. They are included to test the consistency between the new and old scheme when LAI=0
     real(r8) :: theta0(bounds%begl:bounds%endl)             ! critical canyon orientation for which road is no longer illuminated
-    real(r8) :: sdir_road_o(bounds%begl:bounds%endl , numrad)     ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side without tree attenuation
-    real(r8) :: sdir_sunwall_o(bounds%begl:bounds%endl , numrad)  ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side without tree attenuation
+    real(r8) :: sdir_road_o(bounds%begl:bounds%endl , numrad)     ! no-tree (Masson 2000) direct beam solar radiation (per unit road area) incident on road per unit incident flux
+    real(r8) :: sdir_sunwall_o(bounds%begl:bounds%endl , numrad)  ! no-tree (Masson 2000) direct beam solar radiation (per unit wall area) incident on sunlit wall per unit incident flux
     real(r8) :: sdir_shadewall_o(bounds%begl:bounds%endl , numrad) ! direct beam solar radiation (per unit wall area) incident on shaded wall per unit incident flux on the shaded side without tree attenuation
     real(r8) :: swall_projected                 ! direct beam solar radiation (per unit ground area) incident on wall
 
-    real(r8) :: latdeg                                 ! latdeg
-    real(r8) :: londeg                                 ! londeg    
-    logical  :: debug_write_dir = .false.                  ! true => write out many intermediate variables for debugging
     !-----------------------------------------------------------------------
 
     ! Enforce expected array sizes
@@ -1044,62 +1080,63 @@ contains
     SHR_ASSERT_ALL_FL((ubound(wtlunit_roof)     == (/bounds%endl/)),         sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(ht_roof)     == (/bounds%endl/)),         sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(sdir_roof) == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(h1)             == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(h2)             == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(lai)            == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(wtroad_tree)    == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(A_v1)           == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(A_v2)           == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdir_ar_tree)   == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdir_br_tree)   == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdir_force)     == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(forc_solad)     == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+   
    ! maximum theta is pi/2, 90 deg
    theta_max = rpi / 2.0_r8
-   debug_write_dir = .false.!.true.!.false.
-
-   Kbs=0.5_r8
+   Kbs = 0.5_r8
    min_zen = 0.000001_r8
-   
-   if (debug_write_dir) then
-      write (6,'(A,2F10.3)') 'LAD ',LAD
-   end if
-   
+
    ! Gaussian nodes and weights when n = 4
-   Gauss_nodes = (/ -0.86113631_r8, -0.33998104_r8,  0.33998104_r8,  0.86113631_r8/)
-   Gauss_weights = (/ 0.34785485_r8, 0.65214515_r8, 0.65214515_r8, 0.34785485_r8/)
+   Gauss_nodes   = (/ -0.8611363115940526_r8, -0.3399810435848563_r8, &
+                     0.3399810435848563_r8,  0.8611363115940526_r8 /)
+   Gauss_weights = (/  0.3478548451374538_r8,  0.6521451548625461_r8, &
+                     0.6521451548625461_r8,  0.3478548451374538_r8 /)
+
    !-------------------------------------------------!  
 
    do fl = 1,num_urbanl
       l = filter_urbanl(fl)
+      ! Copy incoming direct beam to solarabs_inst%sdir_force_lun for diagnosis (all urban landunits)
+      do ib = 1,numrad
+         sdir_force(l,ib)=forc_solad(l,ib)
+      end do
+
       if (coszen(l) > 0._r8) then
-         theta0(l) = asin(min( (1._r8/(canyon_hwr(l)*tan(max(zen(l),0.000001_r8)))), 1._r8 ))
+         theta0(l) = asin(min( (1._r8/(canyon_hwr(l)*tan(max(zen(l),min_zen)))), 1._r8 ))
          tanzen(l) = tan(zen(l))
 
+         ! One clamp, applied to cos(zen); sin and tan follow from it. zen(l) = acos(coszen(l))
+         ! upstream, so deriving all three here keeps them mutually consistent at every angle.
+         coszen_c(l) = max(coszen(l), coszen_floor)
+         sinzen_c(l) = sqrt(max(1._r8 - coszen_c(l)*coszen_c(l), 0._r8))
+         tanzen_c(l) = sinzen_c(l) / coszen_c(l)
+         ! theta0_c(l) = asin(min( 1._r8/(canyon_hwr(l)*max(tanzen_c(l),eps_denom)), 1._r8 ))
+
          if (lai(l) > 1e-6_r8) then
-            sinzen(l) = sin(zen(l))
-            ! Create a new variable solarabs_inst%sdir_force_lun for diagnosis, which is rasier to output
-            do ib = 1,numrad
-               sdir_force(l,ib)=forc_solad(l,ib)
-            end do
-            LAD(l)=lai(l) / h2(l) ! leaf area density 
+            LAD(l)=lai(l) / h2(l) ! leaf area density
             !Eq. 15 in Krayenhoff et al. 2020
-            omega(l)=-1.0_r8 / (0.5_r8 * lai(l)) * log(1.0_r8 - wtroad_tree(l) * &
-                  (1.0_r8 - exp(-0.5_r8 * lai(l)/wtroad_tree(l))))
+            omega(l)=-1.0_r8 / (Kbs * lai(l)) * log(1.0_r8 - wtroad_tree(l) * &
+                  (1.0_r8 - exp(-Kbs * lai(l)/wtroad_tree(l))))
 
             ! calculate building height and street width
             wbui(l)=ht_roof(l)/(canyon_hwr(l)*(1._r8-wtlunit_roof(l))/wtlunit_roof(l))
-            wcan(l)=ht_roof(l)/canyon_hwr(l) 
-            
-            tanzen_min= max(tanzen(l),min_zen) !tan(max(zen(l),min_zen))   
-            if (debug_write_dir) then
-               !write (6,'(A,2F10.3)') 'wbui(l)',wbui(l)            
-               !write (6,'(A,2F10.3)') 'tanzen_min',tanzen_min
-            end if                    
+            wcan(l)=ht_roof(l)/canyon_hwr(l)
 
-            if (debug_write_dir) then
-               !write (6,'(A,2F10.3)') 'h1(l),h2(l)',h1(l),h2(l)   
-            end if    
-                  
             ! two intermediate variables constantly used by incident direct solar expressions
             Tree_abr(l)=h1 (l)+ h2(l) - ht_roof(l)
-            Tree_at(l)=max(Kbs * Omega(l) * LAD (l),min_zen)
-            
-            if (debug_write_dir) then
-               !write (6,'(A,2F10.3)') 'Tree_abr(l), Tree_at(l)',Tree_abr(l), Tree_at(l) 
-            end if    
-            
-            ! Determin the ca_order, which determines the flux expressions in the tree-above-roof scenarios
+            Tree_at(l)=max(Kbs * Omega(l) * LAD (l),eps_denom)  ! extinction coefficient, 1/m
+
+            ! Determine the ca_order, which determines the flux expressions in the tree-above-roof scenarios
             if (h2(l)+h1(l) > ht_roof(l)) then  ! tree above roof scenario
                if (h2(l) > ht_roof(l)) then
                   if (ht_roof(l) < h1(l) + 0.5_r8 * h2(l)) then
@@ -1114,314 +1151,128 @@ contains
                         ca_order(l) = 4 !tree above roof; zen_ar_wr1<2<3<4<5
                   end if
                end if
-            else if (h2(l)+h1(l) <= ht_roof(l)) then                 
+            else if (h2(l)+h1(l) <= ht_roof(l)) then
                   ca_order(l) = 0 ! tree below roof scenario
             end if
-            
-            if (debug_write_dir) then
-               !write (6,'(A,2I10.3)') 'ca_order(l) ',ca_order(l)
-            end if             
-            ! Compute critical theta values for wall and road calculations under tree-bwlow-roof scenario  
-            if (ca_order(l) == 0) then !tree below roof 
-               theta_br_wr1(l) = asin(min(wcan(l) / (ht_roof(l)* tanzen_min), 1._r8))  
-               theta_br_wr2(l) = asin(min(wcan(l) / (max(ht_roof(l)-h1(l),min_zen) * tanzen_min), 1._r8))
-               theta_br_wr3(l) = asin(min(wcan(l) / (max(ht_roof(l)-h1(l)-h2(l),min_zen) * tanzen_min), 1._r8))
-               
-               zen_br_wr1(l) = atan(wcan(l) / (max(ht_roof(l)-h1(l)-h2(l),min_zen)))
-               zen_br_wr2(l) = atan(wcan(l) / (max(ht_roof(l)-h1(l),min_zen)))
-               zen_br_wr3(l) = atan(wcan(l) / ((ht_roof(l))))
-            else                 !tree above roof           
-               ! Compute critical theta values for wall and road calculations under tree-above-roof scenario       
-               theta_ar_wr5(l) = asin(min(wcan(l) / (max(Tree_abr(l),min_zen)* tanzen_min), 1._r8))
-               theta_ar_wr4(l) = asin(min(wcan(l) / (max(ht_roof(l) - h1(l),min_zen) * tanzen_min), 1._r8))
-               theta_ar_wr3(l) = asin(min(wcan(l) / (h2(l) * tanzen_min), 1._r8))
-               theta_ar_wr2(l) = asin(min(wcan(l) / (ht_roof(l) * tanzen_min), 1._r8))
-               theta_ar_wr1(l) = asin(min(wcan(l) / ((h1(l) + h2(l)) * tanzen_min), 1._r8))     
+
+            ! Compute critical theta values for wall and road calculations under tree-below-roof scenario
+            if (ca_order(l) == 0) then !tree below roof
+               theta_br_wr1(l) = asin(min(wcan(l) / (ht_roof(l)* tanzen_c(l)), 1._r8))
+               theta_br_wr2(l) = asin(min(wcan(l) / (max(ht_roof(l)-h1(l),eps_denom) * tanzen_c(l)), 1._r8))
+               theta_br_wr3(l) = asin(min(wcan(l) / (max(ht_roof(l)-h1(l)-h2(l),eps_denom) * tanzen_c(l)), 1._r8))
+ 
+               zen_br_wr1(l) = atan(wcan(l) / ((ht_roof(l))))
+               zen_br_wr2(l) = atan(wcan(l) / (max(ht_roof(l)-h1(l),eps_denom)))
+               zen_br_wr3(l) = atan(wcan(l) / (max(ht_roof(l)-h1(l)-h2(l),eps_denom)))
+            else                 !tree above roof
+               ! Compute critical theta values for wall and road calculations under tree-above-roof scenario
+               theta_ar_wr5(l) = asin(min(wcan(l) / (max(Tree_abr(l),eps_denom)* tanzen_c(l)), 1._r8))
+               theta_ar_wr4(l) = asin(min(wcan(l) / (max(ht_roof(l) - h1(l),eps_denom) * tanzen_c(l)), 1._r8))
+               theta_ar_wr3(l) = asin(min(wcan(l) / (h2(l) * tanzen_c(l)), 1._r8))
+               theta_ar_wr2(l) = asin(min(wcan(l) / (ht_roof(l) * tanzen_c(l)), 1._r8))
+               theta_ar_wr1(l) = asin(min(wcan(l) / ((h1(l) + h2(l)) * tanzen_c(l)), 1._r8))
 
                ! Compute critical zenith values for wall and road calculations
                zen_ar_wr1(l) = atan(wcan(l) / (h1(l) + h2(l)))
                zen_ar_wr2(l) = atan(wcan(l) / ht_roof(l))
                zen_ar_wr3(l) = atan(wcan(l) / h2(l))
-               zen_ar_wr4(l) = atan(wcan(l) / max(ht_roof(l) - h1(l),min_zen))
-               zen_ar_wr5(l) = atan(wcan(l) / max(Tree_abr(l),min_zen))
-            
+               zen_ar_wr4(l) = atan(wcan(l) / max(ht_roof(l) - h1(l),eps_denom))
+               zen_ar_wr5(l) = atan(wcan(l) / max(Tree_abr(l),eps_denom))
+
                ! Compute critical theta values for roof calculations
-               theta_ar_roof3(l) = asin(min((wbui(l) + wcan(l)) / (max(Tree_abr(l),min_zen) * tanzen_min), 1._r8))
-               theta_ar_roof2(l) = asin(min(wbui(l) / (max(Tree_abr(l),min_zen) * tanzen_min), 1._r8))
-               theta_ar_roof1(l) = asin(min(wcan(l) / (max(Tree_abr(l),min_zen) * tanzen_min), 1._r8))
-                        
+               theta_ar_roof3(l) = asin(min((wbui(l) + wcan(l)) / (max(Tree_abr(l),eps_denom) * tanzen_c(l)), 1._r8))
+               theta_ar_roof2(l) = asin(min(wbui(l) / (max(Tree_abr(l),eps_denom) * tanzen_c(l)), 1._r8))
+               theta_ar_roof1(l) = asin(min(wcan(l) / (max(Tree_abr(l),eps_denom) * tanzen_c(l)), 1._r8))
+
                ! Compute critical zenith values for roof calculations
-               zen_ar_roof1(l) = atan(wcan(l) / max(Tree_abr(l),min_zen))
-               zen_ar_roof2(l) = atan(wbui(l) / max(Tree_abr(l),min_zen))
-               zen_ar_roof3(l) = atan((wbui(l) + wcan(l)) / max(Tree_abr(l),min_zen))   
+               zen_ar_roof1(l) = atan(wcan(l) / max(Tree_abr(l),eps_denom))
+               zen_ar_roof2(l) = atan(wbui(l) / max(Tree_abr(l),eps_denom))
+               zen_ar_roof3(l) = atan((wbui(l) + wcan(l)) / max(Tree_abr(l),eps_denom))
             end if
          end if
-      end if 
+      end if
    end do
 
-   ! Use the CLM5 analytical view factor calculation when 
+   ! Change to use the CLM5 analytical view factor calculation when no tree exist
    do ib = 1,numrad
       do fl = 1,num_urbanl
          l = filter_urbanl(fl)
-         g = lun%gridcell(l)
          ! (zen(l)-theta_max)>0.001_r8) seems important because some numerical errors occur when zen is too close to pi/2
          !if ((coszen(l) > 0._r8) .and. ((theta_max - zen(l))>0.001_r8)) then   
          if (coszen(l) > 0._r8) then   
             if (lai(l) > 1e-6_r8) then
-               ! The latdeg and londeg are only used for the printouts for diagnosis purpose; can be removed later
-               latdeg=grc%latdeg(g)
-               londeg=grc%londeg(g)
                ! Initialization
                sdir_shadewall(l,ib) = 0._r8  
                sdir_road(l,ib) = 0._r8  
                sdir_sunwall(l,ib) = 0._r8  
-               sdir_roof(l,ib) = 1.0_r8
+               sdir_roof(l,ib) = 1.0_r8 
                sdir_ar_tree(l,ib) = 0._r8 
                sdir_br_tree(l,ib) = 0._r8 
                
-               coszen_min=max(coszen(l),min_zen)
-               sinzen_min=max(sinzen(l),min_zen)
                                  
                if (ca_order(l)==0) then !tree below roof
-                  ! roof is not shaded
-                  sdir_roof(l,ib) = 1.0_r8
+                  ! roof is not shaded and sdir_roof(l,ib) = 1.0_r8
                   ! calculate sdir_sunwall(l,ib) and sdir_road(l,ib)
-                  if (zen(l) > zen_br_wr3(l)) then
-                        sdir_sunwall(l,ib)=(integration_br_wr_01(theta_br_wr1(l),l) &
-                              +integration_br_wr_12(theta_br_wr1(l), theta_br_wr2(l),l) &
-                              +gaussian_quadrature(integrand_br_wr_23, theta_br_wr2(l), theta_br_wr3(l), Gauss_nodes, Gauss_weights,l)+integration_br_wr_23(theta_br_wr2(l), theta_br_wr3(l),l) &
-                              +(theta_max- theta_br_wr3(l)) * wcan(l) / ht_roof(l))/theta_max
-                        sdir_road(l,ib)=integration_br_road(theta_br_wr1(l),l)/theta_max
-                  else if (zen(l)>zen_br_wr2(l)) then
-                        sdir_sunwall(l,ib)=(integration_br_wr_01(theta_br_wr1(l),l) &
-                              +integration_br_wr_12(theta_br_wr1(l), theta_br_wr2(l),l) &
-                              +gaussian_quadrature(integrand_br_wr_23, theta_br_wr2(l), theta_max, Gauss_nodes, Gauss_weights,l)+integration_br_wr_23(theta_br_wr2(l), theta_max,l))/theta_max 
-                        sdir_road(l,ib)=integration_br_road(theta_br_wr1(l),l)/theta_max       
-                  else if (zen(l)>zen_br_wr1(l)) then
-                        sdir_sunwall(l,ib)=(integration_br_wr_01(theta_br_wr1(l),l) &
-                              +integration_br_wr_12(theta_br_wr1(l), theta_max,l))/theta_max
-                        sdir_road(l,ib)=integration_br_road(theta_br_wr1(l),l)/theta_max                  
-                  else
-                        sdir_sunwall(l,ib)=(integration_br_wr_01(theta_max,l))/theta_max
-                        sdir_road(l,ib)=integration_br_road(theta_max,l)/theta_max
-                  end if                         
+                  sdir_sunwall(l,ib)=(integration_br_wr_01(theta_br_wr1(l),l) &
+                        +integration_br_wr_12(theta_br_wr1(l), theta_br_wr2(l),l) &
+                        +gaussian_quadrature(integrand_br_wr_23, theta_br_wr2(l), theta_br_wr3(l), Gauss_nodes, Gauss_weights,l)+integration_br_wr_23(theta_br_wr2(l), theta_br_wr3(l),l) &
+                        +(theta_max- theta_br_wr3(l)) * wcan(l) / ht_roof(l))/theta_max
+                  sdir_road(l,ib)=integration_br_road(theta_br_wr1(l),l)/theta_max
                else                     ! tree above roof scenario
-                  if (zen(l)>zen_ar_wr5(l)) then
-                     ! correct: gaussian_quadrature(integrand_ar_BW_12, theta_ar_wr5(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
-                     ! to gaussian_quadrature(integrand_tree_partition_5pi, theta_ar_wr5(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
-                     sdir_after_ar(l,ib) = (tree_partition_05(theta_ar_wr5(l),l)&
-                                 + gaussian_quadrature(integrand_tree_partition_5pi, theta_ar_wr5(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
-                  else      
-                     sdir_after_ar(l,ib) = (tree_partition_05(theta_max,l)) / theta_max            
-                  end if  
-                  ! calcluate incident direct solar flux of roof
+                  ! calculate the direct beam solar flux reaching the roof-level plane (z = H) after passing the above-roof crown
+                  sdir_after_ar(l,ib) = (tree_partition_05(theta_ar_wr5(l),l)&
+                              + gaussian_quadrature(integrand_tree_partition_5pi, theta_ar_wr5(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
+                  ! calculate incident direct solar flux of roof
                   if  (wbui(l) > wcan(l)) then        !zen_ar_roof1<2<3
-                     if (zen(l)>zen_ar_roof3(l)) then
-                           sdir_roof(l,ib)=(integration_ar_BW_WB_01_02(theta_ar_roof1(l),l)&
-                                       +gaussian_quadrature(integrand_ar_BW_12, theta_ar_roof1(l), theta_ar_roof2(l),Gauss_nodes, Gauss_weights, l)+integration_ar_BW_12(theta_ar_roof1(l), theta_ar_roof2(l),l)&
-                                       +gaussian_quadrature(integrand_ar_BW_WB_13_23, theta_ar_roof2(l), theta_ar_roof3(l), Gauss_nodes, Gauss_weights,l)+&
-                                       gaussian_quadrature(integrand_ar_WB_BW_3pi, theta_ar_roof3(l),theta_max,Gauss_nodes, Gauss_weights,l))/theta_max
-                     else if (zen(l)>zen_ar_roof2(l)) then
-                           sdir_roof(l,ib)=(integration_ar_BW_WB_01_02(theta_ar_roof1(l),l)&
-                                       +gaussian_quadrature(integrand_ar_BW_12, theta_ar_roof1(l), theta_ar_roof2(l),Gauss_nodes, Gauss_weights, l)+integration_ar_BW_12(theta_ar_roof1(l), theta_ar_roof2(l),l)&
-                                       +gaussian_quadrature(integrand_ar_BW_WB_13_23, theta_ar_roof2(l),theta_max, Gauss_nodes, Gauss_weights,l))/theta_max                                  
-                     else if (zen(l)>zen_ar_roof1(l)) then
-                           sdir_roof(l,ib)=(integration_ar_BW_WB_01_02(theta_ar_roof1(l),l)&
-                                       +gaussian_quadrature(integrand_ar_BW_12, theta_ar_roof1(l), theta_max,Gauss_nodes, Gauss_weights, l)+integration_ar_BW_12(theta_ar_roof1(l), theta_max,l))/theta_max 
-                     else
-                           sdir_roof(l,ib)=(integration_ar_BW_WB_01_02(theta_max,l))/theta_max
-                     end if 
-                  else   !wbui < wcan and zen_ar_roof2<1<3
-                     if (zen(l)>zen_ar_roof3(l)) then
-                           sdir_roof(l,ib)=(integration_ar_BW_WB_01_02(theta_ar_roof2(l),l)&
-                                       +gaussian_quadrature(integrand_ar_WB_21, theta_ar_roof2(l), theta_ar_roof1(l),Gauss_nodes, Gauss_weights, l)+&
-                                    +gaussian_quadrature(integrand_ar_BW_WB_13_23, theta_ar_roof1(l), theta_ar_roof3(l), Gauss_nodes, Gauss_weights,l)+&
-                                    gaussian_quadrature(integrand_ar_WB_BW_3pi, theta_ar_roof3(l),theta_max,Gauss_nodes, Gauss_weights,l))/theta_max
-                     else if (zen(l)>zen_ar_roof1(l)) then
-                           sdir_roof(l,ib)=(integration_ar_BW_WB_01_02(theta_ar_roof2(l),l)&
-                                    +gaussian_quadrature(integrand_ar_WB_21, theta_ar_roof2(l), theta_ar_roof1(l),Gauss_nodes, Gauss_weights, l)+&
-                                    gaussian_quadrature(integrand_ar_BW_WB_13_23, theta_ar_roof1(l), theta_max, Gauss_nodes, Gauss_weights,l))/theta_max
-                     else if (zen(l)>zen_ar_roof2(l)) then
-                           sdir_roof(l,ib)=(integration_ar_BW_WB_01_02(theta_ar_roof2(l),l)&
-                                    +gaussian_quadrature(integrand_ar_WB_21, theta_ar_roof2(l), theta_max, Gauss_nodes, Gauss_weights, l))/theta_max
-                     else
-                           sdir_roof(l,ib)=(integration_ar_BW_WB_01_02(theta_max,l))/theta_max  
-                     end if            
+                     sdir_roof(l,ib)=(integration_ar_BW_WB_01_02(theta_ar_roof1(l),l)&
+                                 +gaussian_quadrature(integrand_ar_BW_12, theta_ar_roof1(l), theta_ar_roof2(l),Gauss_nodes, Gauss_weights, l)+integration_ar_BW_12(theta_ar_roof1(l), theta_ar_roof2(l),l)&
+                                 +gaussian_quadrature(integrand_ar_BW_WB_13_23, theta_ar_roof2(l), theta_ar_roof3(l), Gauss_nodes, Gauss_weights,l)+&
+                                 gaussian_quadrature(integrand_ar_WB_BW_3pi, theta_ar_roof3(l),theta_max,Gauss_nodes, Gauss_weights,l))/theta_max
+                  else   !wbui <= wcan and zen_ar_roof2<1<3
+                     sdir_roof(l,ib)=(integration_ar_BW_WB_01_02(theta_ar_roof2(l),l)&
+                                 +gaussian_quadrature(integrand_ar_WB_21, theta_ar_roof2(l), theta_ar_roof1(l),Gauss_nodes, Gauss_weights, l)+&
+                              gaussian_quadrature(integrand_ar_BW_WB_13_23, theta_ar_roof1(l), theta_ar_roof3(l), Gauss_nodes, Gauss_weights,l)+&
+                              gaussian_quadrature(integrand_ar_WB_BW_3pi, theta_ar_roof3(l),theta_max,Gauss_nodes, Gauss_weights,l))/theta_max
                   end if 
                                  
                   if (ca_order(l)==4) then !zen_ar_wr1<2<3<4<5
-                     if (zen(l)>zen_ar_wr5(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)&
-                                    + integration_ar_wr_23_ca43(theta_ar_wr2(l), theta_ar_wr3(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr3(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr3(l), theta_ar_wr4(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_45_ca42, theta_ar_wr4(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_45_ca42(theta_ar_wr4(l), theta_ar_wr5(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_45pi_ca1234, theta_ar_wr5(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
-                                    
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                 + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                          
-                                    
-                     else if (zen(l)>zen_ar_wr4(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)&
-                                    + integration_ar_wr_23_ca43(theta_ar_wr2(l), theta_ar_wr3(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr3(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr3(l), theta_ar_wr4(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_45_ca42, theta_ar_wr4(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_45_ca42(theta_ar_wr4(l), theta_max,l)) / theta_max
-                                    
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                          
+                     sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l)&
+                                 + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)&
+                                 + integration_ar_wr_23_ca43(theta_ar_wr2(l), theta_ar_wr3(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr3(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr3(l), theta_ar_wr4(l),l)&
+                                 + gaussian_quadrature(integrand_ar_wr_45_ca42, theta_ar_wr4(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_45_ca42(theta_ar_wr4(l), theta_ar_wr5(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_45pi_ca1234, theta_ar_wr5(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
                                  
-                     else if (zen(l)>zen_ar_wr3(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)&
-                                    + integration_ar_wr_23_ca43(theta_ar_wr2(l), theta_ar_wr3(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr3(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr3(l), theta_max,l)) / theta_max
-                                    
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                          
-                                          
-                     else if (zen(l)>zen_ar_wr2(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)&
-                                    + integration_ar_wr_23_ca43(theta_ar_wr2(l), theta_max,l) ) / theta_max
-                                    
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                          
-                              
-                     else if (zen(l)>zen_ar_wr1(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_max, Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_max,l)) / theta_max
-                                    
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_max,l)) / theta_max                          
-                     else 
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_max,l)) / theta_max
-                                    
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_max,l)) / theta_max                          
-                     end if         
+                     sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
+                              + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                           
                   else if (ca_order(l)==3) then       !zen_ar_wr1<2<3<5<4              
-                     if (zen(l)>zen_ar_wr4(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)&
-                                    + integration_ar_wr_23_ca43(theta_ar_wr2(l), theta_ar_wr3(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr3(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr3(l), theta_ar_wr5(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_54_ca31, theta_ar_wr5(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_54_ca31(theta_ar_wr5(l), theta_ar_wr4(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_45pi_ca1234, theta_ar_wr4(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                 + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                          
-                     else if (zen(l)>zen_ar_wr5(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)&
-                                    + integration_ar_wr_23_ca43(theta_ar_wr2(l), theta_ar_wr3(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr3(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr3(l), theta_ar_wr5(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_54_ca31, theta_ar_wr5(l),theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_54_ca31(theta_ar_wr5(l),theta_max,l) ) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                 + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                            
-                     else if (zen(l)>zen_ar_wr3(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)&
-                                    + integration_ar_wr_23_ca43(theta_ar_wr2(l), theta_ar_wr3(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr3(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr3(l), theta_max,l)) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                 + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                                                              
-                     else if (zen(l)>zen_ar_wr2(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)&
-                                    + integration_ar_wr_23_ca43(theta_ar_wr2(l), theta_max,l) ) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                 + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                                                                   
-                     else if (zen(l)>zen_ar_wr1(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l),theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_max,l)) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_max,l)) / theta_max                                                                                                                                      
-                     else 
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_max,l) ) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_max,l)) / theta_max                                                                                                              
-                     end if 
+                     sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)&
+                                 + integration_ar_wr_23_ca43(theta_ar_wr2(l), theta_ar_wr3(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr3(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr3(l), theta_ar_wr5(l),l)&
+                                 + gaussian_quadrature(integrand_ar_wr_54_ca31, theta_ar_wr5(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_54_ca31(theta_ar_wr5(l), theta_ar_wr4(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_45pi_ca1234, theta_ar_wr4(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
+                     sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
+                              + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                          
                   else if (ca_order(l)==2) then  !zen_ar_wr1<3<2<4<5
-                     if (zen(l)>zen_ar_wr5(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr2(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr2(l), theta_ar_wr4(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_45_ca42, theta_ar_wr4(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_45_ca42(theta_ar_wr4(l), theta_ar_wr5(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_45pi_ca1234, theta_ar_wr5(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                              + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                               
-                     else if (zen(l)>zen_ar_wr4(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr2(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr2(l), theta_ar_wr4(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_45_ca42, theta_ar_wr4(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_45_ca42(theta_ar_wr4(l), theta_max,l)) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                 + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                  
-                     else if (zen(l)>zen_ar_wr2(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr2(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr2(l), theta_max,l)) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                 + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                                                            
-                     else if (zen(l)>zen_ar_wr3(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_max, Gauss_nodes, Gauss_weights,l)+integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_max,l)) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                 + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_max,l)) / theta_max                                                          
-                     else if (zen(l)>zen_ar_wr1(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_max,l)) / theta_max
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
-                                 + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_max,l)) / theta_max                                                                             
-                     else 
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_max,l)) / theta_max    
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_max,l)) / theta_max                   
-                     end if  
+                     sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l)&
+                                 + gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l)&
+                                 + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr2(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr2(l), theta_ar_wr4(l),l)&
+                                 + gaussian_quadrature(integrand_ar_wr_45_ca42, theta_ar_wr4(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_45_ca42(theta_ar_wr4(l), theta_ar_wr5(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_45pi_ca1234, theta_ar_wr5(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
+                     sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l)&
+                           + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                               
                   else if (ca_order(l)==1) then !zen_ar_wr1<3<2<5<4
-                     if (zen(l)>zen_ar_wr4(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l) + &
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr2(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr2(l), theta_ar_wr5(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_54_ca31, theta_ar_wr5(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_54_ca31(theta_ar_wr5(l), theta_ar_wr4(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_45pi_ca1234, theta_ar_wr4(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
-                                    
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                  
-                                    
-                     else if (zen(l)>zen_ar_wr5(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l) + &
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr2(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr2(l), theta_ar_wr5(l),l)&
-                                    + gaussian_quadrature(integrand_ar_wr_54_ca31, theta_ar_wr5(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_54_ca31(theta_ar_wr5(l), theta_max,l)) / theta_max        
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                  
-                                    
-                     else if (zen(l)>zen_ar_wr2(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l) + &
-                                    + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr2(l), theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr2(l), theta_max,l)) / theta_max        
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                                                          
-                     else if (zen(l)>zen_ar_wr3(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l),theta_max , Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_32_ca21(theta_ar_wr3(l),theta_max ,l) ) / theta_max        
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_max , Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_max ,l)) / theta_max                                                                                                          
-                     else if (zen(l)>zen_ar_wr1(l)) then
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l),theta_max, Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_max,l) ) / theta_max        
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l) &
-                                    + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_max , Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_max ,l)) / theta_max                                                                                                                                                   
-                     else 
-                        sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_max,l)) / theta_max    
-                        sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_max,l)) / theta_max                   
-                     end if  
+                     sdir_sunwall(l,ib) = (integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_13_ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)+ integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr2(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_34_35_24_25_ca4321(theta_ar_wr2(l), theta_ar_wr5(l),l)&
+                                 + gaussian_quadrature(integrand_ar_wr_54_ca31, theta_ar_wr5(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_54_ca31(theta_ar_wr5(l), theta_ar_wr4(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_45pi_ca1234, theta_ar_wr4(l), theta_max, Gauss_nodes, Gauss_weights,l)) / theta_max
+                                 
+                     sdir_road(l,ib)= (integration_ar_wr_road_01_ca4321(theta_ar_wr1(l),l) &
+                                 + gaussian_quadrature(integrand_ar_wr_12_road_ca4321, theta_ar_wr1(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l) + integration_ar_wr_12_road_ca4321(theta_ar_wr1(l), theta_ar_wr2(l),l)) / theta_max                                  
                   end if
                
                end if 
@@ -1429,21 +1280,22 @@ contains
                ! calculate the incident direct solar flux without tree using analytical solution (Masson 2000)
                sdir_shadewall_o(l,ib) = 0._r8
                ! incident solar radiation on wall and road integrated over all canyon orientations (0 <= theta <= pi/2)
+               ! Built from the uncapped theta0 zenith 
                sdir_road_o(l,ib) = 1.0_r8 *                                    &
-                  (2._r8*theta0(l)/rpi - 2./rpi*(ht_roof(l)/wcan(l))*tanzen(l)*(1._r8-cos(theta0(l))))              
+                  (2._r8*theta0(l)/rpi - 2./rpi*(ht_roof(l)/wcan(l))*tanzen_c(l)*(1._r8-cos(theta0(l))))              
                sdir_sunwall_o(l,ib) = 2._r8 * 1.0_r8  * ((1._r8/(ht_roof(l)/wcan(l)))* &
-                  (0.5_r8-theta0(l)/rpi) + (1._r8/rpi)*tanzen(l)*(1._r8-cos(theta0(l))))
+                  (0.5_r8-theta0(l)/rpi) + (1._r8/rpi)*tanzen_c(l)*(1._r8-cos(theta0(l))))
 
                ! calculate the tree attenuation terms for each surface
                ! Here A_v1 is two-sided leaf area, which is consistent with leaf area used for view factor normalization
                if (ca_order(l)==0) then !tree below roofs
                   sdir_ar_tree(l,ib)=0.0_r8
-                  sdir_br_tree(l,ib)=(sdir(l,ib)-sdir_road(l,ib)-(sdir_shadewall(l,ib) + sdir_sunwall(l,ib))* canyon_hwr(l))*wcan(l)/max(A_v1(l),min_zen)
+                  sdir_br_tree(l,ib)=(sdir(l,ib)-sdir_road(l,ib)-(sdir_shadewall(l,ib) + sdir_sunwall(l,ib))* canyon_hwr(l))*wcan(l)/max(A_v1(l),eps_denom)
                   sdir_tree_roof(l,ib)=0.0_r8
                else 
-                  sdir_tree_roof(l,ib) = (1.0_r8 - sdir_roof(l,ib))*wbui(l)/max(A_v2(l),min_zen)
-                  sdir_ar_tree(l,ib)=(sdir(l,ib)-sdir_after_ar(l,ib))*wcan(l)/max(A_v2(l),min_zen)+ sdir_tree_roof(l,ib)
-                  sdir_br_tree(l,ib)=(sdir_after_ar(l,ib)-sdir_sunwall(l,ib)*canyon_hwr(l)-sdir_shadewall(l,ib)*canyon_hwr(l)-sdir_road(l,ib))*wcan(l)/max(A_v1(l),min_zen)
+                  sdir_tree_roof(l,ib) = (1.0_r8 - sdir_roof(l,ib))*wbui(l)/max(A_v2(l),eps_denom)
+                  sdir_ar_tree(l,ib)=(sdir(l,ib)-sdir_after_ar(l,ib))*wcan(l)/max(A_v2(l),eps_denom)+ sdir_tree_roof(l,ib)
+                  sdir_br_tree(l,ib)=(sdir_after_ar(l,ib)-sdir_sunwall(l,ib)*canyon_hwr(l)-sdir_shadewall(l,ib)*canyon_hwr(l)-sdir_road(l,ib))*wcan(l)/max(A_v1(l),eps_denom)
                end if
                
                ! conservation check for road and wall. need to use wall fluxes converted to ground area
@@ -1453,8 +1305,8 @@ contains
 
                ! conservation check for road and wall. need to use wall fluxes converted to ground area
                ! Need to add tree attenuation term later
-               sdir_tree_sunwall(l,ib) = (sdir_sunwall_o(l,ib) - sdir_sunwall(l,ib))*ht_roof(l)/max(A_v1(l)+A_v2(l),min_zen)
-               sdir_tree_road(l,ib) = (sdir_road_o(l,ib) - sdir_road(l,ib))*wcan(l)/max(A_v1(l)+A_v2(l),min_zen)
+               sdir_tree_sunwall(l,ib) = (sdir_sunwall_o(l,ib) - sdir_sunwall(l,ib))*ht_roof(l)/max(A_v1(l)+A_v2(l),eps_denom)
+               sdir_tree_road(l,ib) = (sdir_road_o(l,ib) - sdir_road(l,ib))*wcan(l)/max(A_v1(l)+A_v2(l),eps_denom)
 
                if (sdir_tree_roof(l,ib) < 0._r8 .or. sdir_tree_sunwall(l,ib) < 0._r8 .or. sdir_tree_road(l,ib) < 0._r8 &
                .or. sdir_ar_tree(l,ib) < 0._r8  .or. sdir_br_tree(l,ib) < 0._r8 ) then
@@ -1493,6 +1345,7 @@ contains
                swall_projected = (sdir_shadewall(l,ib) + sdir_sunwall(l,ib)) * canyon_hwr(l)
                err1(l) = sdir(l,ib) - (sdir_road(l,ib) + swall_projected)
 
+               ! incident solar radiation on tree are zero when no tree exists
                sdir_ar_tree(l,ib) = 0._r8
                sdir_br_tree(l,ib) = 0._r8
                sdir_tree_roof(l,ib)=0.0_r8
@@ -1516,54 +1369,23 @@ contains
             sdir_shadewall_o(l,ib) = 0._r8  
             err1(l) = 0._r8        
          end if
-
-
-         ! write(iulog,*) 'DIRECT INCIDENT DEBUG l=', l, ' ib=', ib
-         ! write(iulog,*) 'ca_order=', ca_order(l)
-         ! write(iulog,*) 'sdir=', sdir(l,ib)
-         ! write(iulog,*) 'sdir_road=', sdir_road(l,ib)
-         ! write(iulog,*) 'sdir_sunwall=', sdir_sunwall(l,ib)
-         ! write(iulog,*) 'sdir_shadewall=', sdir_shadewall(l,ib)
-         ! write(iulog,*) 'sdir_roof=', sdir_roof(l,ib)
-         ! write(iulog,*) 'sdir_after_ar=', sdir_after_ar(l,ib)
-         ! write(iulog,*) 'sdir_ar_tree=', sdir_ar_tree(l,ib)
-         ! write(iulog,*) 'sdir_br_tree=', sdir_br_tree(l,ib)
-         ! write(iulog,*) 'A_v1=', A_v1(l), ' A_v2=', A_v2(l), ' A_g=', wcan(l), ' A_w=', ht_roof(l)
-         ! write(iulog,*) 'ground-area direct residual below roof=', &
-         !    sdir_after_ar(l,ib) - sdir_road(l,ib) - &
-         !    (sdir_sunwall(l,ib) + sdir_shadewall(l,ib))*canyon_hwr(l)
-         ! write(iulog,*) 'ground-area direct residual no above-roof=', &
-         !    sdir(l,ib) - sdir_road(l,ib) - &
-         !    (sdir_sunwall(l,ib) + sdir_shadewall(l,ib))*canyon_hwr(l)
-
-
-         ! printouts
-         ! if (debug_write_dir) then
-         !    write (6,'(A,2F10.3)') 'sdir_road(l,ib), sdir_road_o(l,ib) ',sdir_road(l,ib),sdir_road_o(l,ib)
-         !    write (6,'(A,2F10.3)') 'sdir_road(l,ib) - sdir_road_o(l,ib) ',sdir_road(l,ib) - sdir_road_o(l,ib)
-         !    write (6,'(A,2F10.3)') 'sdir_sunwall(l,ib), sdir_sunwall_o(l,ib) ',sdir_sunwall(l,ib), sdir_sunwall_o(l,ib)
-         !    write (6,'(A,2F10.3)') 'sdir_sunwall(l,ib) - sdir_sunwall_o(l,ib)) ',sdir_sunwall(l,ib) - sdir_sunwall_o(l,ib)
-         !    !write (6,'(A,2F10.3)') 'sdir_roof(l,ib) ',sdir_roof(l,ib)
-         !    !write (6,'(A,2F10.3)') 'sdir_roof_shaded(l) ',sdir_roof_shaded(l)
-         !    write (6,'(A,2F10.3)') 'err1(l) ',err1(l)
-
-            !write (6,'(A,2F10.3)') 'integration_ar_wr_01_ca4321 ',integration_ar_wr_01_ca4321(theta_ar_wr1(l),l) 
-            !write (6,'(A,2F10.3)') 'integrand_ar_wr_12_13_ca4321',gaussian_quadrature(integrand_ar_wr_12_13_ca4321, theta_ar_wr1(l), theta_ar_wr3(l), Gauss_nodes, Gauss_weights,l)
-            !write (6,'(A,2F10.3)') 'integration_ar_wr_12_13__ca4321',integration_ar_wr_12_13__ca4321(theta_ar_wr1(l), theta_ar_wr3(l),l)
-            !write (6,'(A,2F10.3)') 'integration_ar_wr_32_ca21',integration_ar_wr_32_ca21(theta_ar_wr3(l), theta_ar_wr2(l),l)
-            !write (6,'(A,2F10.3)') 'integrand_ar_wr_32_ca21',gaussian_quadrature(integrand_ar_wr_32_ca21, theta_ar_wr3(l), theta_ar_wr2(l), Gauss_nodes, Gauss_weights,l)
-            !write (6,'(A,2F10.3)') 'integrand_ar_wr_34_35_24_25_ca4321',gaussian_quadrature(integrand_ar_wr_34_35_24_25_ca4321, theta_ar_wr2(l), theta_ar_wr5(l), Gauss_nodes, Gauss_weights,l) 
-            !write (6,'(A,2F10.3)') 'integration_ar_wr_34_35_24_25__ca4321',integration_ar_wr_34_35_24_25__ca4321(theta_ar_wr2(l), theta_ar_wr5(l),l)
-            !write (6,'(A,2F10.3)') 'integrand_ar_wr_54_ca31',gaussian_quadrature(integrand_ar_wr_54_ca31, theta_ar_wr5(l), theta_ar_wr4(l), Gauss_nodes, Gauss_weights,l)
-            !write (6,'(A,2F10.3)') 'integration_ar_wr_54_ca31',integration_ar_wr_54_ca31(theta_ar_wr5(l), theta_ar_wr4(l),l) 
-            !write (6,'(A,2F10.3)') 'integrand_ar_wr_45pi_ca1234',gaussian_quadrature(integrand_ar_wr_45pi_ca1234, theta_ar_wr4(l), theta_max, Gauss_nodes, Gauss_weights,l) 
-            !write (6,'(A,2F10.3)') 'sdir_road(l,ib),sdir_road_o(l,ib) ',sdir_road(l,ib),sdir_road_o(l,ib) 
-            !write (6,'(A,2F10.3)') 'sdir_sunwall(l,ib),sdir_sunwall_o(l,ib) ',sdir_sunwall(l,ib),sdir_sunwall_o(l,ib)
-            !write (6,'(A,2F10.3)') 'sdir_roof(l,ib)', sdir_roof(l,ib)
-         ! end if
       end do
    end do   
    contains    
+
+   ! exp() of an optical-path difference that is physically an attenuation (<= 1).
+   ! On every panel these integrands are used over, the exponent is non-positive by the
+   ! critical-angle identity, so the clamp is a no-op wherever the geometry is
+   ! self-consistent. It engages only in the degenerate near-horizon corner, where the
+   ! unclamped exp() would overflow to +Inf and poison the flux.
+   pure function atten(arg) result(value)
+      implicit none
+      real(r8), intent(in) :: arg
+      real(r8)             :: value
+
+      value = exp(min(arg, 0.0_r8))
+   end function atten
+
       
    ! The integration functions 
    !------------------------------tree below roof wall functions-----------------------------
@@ -1575,10 +1397,10 @@ contains
       real(r8)            :: term1, term2, term3
       real(r8)            :: exp_m_h2
 
-      exp_m_h2 = exp(-Tree_at(l) * (h2(l) / coszen_min))
-      term1 = h1(l) * tanzen(l) * exp_m_h2
-      term2 = sinzen(l)/Tree_at(l) * (1.0_r8 - exp_m_h2)
-      term3 = -Tree_abr(l) * tanzen(l)
+      exp_m_h2 = atten(-Tree_at(l) * (h2(l) / coszen_c(l)))
+      term1 = h1(l) * tanzen_c(l) * exp_m_h2
+      term2 = sinzen_c(l)/Tree_at(l) * (1.0_r8 - exp_m_h2)
+      term3 = -Tree_abr(l) * tanzen_c(l)
       value = (1.0_r8 / ht_roof(l)) * (term1 + term2 + term3) * (1.0_r8 - cos(theta_in1))
    end function integration_br_wr_01
 
@@ -1590,11 +1412,11 @@ contains
       real(r8)            :: term1, term2
       real(r8)            :: exp_m_h2
 
-      exp_m_h2 = exp(-Tree_at(l) * (h2(l) / coszen_min))
+      exp_m_h2 = atten(-Tree_at(l) * (h2(l) / coszen_c(l)))
       term1 = exp_m_h2 * wcan(l) * (theta_in2 - theta_in1)
-      term2 = sinzen(l)/Tree_at(l)  * (1.0_r8 - exp_m_h2) &
-            - exp_m_h2 * (ht_roof(l) - h1(l)) * tanzen(l) &
-            - Tree_abr(l) * tanzen(l)
+      term2 = sinzen_c(l)/Tree_at(l)  * (1.0_r8 - exp_m_h2) &
+            - exp_m_h2 * (ht_roof(l) - h1(l)) * tanzen_c(l) &
+            - Tree_abr(l) * tanzen_c(l)
       value = (1.0_r8 / ht_roof(l)) * (term1 + term2* (cos(theta_in1) - cos(theta_in2)))
    end function integration_br_wr_12
 
@@ -1606,9 +1428,8 @@ contains
       real(r8)            :: sin_theta, exp_m_W_h1_h2_H
 
       sin_theta = sin(theta)
-      ! KZ exp_m_W_h1_h2_H = exp(-Tree_at(l) * (wcan(l) / (max(sin(theta),min_zen) * sinzen_min) + Tree_abr(l) / coszen_min))
-      exp_m_W_h1_h2_H = exp(-Tree_at(l) * (wcan(l) / (sin(theta) * sinzen(l)) + Tree_abr(l) / coszen(l)))
-      value = sin_theta * sinzen(l) / (ht_roof(l) * Tree_at(l)) * (1.0_r8 - exp_m_W_h1_h2_H)
+      exp_m_W_h1_h2_H = atten(-Tree_at(l) * (wcan(l) / (sin(theta) * sinzen_c(l)) + Tree_abr(l) / coszen_c(l)))
+      value = sin_theta * sinzen_c(l) / (ht_roof(l) * Tree_at(l)) * (1.0_r8 - exp_m_W_h1_h2_H)
    end function integrand_br_wr_23
 
    function integration_br_wr_23(theta_in2, theta_in3, l) result(value)
@@ -1617,7 +1438,7 @@ contains
       real(r8), intent(in) :: theta_in2, theta_in3
       real(r8)             :: value
 
-      value = -Tree_abr(l) * tanzen(l) * (cos(theta_in2) - cos(theta_in3)) / ht_roof(l)
+      value = -Tree_abr(l) * tanzen_c(l) * (cos(theta_in2) - cos(theta_in3)) / ht_roof(l)
    end function integration_br_wr_23
       
    !---------------------------------tree aboveroof wall functions---------------------------------
@@ -1628,11 +1449,11 @@ contains
       real(r8)            :: value 
       real(r8)            :: exp_m_h2, exp_H_h1_h2, term1, term2
       
-      exp_m_h2 = exp(-Tree_at(l) * h2(l) / coszen_min)
-      exp_H_h1_h2 = exp(Tree_at(l) * (-Tree_abr(l) / coszen_min))
-      term1 = h1(l) * tanzen(l) * exp_m_h2
-      term2 = sinzen(l) / Tree_at(l) * (exp_H_h1_h2 - exp_m_h2)
-      value = 1.0_r8 / ht_roof(l) * (term1 + term2) * (1-cos(theta_in1))       
+      exp_m_h2 = atten(-Tree_at(l) * h2(l) / coszen_c(l))
+      exp_H_h1_h2 = atten(Tree_at(l) * (-Tree_abr(l) / coszen_c(l)))
+      term1 = h1(l) * tanzen_c(l) * exp_m_h2
+      term2 = sinzen_c(l) / Tree_at(l) * (exp_H_h1_h2 - exp_m_h2)
+      value = 1.0_r8 / ht_roof(l) * (term1 + term2) * (1.0_r8 - cos(theta_in1))       
    end function integration_ar_wr_01_ca4321
    
    function integrand_ar_wr_12_13_ca4321(theta,l) result(value) !checked
@@ -1642,9 +1463,8 @@ contains
       real(r8)            :: value 
       real(r8)            :: exp_m_w_h1
 
-      ! KZ exp_m_w_h1 = exp(-Tree_at(l) * (wcan(l) / (max(sin(theta),min_zen) * sinzen_min) - h1(l) / coszen_min))
-      exp_m_w_h1 = exp(-Tree_at(l) * (wcan(l) / (sin(theta) * sinzen(l)) - h1(l) / coszen(l)))
-      value = sin(theta) / ht_roof(l)*sinzen(l)/Tree_at(l)* exp_m_w_h1 
+      exp_m_w_h1 = atten(-Tree_at(l) * (wcan(l) / (sin(theta) * sinzen_c(l)) - h1(l) / coszen_c(l)))
+      value = sin(theta) / ht_roof(l)*sinzen_c(l)/Tree_at(l)* exp_m_w_h1 
    end function integrand_ar_wr_12_13_ca4321
 
    function integration_ar_wr_12_13_ca4321(theta_in_s, theta_in_l,l) result(value) !checked
@@ -1654,11 +1474,11 @@ contains
       real(r8)            :: value 
       real(r8)             :: exp_m_h2, exp_H_h1_h2, term1, term2, term3
       
-      exp_m_h2 = exp(-Tree_at(l) * h2(l) /coszen_min)
-      exp_H_h1_h2 = exp(Tree_at(l) * (-Tree_abr(l)/ coszen_min))
+      exp_m_h2 = atten(-Tree_at(l) * h2(l) /coszen_c(l))
+      exp_H_h1_h2 = atten(Tree_at(l) * (-Tree_abr(l)/ coszen_c(l)))
       term1 = wcan(l) * exp_m_h2 * (theta_in_l-theta_in_s)
-      term2 = (h2(l) * tanzen(l)  + 2.0_r8 * sinzen(l)  / Tree_at(l)) * exp_m_h2 * (cos(theta_in_s) - cos(theta_in_l))
-      term3 = sinzen(l)  / Tree_at(l) * exp_H_h1_h2 * (cos(theta_in_s) - cos(theta_in_l))
+      term2 = (h2(l) * tanzen_c(l)  + 2.0_r8 * sinzen_c(l)  / Tree_at(l)) * exp_m_h2 * (cos(theta_in_s) - cos(theta_in_l))
+      term3 = sinzen_c(l)  / Tree_at(l) * exp_H_h1_h2 * (cos(theta_in_s) - cos(theta_in_l))
       value =1.0_r8 / ht_roof(l) * (term1 - term2 + term3)
    end function integration_ar_wr_12_13_ca4321
 
@@ -1666,12 +1486,12 @@ contains
       implicit none
       integer, intent(in) :: l                      ! urban landunit index
       real(r8), intent(in) :: theta_in2, theta_in3
-      real(r8) :: value, exp_m_H_h1, exp_H_h1_h2, exp_m_h2, exp_m_2h2, term1, term2
+      real(r8) :: value, exp_m_H_h1, exp_H_h1_h2, exp_m_h2, term1, term2
       
-      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_min)
-      exp_H_h1_h2 = exp(Tree_at(l) * (-Tree_abr(l)) /coszen_min)
-      exp_m_h2 = exp(-Tree_at(l) * h2(l) / coszen_min )
-      term1 = sinzen(l)  / Tree_at(l) * (exp_m_H_h1 + exp_H_h1_h2 - 2 * exp_m_h2) - h2(l) * tanzen(l)  * exp_m_h2
+      exp_m_H_h1 = atten(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_c(l))
+      exp_H_h1_h2 = atten(Tree_at(l) * (-Tree_abr(l)) /coszen_c(l))
+      exp_m_h2 = atten(-Tree_at(l) * h2(l) / coszen_c(l) )
+      term1 = sinzen_c(l)  / Tree_at(l) * (exp_m_H_h1 + exp_H_h1_h2 - 2 * exp_m_h2) - h2(l) * tanzen_c(l)  * exp_m_h2
       term2 = wcan(l) * exp_m_h2  * (theta_in3- theta_in2)
       value = 1.0_r8 / ht_roof(l) * (term1 * (cos(theta_in2) - cos(theta_in3)) + term2)
    end function integration_ar_wr_23_ca43
@@ -1682,9 +1502,9 @@ contains
       real(r8), intent(in) :: theta
       real(r8) :: value, sin_theta, exp_m_W
       
-      sin_theta = max(sin(theta),min_zen)
-      exp_m_W = exp(-Tree_at(l)* wcan(l) / (sinzen_min   * sin_theta))
-      value = 1.0_r8 / ht_roof(l) * (h2(l) * tanzen(l)  - wcan(l) / sin_theta - 2 * sinzen (l) / Tree_at(l)) * exp_m_W * sin_theta
+      sin_theta = sin(theta)
+      exp_m_W = atten(-Tree_at(l)* wcan(l) / (sinzen_c(l)   * sin_theta))
+      value = 1.0_r8 / ht_roof(l) * (h2(l) * tanzen_c(l)  - wcan(l) / sin_theta - 2 * sinzen_c(l) / Tree_at(l)) * exp_m_W * sin_theta
    end function integrand_ar_wr_34_35_24_25_ca4321
 
    function integration_ar_wr_34_35_24_25_ca4321(theta_in_s, theta_in_l,l) result(value) !checked
@@ -1693,9 +1513,9 @@ contains
       real(r8), intent(in) :: theta_in_s, theta_in_l
       real(r8) :: value, exp_m_h2_h1_H, exp_m_H_h1
       
-      exp_m_h2_h1_H = exp(-Tree_at(l) * Tree_abr(l) / coszen_min)
-      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_min)
-      value = 1.0_r8 / ht_roof(l) * sinzen(l) / Tree_at(l) * (exp_m_h2_h1_H + exp_m_H_h1) *(cos(theta_in_s) - cos(theta_in_l))
+      exp_m_h2_h1_H = atten(-Tree_at(l) * Tree_abr(l) / coszen_c(l))
+      exp_m_H_h1 = atten(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_c(l))
+      value = 1.0_r8 / ht_roof(l) * sinzen_c(l) / Tree_at(l) * (exp_m_h2_h1_H + exp_m_H_h1) *(cos(theta_in_s) - cos(theta_in_l))
    end function integration_ar_wr_34_35_24_25_ca4321
    
    function integrand_ar_wr_45_ca42(theta,l) result(value)
@@ -1704,9 +1524,9 @@ contains
       real(r8), intent(in) :: theta
       real(r8) :: value, sin_theta, exp_m_W
       
-      sin_theta = max(sin(theta),min_zen)
-      exp_m_W = exp(-Tree_at(l) * wcan(l) / (sin_theta * sinzen_min ))
-      value = 1.0_r8 / ht_roof(l) * (Tree_abr(l) * tanzen(l) - sinzen(l) / Tree_at(l)) * exp_m_W * sin_theta
+      sin_theta = sin(theta)
+      exp_m_W = atten(-Tree_at(l) * wcan(l) / (sin_theta * sinzen_c(l) ))
+      value = 1.0_r8 / ht_roof(l) * (Tree_abr(l) * tanzen_c(l) - sinzen_c(l) / Tree_at(l)) * exp_m_W * sin_theta
    end function integrand_ar_wr_45_ca42
 
    function integration_ar_wr_45_ca42(theta_in4, theta_in5,l) result(value)
@@ -1715,8 +1535,8 @@ contains
       real(r8), intent(in) :: theta_in4, theta_in5
       real(r8) :: value, exp_m_h2_h1_H
       
-      exp_m_h2_h1_H = exp(-Tree_at(l) * Tree_abr(l) / coszen_min)
-      value = 1.0_r8 / ht_roof(l) * sinzen(l) / Tree_at(l) * exp_m_h2_h1_H * (cos(theta_in4) - cos(theta_in5))
+      exp_m_h2_h1_H = atten(-Tree_at(l) * Tree_abr(l) / coszen_c(l))
+      value = 1.0_r8 / ht_roof(l) * sinzen_c(l) / Tree_at(l) * exp_m_h2_h1_H * (cos(theta_in4) - cos(theta_in5))
    end function integration_ar_wr_45_ca42
 
    function integrand_ar_wr_45pi_ca1234(theta,l) result(value) !checked
@@ -1724,7 +1544,7 @@ contains
       integer, intent(in) :: l                      ! urban landunit index
       real(r8), intent(in) :: theta
       real(r8) :: value, exp_m_W
-      exp_m_W = exp(-Tree_at(l) * wcan(l) / (sinzen_min *max(sin(theta),min_zen)))
+      exp_m_W = atten(-Tree_at(l) * wcan(l) / (sinzen_c(l) *sin(theta)))
       value = wcan(l)/ ht_roof(l) * exp_m_W
    end function integrand_ar_wr_45pi_ca1234
 
@@ -1734,9 +1554,9 @@ contains
       real(r8), intent(in) :: theta
       real(r8) :: value, sin_theta, exp_m_W
       
-      sin_theta = max(sin(theta),min_zen)
-      exp_m_W = exp(-Tree_at(l) * wcan(l) / (sin_theta *sinzen_min ))
-      value = sin_theta / ht_roof(l) * exp_m_W *((ht_roof(l)-h1(l))*tanzen(l)-sinzen(l)/Tree_at(l))
+      sin_theta = sin(theta)
+      exp_m_W = atten(-Tree_at(l) * wcan(l) / (sin_theta *sinzen_c(l) ))
+      value = sin_theta / ht_roof(l) * exp_m_W *((ht_roof(l)-h1(l))*tanzen_c(l)-sinzen_c(l)/Tree_at(l))
    end function integrand_ar_wr_54_ca31
 
    function integration_ar_wr_54_ca31(theta_in5, theta_in4,l) result(value) !checked
@@ -1745,8 +1565,8 @@ contains
       real(r8), intent(in) :: theta_in4, theta_in5
       real(r8) :: value, exp_m_H_h1
       
-      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_min)
-      value =  sinzen(l)/ht_roof(l)/Tree_at(l)* exp_m_H_h1* (cos(theta_in5) - cos(theta_in4))
+      exp_m_H_h1 = atten(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_c(l))
+      value =  sinzen_c(l)/ht_roof(l)/Tree_at(l)* exp_m_H_h1* (cos(theta_in5) - cos(theta_in4))
    end function integration_ar_wr_54_ca31
    
    function integrand_ar_wr_32_ca21(theta,l) result(value) !checked
@@ -1755,12 +1575,11 @@ contains
       real(r8), intent(in) :: theta
       real(r8) :: value, sin_theta, exp_m_W, exp_m_W_h1,term1
       
-      sin_theta = max(sin(theta),min_zen)
-      exp_m_W = exp(-Tree_at(l)* wcan(l) / (sinzen_min   * sin_theta))
-      ! KZ exp_m_W_h1 = exp(-Tree_at(l) * (wcan(l) / (sin_theta * sinzen_min ) - h1(l) /coszen_min))
-      exp_m_W_h1 = exp(-Tree_at(l) * (wcan(l) / (sin(theta) * sinzen(l)) - h1(l) /coszen(l)))
-      term1=h2(l)*tanzen(l)-wcan(l)/sin_theta-2*sinzen(l)/Tree_at(l)
-      value = sin_theta / ht_roof(l) * (term1*exp_m_W+sinzen(l)/Tree_at(l)*exp_m_W_h1)
+      sin_theta = sin(theta)
+      exp_m_W = atten(-Tree_at(l)* wcan(l) / (sinzen_c(l)   * sin_theta))
+      exp_m_W_h1 = atten(-Tree_at(l) * (wcan(l) / (sin(theta) * sinzen_c(l)) - h1(l) /coszen_c(l)))
+      term1=h2(l)*tanzen_c(l)-wcan(l)/sin_theta-2*sinzen_c(l)/Tree_at(l)
+      value = sin_theta / ht_roof(l) * (term1*exp_m_W+sinzen_c(l)/Tree_at(l)*exp_m_W_h1)
    end function integrand_ar_wr_32_ca21
             
    function integration_ar_wr_32_ca21(theta_in_s, theta_in_l,l) result(value) !checked
@@ -1770,8 +1589,8 @@ contains
       real(r8)            :: value 
       real(r8)             :: exp_m_H_h1_h2
       
-      exp_m_H_h1_h2 = exp(-Tree_at(l) * Tree_abr(l) / coszen_min )
-      value = sinzen(l)/ht_roof(l)/ Tree_at(l) * exp_m_H_h1_h2 * (cos(theta_in_s) - cos(theta_in_l))
+      exp_m_H_h1_h2 = atten(-Tree_at(l) * Tree_abr(l) / coszen_c(l) )
+      value = sinzen_c(l)/ht_roof(l)/ Tree_at(l) * exp_m_H_h1_h2 * (cos(theta_in_s) - cos(theta_in_l))
    end function integration_ar_wr_32_ca21
 
    !----------------------------------road-------------------------------------  
@@ -1781,8 +1600,8 @@ contains
       real(r8), intent(in) :: theta_in1
       real(r8) :: value, exp_m_h2
 
-      exp_m_h2 = exp(-Tree_at(l) * h2(l) / coszen_min)
-      value = 1.0_r8 / wcan(l) * (wcan(l) * theta_in1 - ht_roof(l) * tanzen(l) * (1.0_r8 - cos(theta_in1))) * exp_m_h2
+      exp_m_h2 = atten(-Tree_at(l) * h2(l) / coszen_c(l))
+      value = 1.0_r8 / wcan(l) * (wcan(l) * theta_in1 - ht_roof(l) * tanzen_c(l) * (1.0_r8 - cos(theta_in1))) * exp_m_h2
    end function integration_br_road
       
    function integration_ar_wr_road_01_ca4321(theta_in1,l) result(value) !checked
@@ -1791,11 +1610,11 @@ contains
       real(r8), intent(in) :: theta_in1
       real(r8) :: value, exp_m_H_h1, exp_m_h1_h2_H, exp_m_h2, term1, term2
       
-      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_min)
-      exp_m_h1_h2_H = exp(-Tree_at(l) * Tree_abr(l) / coszen_min)
-      exp_m_h2 = exp(-Tree_at(l) * h2(l) / coszen_min)
-      term1 = exp_m_H_h1 * sinzen(l) / Tree_at(l) * (1.0_r8 - exp_m_h1_h2_H) * (1.0_r8 - cos(theta_in1))
-      term2 = (wcan(l) * theta_in1 - (h1(l) + h2(l)) * tanzen(l)  * (1.0_r8 - cos(theta_in1)))* exp_m_h2
+      exp_m_H_h1 = atten(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_c(l))
+      exp_m_h1_h2_H = atten(-Tree_at(l) * Tree_abr(l) / coszen_c(l))
+      exp_m_h2 = atten(-Tree_at(l) * h2(l) / coszen_c(l))
+      term1 = exp_m_H_h1 * sinzen_c(l) / Tree_at(l) * (1.0_r8 - exp_m_h1_h2_H) * (1.0_r8 - cos(theta_in1))
+      term2 = (wcan(l) * theta_in1 - (h1(l) + h2(l)) * tanzen_c(l)  * (1.0_r8 - cos(theta_in1)))* exp_m_h2
       value = (1.0_r8 / wcan(l)) * (term1 + term2)
    end function integration_ar_wr_road_01_ca4321
 
@@ -1804,11 +1623,9 @@ contains
       integer, intent(in) :: l                      ! urban landunit index
       real(r8), intent(in) :: theta
       real(r8) :: value, sin_theta, exp_m_W_h1
-      
-      sin_theta = max(sin(theta),min_zen)
-      ! KZ exp_m_W_h1 = exp(-Tree_at(l) * (wcan(l) / (sin_theta*sinzen_min) - h1(l) / coszen_min))
-      exp_m_W_h1 = exp(-Tree_at(l) * (wcan(l) / (sin(theta)*sinzen(l)) - h1(l) / coszen(l)))
-      value = 1.0_r8/ wcan(l) * (-sinzen(l)  / Tree_at(l)) * exp_m_W_h1 * sin_theta
+      sin_theta = sin(theta)
+      exp_m_W_h1 = atten(-Tree_at(l) * (wcan(l) / (sin(theta)*sinzen_c(l)) - h1(l) / coszen_c(l)))
+      value = 1.0_r8/ wcan(l) * (-sinzen_c(l)  / Tree_at(l)) * exp_m_W_h1 * sin_theta
    end function integrand_ar_wr_12_road_ca4321
 
    function integration_ar_wr_12_road_ca4321(theta_in1, theta_in2,l) result(value) !check
@@ -1817,8 +1634,8 @@ contains
       real(r8), intent(in) :: theta_in1, theta_in2
       real(r8) :: value, exp_m_H_h1
 
-      exp_m_H_h1 = exp(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_min)
-      value = 1.0_r8/ wcan(l)*sinzen(l)  / Tree_at(l) * exp_m_H_h1 * (cos(theta_in1) - cos(theta_in2))
+      exp_m_H_h1 = atten(-Tree_at(l) * (ht_roof(l) - h1(l)) / coszen_c(l))
+      value = 1.0_r8/ wcan(l)*sinzen_c(l)  / Tree_at(l) * exp_m_H_h1 * (cos(theta_in1) - cos(theta_in2))
    end function integration_ar_wr_12_road_ca4321
 
    !---------------------------------- roofs----------------------------------   
@@ -1828,9 +1645,9 @@ contains
       integer, intent(in) :: l
       real(r8) :: value, term1, exp_m_h1_h2_H, term2
 
-      exp_m_h1_h2_H = exp(-Tree_at(l) * Tree_abr(l) /coszen_min)
-      term1 = sinzen(l) / Tree_at(l)*(1.0_r8 - exp_m_h1_h2_H) * (1.0_r8 - cos(theta_in))
-      term2 = wbui(l) * theta_in - Tree_abr(l) * tanzen(l) * (1.0_r8 - cos(theta_in))
+      exp_m_h1_h2_H = atten(-Tree_at(l) * Tree_abr(l) /coszen_c(l))
+      term1 = sinzen_c(l) / Tree_at(l)*(1.0_r8 - exp_m_h1_h2_H) * (1.0_r8 - cos(theta_in))
+      term2 = wbui(l) * theta_in - Tree_abr(l) * tanzen_c(l) * (1.0_r8 - cos(theta_in))
       value = 1.0_r8 / wbui(l) * (term1  + term2)
    end function integration_ar_BW_WB_01_02
    
@@ -1839,10 +1656,10 @@ contains
       integer, intent(in) :: l                      ! urban landunit index
       real(r8), intent(in) :: theta
       real(r8) :: value, sin_theta, term1, exp_m_W
-      sin_theta = max(sin(theta),min_zen)
+      sin_theta = sin(theta)
 
-      term1 = (Tree_abr(l) * tanzen(l) - wcan(l) / sin_theta - sinzen(l)  / Tree_at(l))
-      exp_m_W = exp(-Tree_at(l) * wcan(l) / (sin_theta * sinzen_min))
+      term1 = (Tree_abr(l) * tanzen_c(l) - wcan(l) / sin_theta - sinzen_c(l)  / Tree_at(l))
+      exp_m_W = atten(-Tree_at(l) * wcan(l) / (sin_theta * sinzen_c(l)))
       value = sin_theta / wbui(l) * term1 * exp_m_W
    end function integrand_ar_BW_12
    
@@ -1852,9 +1669,9 @@ contains
       integer, intent(in) :: l
       real(r8) :: value, term1, term2, term3
 
-      term1 = sinzen(l) / Tree_at(l) * (cos(theta_in1) - cos(theta_in2))
+      term1 = sinzen_c(l) / Tree_at(l) * (cos(theta_in1) - cos(theta_in2))
       term2 = wbui(l) * (theta_in2 - theta_in1)
-      term3 = Tree_abr(l) * tanzen(l) * (cos(theta_in1) - cos(theta_in2))
+      term3 = Tree_abr(l) * tanzen_c(l) * (cos(theta_in1) - cos(theta_in2))
       value = 1.0_r8 / wbui(l) * (term1 + term2 - term3)
    end function integration_ar_BW_12
    
@@ -1864,12 +1681,11 @@ contains
       real(r8), intent(in) :: theta
       real(r8) :: value, sin_theta, term1, term2, exp_B_h1_h2_H , exp_m_W
       
-      sin_theta =max(sin(theta),min_zen)
-      ! exp_B_h1_h2_H = exp(Tree_at(l) * (wbui(l) / (sinzen_min  * sin_theta) - Tree_abr(l) / coszen_min))
-      exp_B_h1_h2_H = exp(Tree_at(l) * (wbui(l) / (sinzen(l)  * sin(theta)) - Tree_abr(l) / coszen(l)))
-      exp_m_W = exp(-Tree_at(l) * wcan(l) / (sinzen_min  * sin_theta))
-      term1 = (Tree_abr(l) * tanzen(l) - wcan(l) / sin_theta) * exp_m_W
-      term2 = sinzen(l) / Tree_at(l) * (exp_B_h1_h2_H - exp_m_W)
+      sin_theta =sin(theta)
+      exp_B_h1_h2_H = atten(Tree_at(l) * (wbui(l) / (sinzen_c(l)  * sin(theta)) - Tree_abr(l) / coszen_c(l)))
+      exp_m_W = atten(-Tree_at(l) * wcan(l) / (sinzen_c(l)  * sin_theta))
+      term1 = (Tree_abr(l) * tanzen_c(l) - wcan(l) / sin_theta) * exp_m_W
+      term2 = sinzen_c(l) / Tree_at(l) * (exp_B_h1_h2_H - exp_m_W)
       value = sin_theta / wbui(l) * (term1+term2)
    end function integrand_ar_BW_WB_13_23
 
@@ -1878,7 +1694,7 @@ contains
       integer, intent(in) :: l                      ! urban landunit index
       real(r8), intent(in) :: theta
       real(r8) :: value !exp_m_W
-      value  = exp(-Tree_at(l) * wcan(l) / (sinzen_min  * max(sin(theta),min_zen)))
+      value  = atten(-Tree_at(l) * wcan(l) / (sinzen_c(l)  * sin(theta)))
    end function integrand_ar_WB_BW_3pi
       
    function integrand_ar_WB_21(theta, l) result(value)
@@ -1887,23 +1703,12 @@ contains
       real(r8), intent(in) :: theta
       real(r8) :: value, sin_theta, exp_B_h1_h2_H,exp_m_h1_h2_H
       
-      !sin_theta = max(sin(theta),min_zen)
       sin_theta = sin(theta)
-      if (debug_write_dir) then 
-            write (6,'(A,2F10.3)') 'Tree_at(l),Tree_abr(l)',Tree_at(l),Tree_abr(l)
-            write (6,'(A,2F10.3)') 'sinzen(l)',sinzen(l)
-            write (6,'(A,2F10.3)') 'sin(theta)* sinzen(l)',sin(theta)* sinzen(l)
-            write (6,'(A,2F10.3)') 'Tree_abr(l)/coszen_min',Tree_abr(l)/coszen_min
-      end if
-      exp_m_h1_h2_H = exp(-Tree_at(l) * Tree_abr(l)/coszen_min)
-      if (debug_write_dir) then 
-            write (6,'(A,2F10.3)') 'exp_m_h1_h2_H',Tree_abr(l)/coszen_min
-      end if        
-      exp_B_h1_h2_H = exp(Tree_at(l) * (wbui(l) / (sin(theta) * sinzen(l)/coszen(l)*coszen_min)-Tree_abr(l)/coszen_min))
-      !exp_B_h1_h2_H = exp(Tree_at(l) * (wbui(l) / (sin_theta * sinzen(l))-Tree_abr(l)/coszen(l)))
-      !exp_B_h1_h2_H = exp(Tree_at(l) * (wbui(l) / (sin_theta * sinzen_min)-Tree_abr(l)/coszen_min))
-      !exp_B_h1_h2_H = exp(Tree_at(l) * (wbui(l) / max(sin(theta)* sinzen(l),min_zen)-Tree_abr(l)/coszen_min))
-      value= sin_theta / wbui(l) *sinzen(l)/Tree_at(l)*(exp_B_h1_h2_H-exp_m_h1_h2_H)
+
+      exp_m_h1_h2_H = atten(-Tree_at(l) * Tree_abr(l)/coszen_c(l))
+
+      exp_B_h1_h2_H = atten(Tree_at(l) * (wbui(l) / (sin(theta) * sinzen_c(l)) - Tree_abr(l) / coszen_c(l)))
+      value= sin_theta / wbui(l) *sinzen_c(l)/Tree_at(l)*(exp_B_h1_h2_H-exp_m_h1_h2_H)
    end function integrand_ar_WB_21    
    !---------------------------------partition incident solar---------------------------------
    function tree_partition_05(theta_in, l) result(value)
@@ -1911,10 +1716,10 @@ contains
       real(r8), intent(in) :: theta_in
       integer, intent(in) :: l
       real(r8) :: value, term1, term2, term3, exp_m_h1_h2_H 
-      exp_m_h1_h2_H = exp(-Tree_at(l) * Tree_abr(l)/coszen_min)
+      exp_m_h1_h2_H = atten(-Tree_at(l) * Tree_abr(l)/coszen_c(l))
       
-      term1 = sinzen(l)/Tree_at(l)*(1.0_r8 - exp_m_h1_h2_H) * (1.0_r8 - cos(theta_in))
-      term2 = Tree_abr(l)*tanzen(l)*exp_m_h1_h2_H * (1.0_r8 - cos(theta_in))
+      term1 = sinzen_c(l)/Tree_at(l)*(1.0_r8 - exp_m_h1_h2_H) * (1.0_r8 - cos(theta_in))
+      term2 = Tree_abr(l)*tanzen_c(l)*exp_m_h1_h2_H * (1.0_r8 - cos(theta_in))
       term3 = wcan(l)*exp_m_h1_h2_H*theta_in
       value = 1.0_r8 / wcan(l) * (term1 - term2 + term3)
    end function tree_partition_05  
@@ -1925,9 +1730,8 @@ contains
       real(r8), intent(in) :: theta
       real(r8) :: value,  exp_m_W!,sin_theta
       
-      !sin_theta = max(sin(theta),min_zen)
-      exp_m_W = exp(-Tree_at(l) * wcan(l) / (sin(theta) * sinzen(l)))
-      value = sin(theta)/ wcan(l) *  sinzen(l)  / Tree_at(l) * (1.0_r8 - exp_m_W)
+      exp_m_W = atten(-Tree_at(l) * wcan(l) / (sin(theta) * sinzen_c(l)))
+      value = sin(theta)/ wcan(l) *  sinzen_c(l)  / Tree_at(l) * (1.0_r8 - exp_m_W)
    end function integrand_tree_partition_5pi
 
    
@@ -1936,43 +1740,39 @@ contains
   subroutine incident_diffuse (bounds, &
        num_urbanl, filter_urbanl, canyon_hwr,ht_roof,A_v1,A_v2,wtlunit_roof, &
        sdif, sdif_road, sdif_sunwall, sdif_shadewall,sdif_roof, sdif_ar_tree, sdif_br_tree, &
-       urbanparams_inst,solarabs_inst)
+       urbanparams_inst)
     !
     ! !DESCRIPTION: 
     ! Diffuse solar radiation incident on walls and road in urban canyon with tree 
-    ! Conservation check: Total incoming diffuse 
-    ! (sdif) = sdif_road + (sdif_shadewall + sdif_sunwall)*canyon_hwr
-    ! Multiplication by canyon_hwr scales wall fluxes (per unit wall area) to per unit ground area
     !
     ! !ARGUMENTS:
     type(bounds_type)     , intent(in)  :: bounds                      
     integer               , intent(in)  :: num_urbanl                           ! number of urban landunits
     integer               , intent(in)  :: filter_urbanl(:)                     ! urban landunit filter
     real(r8)              , intent(in)  :: canyon_hwr     ( bounds%begl: )      ! ratio of building height to street width [landunit]
-    real(r8)              , intent(in)  :: sdif           ( bounds%begl: , 1: ) ! diffuse solar radiation incident on horizontal surface [landunit, numrad]
-    real(r8)              , intent(out) :: sdif_road      ( bounds%begl: , 1: ) ! diffuse solar radiation incident on road [landunit, numrad]
-    real(r8)              , intent(out) :: sdif_sunwall   ( bounds%begl: , 1: ) ! diffuse solar radiation (per unit wall area) incident on sunlit wall [landunit, numrad]
-    real(r8)              , intent(out) :: sdif_shadewall ( bounds%begl: , 1: ) ! diffuse solar radiation (per unit wall area) incident on shaded wall [landunit, numrad]
-    real(r8)              , intent(out) :: sdif_roof      ( bounds%begl: , 1: ) ! diffuse solar radiation incident on roof [landunit, numrad]
-    real(r8)              , intent(out) :: sdif_ar_tree      ( bounds%begl: , 1: ) ! diffuse solar radiation incident on tree above roof [landunit, numrad]
-    real(r8)              , intent(out) :: sdif_br_tree      ( bounds%begl: , 1: ) ! diffuse solar radiation incident on tree below roof [landunit, numrad]
+    real(r8)              , intent(in)  :: sdif           ( bounds%begl: , 1: ) ! diffuse solar radiation incident on horizontal surface = 1.0 [landunit, numrad]
+    real(r8)              , intent(out) :: sdif_road      ( bounds%begl: , 1: ) ! diffuse solar radiation incident on road per unit incident flux [landunit, numrad]
+    real(r8)              , intent(out) :: sdif_sunwall   ( bounds%begl: , 1: ) ! diffuse solar radiation (per unit wall area) incident on sunlit wall per unit incident flux [landunit, numrad]
+    real(r8)              , intent(out) :: sdif_shadewall ( bounds%begl: , 1: ) ! diffuse solar radiation (per unit wall area) incident on shaded wall per unit incident flux [landunit, numrad]
+    real(r8)              , intent(out) :: sdif_roof      ( bounds%begl: , 1: ) ! diffuse solar radiation incident on roof per unit incident flux [landunit, numrad]
+    real(r8)              , intent(out) :: sdif_ar_tree      ( bounds%begl: , 1: ) ! diffuse solar radiation incident on tree above roof per unit incident flux [landunit, numrad]
+    real(r8)              , intent(out) :: sdif_br_tree      ( bounds%begl: , 1: ) ! diffuse solar radiation incident on tree below roof per unit incident flux [landunit, numrad]
     real(r8)              , intent(in)  :: ht_roof     ( bounds%begl: )      !height of urban roof (m)
-    real(r8)              , intent(in)  :: wtlunit_roof     ( bounds%begl: )      ! urban landunit weight of road tree column to total road (-)
-    real(r8)              ,intent(in)    :: A_v1               ( bounds%begl: )            ! leaf area for urban tree canopy below roof   
-    real(r8)              ,intent(in)    :: A_v2               ( bounds%begl: )            ! leaf area for urban tree canopy above roof   
+    real(r8)              , intent(in)  :: wtlunit_roof     ( bounds%begl: )      ! fraction of roof with respect to landunit  [landunit]
+    real(r8)              ,intent(in)    :: A_v1               ( bounds%begl: )            ! leaf area for urban tree canopy below roof (normalized) [m]
+    real(r8)              ,intent(in)    :: A_v2               ( bounds%begl: )            ! leaf area for urban tree canopy above roof (normalized) [m]   
 
     type(urbanparams_type), intent(in)  :: urbanparams_inst
-    type(solarabs_type)   , intent(in) :: solarabs_inst
     !
     ! !LOCAL VARIABLES:
     integer  :: l, fl, ib       ! indices      
-    real(r8) :: err(bounds%begl:bounds%endl)    ! energy conservation error (W/m**2)
-    real(r8) :: scan_projected ! projected diffuse solar radiation (per unit ground area) for the whole stret canyon (W/m**2)
-    real(r8)            :: A_s                           ! Area of the street canyon (normalized)
-    real(r8)            :: A_g                           ! Aarea of the ground (normalized)
-    real(r8)            :: A_r                           ! Area of the roof
-    real(r8)            :: A_w                           ! Area of the wall (normalized)
-    logical  :: debug_write = .false.                  ! true => write out many intermediate variables for debugging
+    real(r8) :: err(bounds%begl:bounds%endl)    ! energy conservation error (unitless) for each urban landunit
+    real(r8) :: scan_projected ! projected diffuse solar radiation (per unit ground area) for the whole stret canyon (unitless) 
+    real(r8)            :: A_s                           ! Area of the street canyon (normalized) [m]
+    real(r8)            :: A_g                           ! Aarea of the ground (normalized) [m]
+    real(r8)            :: A_r                           ! Area of the roof (normalized) [m]
+    real(r8)            :: A_w                           ! Area of the wall (normalized) [m]
+
 
     !-----------------------------------------------------------------------
     
@@ -1988,7 +1788,8 @@ contains
     SHR_ASSERT_ALL_FL((ubound(sdif_br_tree) == (/bounds%endl, numrad/)), sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(ht_roof)     == (/bounds%endl/)),         sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(wtlunit_roof)     == (/bounds%endl/)),         sourcefile, __LINE__)
-
+    SHR_ASSERT_ALL_FL((ubound(A_v1)           == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(A_v2)           == (/bounds%endl/)),         sourcefile, __LINE__)
     associate(                            & 
          ksg1d =>    urbanparams_inst%ksg1d_out ,  & ! Input:  [real(r8) (:) ]  Monte carlo view factor of sky for ground[landunit]               
          ksw1d =>    urbanparams_inst%ksw1d_out , & ! Input:  [real(r8) (:,:) ]  Monte carlo view factor of sky for wall[landunit, nzcanm]                      
@@ -2003,16 +1804,7 @@ contains
          do fl = 1,num_urbanl
             l = filter_urbanl(fl)
 
-            debug_write=.false. 
-            ! if (l==3) then   
-            !     debug_write=.false. 
-            ! else 
-            !     debug_write=.false. 
-            ! end if
-            ! A_w:building height; [m]
-            ! A_r:building width; [m]
-            ! A_g:road width; [m]
-            ! A_v1/v2: normalized tree leaf area index below/above roof; [m]
+
             A_w=ht_roof(l)
             A_r=ht_roof(l)/(canyon_hwr(l)*(1._r8-wtlunit_roof(l))/wtlunit_roof(l))
             A_g=ht_roof(l)/canyon_hwr(l)
@@ -2029,17 +1821,10 @@ contains
             scan_projected=sdif_road(l,ib)*A_g/A_s+(sdif_shadewall(l,ib) + sdif_sunwall(l,ib))* A_w/A_s &
                                  +sdif_roof(l,ib)*A_r/A_s + sdif_br_tree(l,ib)*A_v1(l)/A_s+ sdif_ar_tree(l,ib)*A_v2(l)/A_s
 
-            err(l) = sdif(l,ib) - scan_projected
-            if (debug_write) then
-               write(6,*) '----------------incoming longwave radiation------------ '
-               write(6,*) 'sdif(l,ib)= ', sdif(l,ib)
-               write(6,*) 'ksg1d(l),ksw1d(l,1),ksr1d(l,2),ksv1d(l,1),ksv1d(l,2)', ksg1d(l),ksw1d(l,1),ksr1d(l,2),ksv1d(l,1),ksv1d(l,2)
-               write(6,*) 'A_s(l),A_g(l), A_w(l), A_v1(l), A_v2(l), A_r(l) = ', A_s,A_g, A_w, A_v1(l), A_v2(l), A_r
-            end if                    
+            err(l) = sdif(l,ib) - scan_projected                 
          end do
 
          ! error check
-
          do fl = 1, num_urbanl
             l = filter_urbanl(fl)
             if (abs(err(l)) > 0.001_r8) then
@@ -2071,18 +1856,43 @@ contains
     ! Solar radiation absorbed by road and both walls in urban canyon allowing 
     ! for multiple reflection.
     !
+    ! Two sets of Monte Carlo view factors are used here, deliberately:
+    ! the k*1d set for the first scattering and the f*1d set for every
+    ! subsequent one. Despite the "shortwave"/"longwave" labels they carry in
+    ! UrbanParamsType, the two sets differ in exactly one respect: the angular
+    ! distribution assumed for radiation leaving FOLIAGE (montecarlo_view_factors,
+    ! the "if (solar)" branch). The k set draws those rays from xxe2/zze2, which
+    ! is the isotropic distribution with 20% of the downward rays flipped upward,
+    ! i.e. a 3:2 upward (backscatter) preference; the f set draws from xxe/zze,
+    ! which is isotropic. Every other emitter (road, wall, roof, sky) uses the
+    ! same Lambert-cosine distribution in both sets, so those rows differ only by
+    ! Monte Carlo sampling noise.
+    !
+    ! The upward bias belongs on the first scattering and not on later ones.
+    ! Backscatter sends radiation back toward where it came from. On the first
+    ! interaction the foliage has been lit only from the sky (sdir_br_tree and
+    ! sdif_br_tree come straight from incident_direct/incident_diffuse), so
+    ! "back" is "up" and the biased k set is the right proxy. From the second
+    ! scattering on, the foliage is lit by the road from below, the walls from
+    ! the sides, the roof and other foliage - an approximately isotropic field,
+    ! for which backscatter yields approximately isotropic output. Retaining the
+    ! upward bias there would keep ejecting multiply-scattered photons out of the
+    ! canyon top regardless of where they arrived from, overestimating canyon
+    ! albedo. Hence k for the first scattering, f thereafter.
+    !
+    !
     ! !ARGUMENTS:
     type (bounds_type), intent(in) :: bounds                            
     integer , intent(in)    :: num_urbanl                               ! number of urban landunits
     integer , intent(in)    :: filter_urbanl(:)                         ! urban landunit filter
     real(r8), intent(in)    :: coszen             ( bounds%begl: )      ! cosine solar zenith angle [landunit]
     real(r8), intent(in)    :: canyon_hwr         ( bounds%begl: )      ! ratio of building height to street width [landunit]
-    real(r8), intent(in)    :: wtlunit_roof         ( bounds%begl: )        ! weight of roof with respect to landunit  [landunit]
+    real(r8), intent(in)    :: wtlunit_roof         ( bounds%begl: )        ! fraction of roof with respect to landunit  [landunit]
     real(r8), intent(in)    :: ht_roof               ( bounds%begl: )             ! height of urban roof (m) [landunit]
     real(r8), intent(in)    :: A_v1               ( bounds%begl: )             ! Leaf area for urban tree canopy below roof (m) [landunit]
     real(r8), intent(in)    :: A_v2               ( bounds%begl: )             ! Leaf area for urban tree canopy above roof (m) [landunit]
-    real(r8), intent(in)    :: wtroad_perv        ( bounds%begl: )      ! weight of pervious road wrt total road [landunit]
-    real(r8), intent(in)    :: wtroad_tree        ( bounds%begl: )      ! weight of road tree wrt total road [landunit]
+    real(r8), intent(in)    :: wtroad_perv        ( bounds%begl: )      ! fraction of pervious road wrt total road [landunit]
+    real(r8), intent(in)    :: wtroad_tree        ( bounds%begl: )      ! fraction of road tree wrt total road [landunit]
     real(r8), intent(in)    :: lai                ( bounds%begl: )      ! leaf area index [landunit]
     real(r8), intent(in)    :: sdir               ( bounds%begl: , 1: ) ! direct beam solar radiation incident on horizontal surface [landunit, numrad]
     real(r8), intent(in)    :: sdif               ( bounds%begl: , 1: ) ! diffuse solar radiation on horizontal surface [landunit, numrad]
@@ -2123,41 +1933,41 @@ contains
     real(r8) :: improad_r_dir(bounds%begl:bounds%endl)           ! reflected direct solar for impervious road after "n" reflections per unit incident flux
     real(r8) :: improad_r_dif(bounds%begl:bounds%endl)           ! reflected diffuse solar for impervious road after "n" reflections per unit incident flux
     real(r8) :: improad_r_sky_dir(bounds%begl:bounds%endl)       ! improad_r_dir to sky per unit incident flux
-    real(r8) :: improad_r_sunwall_dir(bounds%begl:bounds%endl)   ! improad_r_dir to sunlit wall per unit incident flux
-    real(r8) :: improad_r_shadewall_dir(bounds%begl:bounds%endl) ! improad_r_dir to shaded wall per unit incident flux
-    real(r8) :: improad_r_br_tree_dir(bounds%begl:bounds%endl) ! improad_r_dir to below-roof tree per unit incident flux
-    real(r8) :: improad_r_ar_tree_dir(bounds%begl:bounds%endl) ! improad_r_dir to above-roof tree per unit incident flux
+   !  real(r8) :: improad_r_sunwall_dir(bounds%begl:bounds%endl)   ! improad_r_dir to sunlit wall per unit incident flux
+   !  real(r8) :: improad_r_shadewall_dir(bounds%begl:bounds%endl) ! improad_r_dir to shaded wall per unit incident flux
+   !  real(r8) :: improad_r_br_tree_dir(bounds%begl:bounds%endl) ! improad_r_dir to below-roof tree per unit incident flux
+   !  real(r8) :: improad_r_ar_tree_dir(bounds%begl:bounds%endl) ! improad_r_dir to above-roof tree per unit incident flux
     real(r8) :: improad_r_sky_dif(bounds%begl:bounds%endl)       ! improad_r_dif to sky per unit incident flux
-    real(r8) :: improad_r_sunwall_dif(bounds%begl:bounds%endl)   ! improad_r_dif to sunlit wall per unit incident flux
-    real(r8) :: improad_r_shadewall_dif(bounds%begl:bounds%endl) ! improad_r_dif to shaded wall per unit incident flux
-    real(r8) :: improad_r_br_tree_dif(bounds%begl:bounds%endl) ! improad_r_dif to below-roof tree per unit incident flux
-    real(r8) :: improad_r_ar_tree_dif(bounds%begl:bounds%endl) ! improad_r_dif to above-roof tree per unit incident flux
+   !  real(r8) :: improad_r_sunwall_dif(bounds%begl:bounds%endl)   ! improad_r_dif to sunlit wall per unit incident flux
+   !  real(r8) :: improad_r_shadewall_dif(bounds%begl:bounds%endl) ! improad_r_dif to shaded wall per unit incident flux
+   !  real(r8) :: improad_r_br_tree_dif(bounds%begl:bounds%endl) ! improad_r_dif to below-roof tree per unit incident flux
+   !  real(r8) :: improad_r_ar_tree_dif(bounds%begl:bounds%endl) ! improad_r_dif to above-roof tree per unit incident flux
 
     real(r8) :: perroad_a_dir(bounds%begl:bounds%endl)           ! absorbed direct solar for pervious road after "n" reflections per unit incident flux
     real(r8) :: perroad_a_dif(bounds%begl:bounds%endl)           ! absorbed diffuse solar for pervious road after "n" reflections per unit incident flux
     real(r8) :: perroad_r_dir(bounds%begl:bounds%endl)           ! reflected direct solar for pervious road after "n" reflections per unit incident flux
     real(r8) :: perroad_r_dif(bounds%begl:bounds%endl)           ! reflected diffuse solar for pervious road after "n" reflections per unit incident flux
     real(r8) :: perroad_r_sky_dir(bounds%begl:bounds%endl)       ! perroad_r_dir to sky per unit incident flux 
-    real(r8) :: perroad_r_sunwall_dir(bounds%begl:bounds%endl)   ! perroad_r_dir to sunlit wall per unit incident flux
-    real(r8) :: perroad_r_shadewall_dir(bounds%begl:bounds%endl) ! perroad_r_dir to shaded wall per unit incident flux
-    real(r8) :: perroad_r_br_tree_dir(bounds%begl:bounds%endl) ! perroad_r_dir to tree per unit incident flux
-    real(r8) :: perroad_r_ar_tree_dir(bounds%begl:bounds%endl) ! perroad_r_dir to above-roof tree per unit incident flux
+   !  real(r8) :: perroad_r_sunwall_dir(bounds%begl:bounds%endl)   ! perroad_r_dir to sunlit wall per unit incident flux
+   !  real(r8) :: perroad_r_shadewall_dir(bounds%begl:bounds%endl) ! perroad_r_dir to shaded wall per unit incident flux
+   !  real(r8) :: perroad_r_br_tree_dir(bounds%begl:bounds%endl) ! perroad_r_dir to tree per unit incident flux
+   !  real(r8) :: perroad_r_ar_tree_dir(bounds%begl:bounds%endl) ! perroad_r_dir to above-roof tree per unit incident flux
     real(r8) :: perroad_r_sky_dif(bounds%begl:bounds%endl)       ! perroad_r_dif to sky per unit incident flux
-    real(r8) :: perroad_r_sunwall_dif(bounds%begl:bounds%endl)   ! perroad_r_dif to sunlit wall per unit incident flux
-    real(r8) :: perroad_r_shadewall_dif(bounds%begl:bounds%endl) ! perroad_r_dif to shaded wall per unit incident flux
-    real(r8) :: perroad_r_br_tree_dif(bounds%begl:bounds%endl) ! perroad_r_dif to below-roof tree per unit incident flux
-    real(r8) :: perroad_r_ar_tree_dif(bounds%begl:bounds%endl) ! perroad_r_dif to above-roof tree per unit incident flux
+   !  real(r8) :: perroad_r_sunwall_dif(bounds%begl:bounds%endl)   ! perroad_r_dif to sunlit wall per unit incident flux
+   !  real(r8) :: perroad_r_shadewall_dif(bounds%begl:bounds%endl) ! perroad_r_dif to shaded wall per unit incident flux
+   !  real(r8) :: perroad_r_br_tree_dif(bounds%begl:bounds%endl) ! perroad_r_dif to below-roof tree per unit incident flux
+   !  real(r8) :: perroad_r_ar_tree_dif(bounds%begl:bounds%endl) ! perroad_r_dif to above-roof tree per unit incident flux
 
     real(r8) :: road_a_dir(bounds%begl:bounds%endl)              ! absorbed direct solar for total road after "n" reflections per unit incident flux
     real(r8) :: road_a_dif(bounds%begl:bounds%endl)              ! absorbed diffuse solar for total road after "n" reflections per unit incident flux
     real(r8) :: road_r_dir(bounds%begl:bounds%endl)              ! reflected direct solar for total road after "n" reflections per unit incident flux
     real(r8) :: road_r_dif(bounds%begl:bounds%endl)              ! reflected diffuse solar for total road after "n" reflections per unit incident flux
-    real(r8) :: road_r_sky_dir(bounds%begl:bounds%endl)          ! road_r_dir to sky per unit incident flux
+   !  real(r8) :: road_r_sky_dir(bounds%begl:bounds%endl)          ! road_r_dir to sky per unit incident flux
     real(r8) :: road_r_sunwall_dir(bounds%begl:bounds%endl)      ! road_r_dir to sunlit wall per unit incident flux
     real(r8) :: road_r_shadewall_dir(bounds%begl:bounds%endl)    ! road_r_dir to shaded wall per unit incident flux
     real(r8) :: road_r_br_tree_dir(bounds%begl:bounds%endl) ! road_r_dir to below-roof tree per unit incident flux
     real(r8) :: road_r_ar_tree_dir(bounds%begl:bounds%endl) ! road_r_dir to above-roof tree per unit incident flux
-    real(r8) :: road_r_sky_dif(bounds%begl:bounds%endl)          ! road_r_dif to sky per unit incident flux
+   !  real(r8) :: road_r_sky_dif(bounds%begl:bounds%endl)          ! road_r_dif to sky per unit incident flux
     real(r8) :: road_r_sunwall_dif(bounds%begl:bounds%endl)      ! road_r_dif to sunlit wall per unit incident flux
     real(r8) :: road_r_shadewall_dif(bounds%begl:bounds%endl)    ! road_r_dif to shaded wall per unit incident flux
     real(r8) :: road_r_br_tree_dif(bounds%begl:bounds%endl) ! road_r_dif to below-roof tree per unit incident flux
@@ -2223,7 +2033,7 @@ contains
     real(r8) :: br_tree_r_shadewall_dir(bounds%begl:bounds%endl) ! br_tree_r_dir to opposing (shaded) wall per unit incident flux
     real(r8) :: br_tree_r_br_tree_dir(bounds%begl:bounds%endl) ! tree_r_dir to below-roof tree per unit incident flux
     real(r8) :: br_tree_r_ar_tree_dir(bounds%begl:bounds%endl) ! tree_r_dir to above-roof tree per unit incident flux
-    real(r8) :: br_tree_r_roof_dir(bounds%begl:bounds%endl) ! tree_r_dir to above-roof tree per unit incident flux
+
 
     real(r8) :: br_tree_r_sky_dif(bounds%begl:bounds%endl)     ! br_tree_r_dif to sky per unit incident flux
     real(r8) :: br_tree_r_road_dif(bounds%begl:bounds%endl)    ! br_tree_r_dif to road per unit incident flux
@@ -2231,7 +2041,7 @@ contains
     real(r8) :: br_tree_r_shadewall_dif(bounds%begl:bounds%endl) ! br_tree_r_dif to opposing (shaded) wall per unit incident flux
     real(r8) :: br_tree_r_br_tree_dif(bounds%begl:bounds%endl) ! tree_r_dif to below-roof tree per unit incident flux
     real(r8) :: br_tree_r_ar_tree_dif(bounds%begl:bounds%endl) ! tree_r_dif to above-roof tree per unit incident flux
-    real(r8) :: br_tree_r_roof_dif(bounds%begl:bounds%endl) ! tree_r_dif to above-roof tree per unit incident flux
+
 
     real(r8) :: roof_a_dir(bounds%begl:bounds%endl)              ! absorbed direct solar for total roof after "n" reflections per unit incident flux
     real(r8) :: roof_a_dif(bounds%begl:bounds%endl)              ! absorbed diffuse solar for total roof after "n" reflections per unit incident flux
@@ -2242,8 +2052,8 @@ contains
     real(r8) :: roof_r_sky_dif(bounds%begl:bounds%endl)          ! roof_r_dif to sky per unit incident flux
     real(r8) :: roof_r_ar_tree_dif(bounds%begl:bounds%endl) ! roof_r_dif to above-roof tree per unit incident flux
 
-    real(r8) :: canyon_alb_dir(bounds%begl:bounds%endl)          ! direct canyon albedo
-    real(r8) :: canyon_alb_dif(bounds%begl:bounds%endl)          ! diffuse canyon albedo
+   !  real(r8) :: canyon_alb_dir(bounds%begl:bounds%endl)          ! direct canyon albedo
+   !  real(r8) :: canyon_alb_dif(bounds%begl:bounds%endl)          ! diffuse canyon albedo
 
     real(r8) :: stot(bounds%begl:bounds%endl)                    ! sum of radiative terms
     real(r8) :: stot_dir(bounds%begl:bounds%endl)                ! sum of direct radiative terms
@@ -2253,24 +2063,26 @@ contains
     integer  :: iter_dir,iter_dif                ! iteration counter
     real(r8) :: crit                             ! convergence criterion
     real(r8) :: err                              ! energy conservation error
-    real(r8) :: err_r                          ! energy conservation error (W/m**2)
 
-    integer  :: pass
     integer, parameter :: n = 50                 ! number of interations
-    real(r8) :: sabs_road                        ! temporary for absorption over road
-    real(r8) :: sref_road                        ! temporary for reflected over road
     real(r8), parameter :: errcrit  = .00001_r8  ! error criteria
     real(r8)  :: A_s(bounds%begl:bounds%endl)                           ! Area of the street canyon (normalized)
     real(r8)  :: A_g(bounds%begl:bounds%endl)                           ! Aarea of the ground (normalized)
     real(r8)  :: A_r(bounds%begl:bounds%endl)                           ! Area of the roof
     real(r8)  :: A_w(bounds%begl:bounds%endl)                           ! Area of the wall (normalized)
-    logical  :: debug_write = .false.                  ! true => write out many intermediate variables for debugging 
+
     !-----------------------------------------------------------------------
 
     ! Enforce expected array sizes
     SHR_ASSERT_ALL_FL((ubound(coszen)             == (/bounds%endl/)),         sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(canyon_hwr)         == (/bounds%endl/)),         sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(wtroad_perv)        == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(wtlunit_roof)        == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(ht_roof)             == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(A_v1)                == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(A_v2)                == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(wtroad_tree)         == (/bounds%endl/)),         sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(lai)                 == (/bounds%endl/)),         sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(sdir)               == (/bounds%endl, numrad/)), sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(sdif)               == (/bounds%endl, numrad/)), sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(alb_improad_dir)    == (/bounds%endl, numrad/)), sourcefile, __LINE__)
@@ -2281,22 +2093,23 @@ contains
     SHR_ASSERT_ALL_FL((ubound(alb_perroad_dif)    == (/bounds%endl, numrad/)), sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(alb_wall_dif)       == (/bounds%endl, numrad/)), sourcefile, __LINE__)
     SHR_ASSERT_ALL_FL((ubound(alb_roof_dif)       == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sdir_road)          == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sdir_sunwall)       == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sdir_shadewall)     == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sdif_road)          == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sdif_sunwall)       == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sdif_shadewall)     == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sref_improad_dir)   == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sref_perroad_dir)   == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sref_improad_dif)   == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sref_perroad_dif)   == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sref_sunwall_dir)   == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sref_sunwall_dif)   == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sref_shadewall_dir) == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sref_shadewall_dif) == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sref_roof_dir)      == (/bounds%endl, numrad/)), sourcefile, __LINE__)
-    !SHR_ASSERT_ALL_FL((ubound(sref_roof_dif)      == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(alb_br_tree_dir)     == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(alb_br_tree_dif)     == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(alb_ar_tree_dir)     == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(alb_ar_tree_dif)     == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdir_road)           == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdir_sunwall)        == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdir_shadewall)      == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdir_roof)           == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdif_road)           == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdif_sunwall)        == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdif_shadewall)      == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdif_roof)           == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdir_br_tree)        == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdir_ar_tree)        == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdif_br_tree)        == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL_FL((ubound(sdif_ar_tree)        == (/bounds%endl, numrad/)), sourcefile, __LINE__)
+
 
     associate(                                                           & 
         kgw1d =>    urbanparams_inst%kgw1d_out  , & ! Input:  [real(r8) (:,:) ]  Shortwave Monte carlo view factor from ground to one wall[landunit, nzcanm]    
@@ -2352,7 +2165,7 @@ contains
         sabs_perroad_dir   =>    solarabs_inst%sabs_perroad_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by pervious road per unit ground area per unit incident flux
         sabs_br_tree_dir      =>    solarabs_inst%sabs_br_tree_dir_lun      , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by below-roof tree per unit leaf area per unit incident flux
         sabs_ar_tree_dir      =>    solarabs_inst%sabs_ar_tree_dir_lun      , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by above-roof tree per unit leaf  area per unit incident flux
-        sabs_tree_dir      =>    solarabs_inst%sabs_tree_dir_lun      , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by tree per unit leaf area per unit incident flux
+        sabs_tree_dir      =>    solarabs_inst%sabs_tree_dir_lun      , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by road tree canopy per unit road-tree column area per unit incident flux
         sabs_canyon_dir   =>    solarabs_inst%sabs_canyon_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by urban canyon per unit ground area per unit incident flux
 
         sabs_roof_dif   =>    solarabs_inst%sabs_roof_dif_lun   , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by roof per unit roof area per unit incident flux
@@ -2362,7 +2175,7 @@ contains
         sabs_perroad_dif   =>    solarabs_inst%sabs_perroad_dif_lun    , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by pervious road per unit ground area per unit incident flux
         sabs_br_tree_dif      =>    solarabs_inst%sabs_br_tree_dif_lun      , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by below-roof tree per unit leaf  area per unit incident flux
         sabs_ar_tree_dif      =>    solarabs_inst%sabs_ar_tree_dif_lun      , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by above-roof tree per unit leaf  area per unit incident flux
-        sabs_tree_dif      =>    solarabs_inst%sabs_tree_dif_lun      , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by tree per unit leaf area per unit incident flux
+        sabs_tree_dif      =>    solarabs_inst%sabs_tree_dif_lun      , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by road tree canopy per unit road-tree column area per unit incident flux
         sabs_canyon_dif   =>    solarabs_inst%sabs_canyon_dif_lun   , & ! Output: [real(r8) (:,:) ]  diffuse solar absorbed  by urban canyon per unit ground area per unit incident flux
 
         sref_roof_dir   => solarabs_inst%sref_roof_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct solar reflected by roof per unit roof area per unit incident flux
@@ -2372,7 +2185,7 @@ contains
         sref_perroad_dir     => solarabs_inst%sref_perroad_dir_lun     , & ! Output: [real(r8) (:,:) ]  direct  solar reflected by pervious road per unit ground area per unit incident flux
         sref_br_tree_dir     => solarabs_inst%sref_br_tree_dir_lun     , & ! Output: [real(r8) (:,:) ]  direct  solar reflected by below-roof tree per unit leaf area per unit incident flux
         sref_ar_tree_dir     => solarabs_inst%sref_ar_tree_dir_lun     , & ! Output: [real(r8) (:,:) ]  direct  solar reflected by above-roof tree per unit leaf  area per unit incident flux
-        sref_tree_dir     => solarabs_inst%sref_tree_dir_lun     , & ! Output: [real(r8) (:,:) ]  direct  solar reflected by tree per unit leaf area per unit incident flux
+        sref_tree_dir     => solarabs_inst%sref_tree_dir_lun     , & ! Output: [real(r8) (:,:) ]  direct  solar reflected by road tree canopy per unit road-tree column area per unit incident flux
         sref_canyon_dir     => solarabs_inst%sref_canyon_dir_lun     , & ! Output: [real(r8) (:,:) ]  direct  solar reflected by urban canyon per unit ground area per unit incident flux
 
         sref_roof_dif   => solarabs_inst%sref_roof_dif_lun   , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected by roof per unit roof area per unit incident flux
@@ -2382,11 +2195,10 @@ contains
         sref_perroad_dif     => solarabs_inst%sref_perroad_dif_lun     , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected by pervious road per unit ground area per unit incident flux
         sref_br_tree_dif     => solarabs_inst%sref_br_tree_dif_lun     , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected by below-roof tree per unit leaf  area per unit incident flux
         sref_ar_tree_dif     => solarabs_inst%sref_ar_tree_dif_lun     , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected by above-roof tree per unit leaf  area per unit incident flux
-        sref_tree_dif     => solarabs_inst%sref_tree_dif_lun     , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected by tree per unit leaf area per unit incident flux
+        sref_tree_dif     => solarabs_inst%sref_tree_dif_lun     , & ! Output: [real(r8) (:,:) ]  diffuse solar reflected by road tree canopy per unit road-tree column area per unit incident flux
         sref_canyon_dif     => solarabs_inst%sref_canyon_dif_lun      & ! Output: [real(r8) (:,:) ]  direct  solar reflected by urban canyon per unit ground area per unit incident flux
          ) 
-
-      debug_write=.false.    
+      ! can be simplified A_g/A_s = 1-wtlunit_roof, A_r/A_s = wtlunit_roof, A_w/A_s = canyon_hwr*(1-wtlunit_roof)) 
       do fl = 1,num_urbanl 
          l = filter_urbanl(fl)
          wtroad_imperv(l) = 1._r8 - wtroad_perv(l) - wtroad_tree(l)
@@ -2396,16 +2208,12 @@ contains
          A_s(l)=A_r(l)+A_g(l)        
       end do
             
+      ! for longwave radiation, the pervious road and road tree are separated because in the future they may have diferent temperatures. For solar radiation multiple reflections, the pervious road and road tree are treated the same
       do ib = 1,numrad
          do fl = 1,num_urbanl
             l = filter_urbanl(fl)
             if (coszen(l) > 0._r8) then
             
-               ! if (l==3) then   
-               !     debug_write=.false. 
-               ! else 
-               !     debug_write=.false. 
-               ! end if
                ! initial absorption and reflection for road and both walls. 
                ! distribute reflected radiation to sky, road, and walls 
                ! according to appropriate view factor. radiation reflected to 
@@ -2413,22 +2221,18 @@ contains
                ! do separately for direct beam and diffuse radiation.
 
                ! direct beam
-
+               !
+               ! First scattering: k*1d (upward-biased foliage phase function).
+               ! See the note in !DESCRIPTION above.
                road_a_dir(l)              = 0.0_r8
                road_r_dir(l)              = 0.0_r8
                improad_a_dir(l)           = (1._r8-alb_improad_dir(l,ib)) * sdir_road(l,ib) 
                improad_r_dir(l)           =     alb_improad_dir(l,ib)  * sdir_road(l,ib) 
                improad_r_sky_dir(l)       = improad_r_dir(l) * kts1d(l)
-               improad_r_sunwall_dir(l)   = improad_r_dir(l) * kgw1d(l,1)
-               improad_r_shadewall_dir(l) = improad_r_dir(l) * kgw1d(l,1)
-               improad_r_br_tree_dir(l) = improad_r_dir(l) * kgv1d(l,1)
-               improad_r_ar_tree_dir(l) = improad_r_dir(l) * kgv1d(l,2)
-
-               ! err_r=improad_r_dir(l) -improad_r_br_tree_dir(l)*A_v1(l)/A_g(l) -improad_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -improad_r_sky_dir(l)-improad_r_sunwall_dir(l)*A_w(l)/A_g(l)-improad_r_shadewall_dir(l)*A_w(l)/A_g(l)
-               ! if (debug_write) then
-               !    write(6,*) '-----improad--------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if   
+               ! improad_r_sunwall_dir(l)   = improad_r_dir(l) * kgw1d(l,1)
+               ! improad_r_shadewall_dir(l) = improad_r_dir(l) * kgw1d(l,1)
+               ! improad_r_br_tree_dir(l) = improad_r_dir(l) * kgv1d(l,1)
+               ! improad_r_ar_tree_dir(l) = improad_r_dir(l) * kgv1d(l,2)
                
                road_a_dir(l)              = road_a_dir(l) + improad_a_dir(l)*wtroad_imperv(l)
                road_r_dir(l)              = road_r_dir(l) + improad_r_dir(l)*wtroad_imperv(l)
@@ -2436,31 +2240,21 @@ contains
                perroad_a_dir(l)           = (1._r8-alb_perroad_dir(l,ib)) * sdir_road(l,ib) 
                perroad_r_dir(l)           =     alb_perroad_dir(l,ib)  * sdir_road(l,ib) 
                perroad_r_sky_dir(l)       = perroad_r_dir(l) * kts1d(l)
-               perroad_r_sunwall_dir(l)   = perroad_r_dir(l) * kgw1d(l,1)
-               perroad_r_shadewall_dir(l) = perroad_r_dir(l) * kgw1d(l,1)
-               perroad_r_br_tree_dir(l) = perroad_r_dir(l) * kgv1d(l,1)
-               perroad_r_ar_tree_dir(l) = perroad_r_dir(l) * kgv1d(l,2)
-               
-               ! err_r=perroad_r_dir(l) -perroad_r_br_tree_dir(l)*A_v1(l)/A_g(l) -perroad_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -perroad_r_sky_dir(l)-perroad_r_sunwall_dir(l)*A_w(l)/A_g(l)-perroad_r_shadewall_dir(l)*A_w(l)/A_g (l)
-               ! if (debug_write) then
-               !    write(6,*) '-----perroad--------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if   
+               ! perroad_r_sunwall_dir(l)   = perroad_r_dir(l) * kgw1d(l,1)
+               ! perroad_r_shadewall_dir(l) = perroad_r_dir(l) * kgw1d(l,1)
+               ! perroad_r_br_tree_dir(l) = perroad_r_dir(l) * kgv1d(l,1)
+               ! perroad_r_ar_tree_dir(l) = perroad_r_dir(l) * kgv1d(l,2)
+                
                ! the ground part of road tree is still pervious road
                road_a_dir(l)              = road_a_dir(l) + perroad_a_dir(l)*(wtroad_perv(l)+wtroad_tree(l))
                road_r_dir(l)              = road_r_dir(l) + perroad_r_dir(l)*(wtroad_perv(l)+wtroad_tree(l))
               
-               road_r_sky_dir(l)          = road_r_dir(l) * kts1d(l)
+               ! road_r_sky_dir(l)          = road_r_dir(l) * kts1d(l)
                road_r_sunwall_dir(l)      = road_r_dir(l) * kgw1d(l,1)
                road_r_shadewall_dir(l)    = road_r_dir(l) * kgw1d(l,1)
                road_r_br_tree_dir(l)    = road_r_dir(l) * kgv1d(l,1)
                road_r_ar_tree_dir(l)    = road_r_dir(l) * kgv1d(l,2)
 
-               ! err_r=road_r_dir(l) -road_r_br_tree_dir(l)*A_v1(l)/A_g(l) -road_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -road_r_sky_dir(l)-road_r_sunwall_dir(l)*A_w(l)/A_g(l)-road_r_shadewall_dir(l)*A_w(l)/A_g(l)
-               ! if (debug_write) then
-               !    write(6,*) '-----road--------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if 
                
                sunwall_a_dir(l)           = (1._r8-alb_wall_dir(l,ib)) * sdir_sunwall(l,ib)
                sunwall_r_dir(l)           =     alb_wall_dir(l,ib)  * sdir_sunwall(l,ib)
@@ -2469,26 +2263,14 @@ contains
                sunwall_r_shadewall_dir(l) = sunwall_r_dir(l) * kww1d(l,1,1)
                sunwall_r_br_tree_dir(l) = sunwall_r_dir(l) * kwv1d(l,1,1)
                sunwall_r_ar_tree_dir(l) = sunwall_r_dir(l) * kwv1d(l,1,2)
-               
-               ! err_r=sunwall_r_dir(l) -sunwall_r_br_tree_dir(l)*A_v1(l)/A_w(l) -sunwall_r_ar_tree_dir(l)*A_v2(l)/A_w(l) -sunwall_r_sky_dir(l)-sunwall_r_road_dir(l)*A_g(l)/A_w(l)-sunwall_r_shadewall_dir(l)*A_w(l)/A_w(l)
-               ! if (debug_write) then
-               !    write(6,*) '------sunwall--------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if    
-               
+ 
                shadewall_a_dir(l)         = (1._r8-alb_wall_dir(l,ib)) * sdir_shadewall(l,ib)
                shadewall_r_dir(l)         =     alb_wall_dir(l,ib)  * sdir_shadewall(l,ib)
                shadewall_r_sky_dir(l)     = shadewall_r_dir(l) * kws1d(l,1)
                shadewall_r_road_dir(l)    = shadewall_r_dir(l) * kwg1d(l,1)
                shadewall_r_sunwall_dir(l) = shadewall_r_dir(l) * kww1d(l,1,1)
                shadewall_r_br_tree_dir(l) = shadewall_r_dir(l) * kwv1d(l,1,1)
-               shadewall_r_ar_tree_dir(l) = shadewall_r_dir(l) * kwv1d(l,1,2)
-
-               ! err_r=shadewall_r_dir(l) -shadewall_r_br_tree_dir(l)*A_v1(l)/A_w(l) -shadewall_r_ar_tree_dir(l)*A_v2(l)/A_w(l) -shadewall_r_sky_dir(l)-shadewall_r_road_dir(l)*A_g(l)/A_w(l)-shadewall_r_sunwall_dir(l)*A_w(l)/A_w(l)
-               ! if (debug_write) then
-               !    write(6,*) '-----shadewall--------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if   
+               shadewall_r_ar_tree_dir(l) = shadewall_r_dir(l) * kwv1d(l,1,2) 
                
                br_tree_a_dir(l)         = (1._r8-alb_br_tree_dir(l,ib)) * sdir_br_tree(l,ib)
                br_tree_r_dir(l)         =     alb_br_tree_dir(l,ib)  * sdir_br_tree(l,ib)
@@ -2499,12 +2281,6 @@ contains
                br_tree_r_br_tree_dir(l) = br_tree_r_dir(l) * kvv1d(l,1,1)
                br_tree_r_ar_tree_dir(l) = br_tree_r_dir(l) * kvv1d(l,1,2)
 
-               ! err_r=br_tree_r_dir(l) -br_tree_r_br_tree_dir(l) -br_tree_r_ar_tree_dir(l)*A_v2(l)/A_v1(l) -br_tree_r_sky_dir(l)-br_tree_r_road_dir(l)*A_g(l)/A_v1(l)-br_tree_r_sunwall_dir(l)*A_w(l)/A_v1(l)-br_tree_r_shadewall_dir(l)*A_w(l)/A_v1(l)
-               ! if (debug_write) then
-               !    write(6,*) '-----br_tree-------l=---', l
-               !    write(6,*) 'err_r',err_r
-               ! end if  
-               
                ar_tree_a_dir(l)         = (1._r8-alb_ar_tree_dir(l,ib)) * sdir_ar_tree(l,ib)
                ar_tree_r_dir(l)         =     alb_ar_tree_dir(l,ib)  * sdir_ar_tree(l,ib)
                ar_tree_r_sky_dir(l)     = ar_tree_r_dir(l) * kvs1d(l,2)
@@ -2515,74 +2291,11 @@ contains
                ar_tree_r_br_tree_dir(l) = ar_tree_r_dir(l) * kvv1d(l,2,1)
                ar_tree_r_ar_tree_dir(l) = ar_tree_r_dir(l) * kvv1d(l,2,2)
 
-               !err_r=ar_tree_r_dir(l) -ar_tree_r_ar_tree_dir(l) -ar_tree_r_br_tree_dir(l)*A_v1(l)/A_v2(l) -ar_tree_r_sky_dir(l)-ar_tree_r_road_dir(l)*A_g(l)/A_v2(l)-ar_tree_r_sunwall_dir(l)*A_w(l)/A_v2(l)-ar_tree_r_shadewall_dir(l)*A_w(l)/A_v2(l)-ar_tree_r_roof_dir(l)*A_r(l)/A_v2(l)
-               !if (debug_write) then
-                !  write(6,*) '-----ar_tree------l=---', l
-                !  write(6,*) 'err_r', err_r  
-               !end if   
                roof_a_dir(l)           = (1._r8-alb_roof_dir(l,ib)) * sdir_roof(l,ib)
                roof_r_dir(l)           =     alb_roof_dir(l,ib)  * sdir_roof(l,ib)
                roof_r_sky_dir(l)       = roof_r_dir(l) * krs1d(l,2)
                roof_r_ar_tree_dir(l) = roof_r_dir(l) * krv1d(l,2,2)
 
-               ! err_r=roof_r_dir(l) -roof_r_ar_tree_dir(l)*A_v2(l)/A_r(l) -roof_r_sky_dir(l)
-               ! if (debug_write) then
-               !    write(6,*) '-----roof------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if   
-
-               if (.not. debug_write) then
-                  ! write(6,*) '------------- Direct View Factors and Albedo Debug Output (l =', l, ') -------------'
-                  
-                  ! ! Albedo terms
-                  ! write(6,*) 'alb_improad_dir =', alb_improad_dir(l,ib)
-                  ! write(6,*) 'alb_perroad_dir =', alb_perroad_dir(l,ib)
-                  ! write(6,*) 'alb_wall_dir    =', alb_wall_dir(l,ib)
-                  ! write(6,*) 'alb_ar_tree_dir    =', alb_ar_tree_dir(l,ib)
-                  ! write(6,*) 'alb_br_tree_dir    =', alb_br_tree_dir(l,ib)
-                  ! write(6,*) 'alb_roof_dir    =', alb_roof_dir(l,ib)
-
-                  ! ! Direct solar input
-                  ! write(6,*) 'sdir_road     =', sdir_road(l,ib)
-                  ! write(6,*) 'sdir_sunwall  =', sdir_sunwall(l,ib)
-                  ! write(6,*) 'sdir_shadewall=', sdir_shadewall(l,ib)
-                  ! write(6,*) 'sdir_br_tree  =', sdir_br_tree(l,ib)
-                  ! write(6,*) 'sdir_ar_tree  =', sdir_ar_tree(l,ib)
-                  ! write(6,*) 'sdir_roof=', sdir_roof(l,ib) 
-
-                  ! ! Direct view factor scalars
-                  ! write(6,*) 'kts1d           =', kts1d(l)
-                  ! write(6,*) 'kgw1d           =', kgw1d(l,1)
-                  ! write(6,*) 'kgv1d_1           =', kgv1d(l,1)
-                  ! write(6,*) 'kgv1d_2           =', kgv1d(l,2)
-                  
-                  ! write(6,*) 'kws1d           =', kws1d(l,1)
-                  ! write(6,*) 'kwg1d           =', kwg1d(l,1)
-                  ! write(6,*) 'kww1d           =', kww1d(l,1,1)
-                  ! write(6,*) 'kwv1d_1           =', kwv1d(l,1,1)
-                  ! write(6,*) 'kwv1d_2           =', kwv1d(l,1,2)
-                  
-                  ! write(6,*) 'kvs1d_1      =', kvs1d(l,1)
-                  ! write(6,*) 'kvg1d_1      =', kvg1d(l,1)
-                  ! write(6,*) 'kvw1d_1           =', kvw1d(l,1,1)
-                  ! write(6,*) 'kvv1d_1_1           =', kvv1d(l,1,1)
-                  ! write(6,*) 'kvv1d_1_2           =', kvv1d(l,1,2)
-                  ! write(6,*) 'kvg1d_1      =', kvg1d(l,1)
-                  
-                  ! write(6,*) 'kvs1d_2      =', kvs1d(l,2)
-                  ! write(6,*) 'kvg1d_2      =', kvg1d(l,2)
-                  ! write(6,*) 'kvw1d_2           =', kvw1d(l,2,1)
-                  ! write(6,*) 'kvv1d_2_1           =', kvv1d(l,2,1)
-                  ! write(6,*) 'kvv1d_2_2           =', kvv1d(l,2,2)
-                  ! write(6,*) 'kvg1d_2      =',  kvg1d(l,2)
-                  ! write(6,*) 'kvr1d_2      =',  kvr1d(l,2,2)
-                  
-                  ! write(6,*) 'krs1d           =', krs1d(l,2)
-                  ! write(6,*) 'krv1d_2         =', krv1d(l,2,2)                  
-
-                  ! ! Summary
-                  ! write(6,*) '-------------------------------------------------------------'
-               end if
                
                ! diffuse
 
@@ -2591,47 +2304,29 @@ contains
                improad_a_dif(l)           = (1._r8-alb_improad_dif(l,ib)) * sdif_road(l,ib) 
                improad_r_dif(l)           =     alb_improad_dif(l,ib)  * sdif_road(l,ib) 
                improad_r_sky_dif(l)       = improad_r_dif(l) * kts1d(l)
-               improad_r_sunwall_dif(l)   = improad_r_dif(l) * kgw1d(l,1)
-               improad_r_shadewall_dif(l) = improad_r_dif(l) * kgw1d(l,1)
-               improad_r_br_tree_dif(l) = improad_r_dif(l) * kgv1d(l,1)
-               improad_r_ar_tree_dif(l) = improad_r_dif(l) * kgv1d(l,2)
+               ! improad_r_sunwall_dif(l)   = improad_r_dif(l) * kgw1d(l,1)
+               ! improad_r_shadewall_dif(l) = improad_r_dif(l) * kgw1d(l,1)
+               ! improad_r_br_tree_dif(l) = improad_r_dif(l) * kgv1d(l,1)
+               ! improad_r_ar_tree_dif(l) = improad_r_dif(l) * kgv1d(l,2)
                road_a_dif(l)              = road_a_dif(l) + improad_a_dif(l)*wtroad_imperv(l)
                road_r_dif(l)              = road_r_dif(l) + improad_r_dif(l)*wtroad_imperv(l)
-               
-               ! err_r=improad_r_dif(l) -improad_r_br_tree_dif(l)*A_v1(l)/A_g(l) -improad_r_ar_tree_dif(l)*A_v2(l)/A_g(l) -improad_r_sky_dif(l)-improad_r_sunwall_dif(l)*A_w(l)/A_g(l)-improad_r_shadewall_dif(l)*A_w(l)/A_g(l)
-               ! if (debug_write) then
-               !    write(6,*) '-----improad--------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if   
-
+ 
                perroad_a_dif(l)           = (1._r8-alb_perroad_dif(l,ib)) * sdif_road(l,ib) 
                perroad_r_dif(l)           =     alb_perroad_dif(l,ib)  * sdif_road(l,ib) 
                perroad_r_sky_dif(l)       = perroad_r_dif(l) * kts1d(l)
-               perroad_r_sunwall_dif(l)   = perroad_r_dif(l) * kgw1d(l,1)
-               perroad_r_shadewall_dif(l) = perroad_r_dif(l) * kgw1d(l,1)
-               perroad_r_br_tree_dif(l) = perroad_r_dif(l) * kgv1d(l,1)
-               perroad_r_ar_tree_dif(l) = perroad_r_dif(l) * kgv1d(l,2)
-               
-               ! err_r=perroad_r_dif(l) -perroad_r_br_tree_dif(l)*A_v1(l)/A_g(l) -perroad_r_ar_tree_dif(l)*A_v2(l)/A_g(l) -perroad_r_sky_dif(l)-perroad_r_sunwall_dif(l)*A_w(l)/A_g(l)-perroad_r_shadewall_dif(l)*A_w(l)/A_g (l)
-               ! if (debug_write) then
-               !    write(6,*) '-----perroad--------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if   
+               ! perroad_r_sunwall_dif(l)   = perroad_r_dif(l) * kgw1d(l,1)
+               ! perroad_r_shadewall_dif(l) = perroad_r_dif(l) * kgw1d(l,1)
+               ! perroad_r_br_tree_dif(l) = perroad_r_dif(l) * kgv1d(l,1)
+               ! perroad_r_ar_tree_dif(l) = perroad_r_dif(l) * kgv1d(l,2)
                
                road_a_dif(l)              = road_a_dif(l) + perroad_a_dif(l)*(wtroad_perv(l)+wtroad_tree(l))
                road_r_dif(l)              = road_r_dif(l) + perroad_r_dif(l)*(wtroad_perv(l)+wtroad_tree(l))
 
-               road_r_sky_dif(l)          = road_r_dif(l) * kts1d(l)
+               ! road_r_sky_dif(l)          = road_r_dif(l) * kts1d(l)
                road_r_sunwall_dif(l)      = road_r_dif(l) * kgw1d(l,1)
                road_r_shadewall_dif(l)    = road_r_dif(l) * kgw1d(l,1)
                road_r_br_tree_dif(l)    = road_r_dif(l) * kgv1d(l,1)
                road_r_ar_tree_dif(l)    = road_r_dif(l) * kgv1d(l,2)
-
-               ! err_r=road_r_dif(l) -road_r_br_tree_dif(l)*A_v1(l)/A_g(l) -road_r_ar_tree_dif(l)*A_v2(l)/A_g(l) -road_r_sky_dif(l)-road_r_sunwall_dif(l)*A_w(l)/A_g(l)-road_r_shadewall_dif(l)*A_w(l)/A_g(l)
-               ! if (debug_write) then
-               !    write(6,*) '-----road--------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if  
 
                sunwall_a_dif(l)           = (1._r8-alb_wall_dif(l,ib)) * sdif_sunwall(l,ib)
                sunwall_r_dif(l)           =     alb_wall_dif(l,ib)  * sdif_sunwall(l,ib)
@@ -2641,12 +2336,6 @@ contains
                sunwall_r_br_tree_dif(l) = sunwall_r_dif(l) * kwv1d(l,1,1)
                sunwall_r_ar_tree_dif(l) = sunwall_r_dif(l) * kwv1d(l,1,2)
 
-               ! err_r=sunwall_r_dif(l) -sunwall_r_br_tree_dif(l)*A_v1(l)/A_w(l) -sunwall_r_ar_tree_dif(l)*A_v2(l)/A_w(l) -sunwall_r_sky_dif(l)-sunwall_r_road_dif(l)*A_g(l)/A_w(l)-sunwall_r_shadewall_dif(l)*A_w(l)/A_w(l)
-               ! if (debug_write) then
-               !    write(6,*) '------sunwall--------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if   
-
                shadewall_a_dif(l)         = (1._r8-alb_wall_dif(l,ib)) * sdif_shadewall(l,ib)
                shadewall_r_dif(l)         =     alb_wall_dif(l,ib)  * sdif_shadewall(l,ib)
                shadewall_r_sky_dif(l)     = shadewall_r_dif(l) * kws1d(l,1)
@@ -2654,12 +2343,6 @@ contains
                shadewall_r_sunwall_dif(l) = shadewall_r_dif(l) * kww1d(l,1,1)
                shadewall_r_br_tree_dif(l) = shadewall_r_dif(l) * kwv1d(l,1,1)
                shadewall_r_ar_tree_dif(l) = shadewall_r_dif(l) * kwv1d(l,1,2)
-
-               err_r=shadewall_r_dif(l) -shadewall_r_br_tree_dif(l)*A_v1(l)/A_w(l) -shadewall_r_ar_tree_dif(l)*A_v2(l)/A_w(l) -shadewall_r_sky_dif(l)-shadewall_r_road_dif(l)*A_g(l)/A_w(l)-shadewall_r_sunwall_dif(l)*A_w(l)/A_w(l)
-               ! if (debug_write) then
-               !    write(6,*) '-----shadewall--------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if   
 
                br_tree_a_dif(l)         = (1._r8-alb_br_tree_dif(l,ib)) * sdif_br_tree(l,ib)
                br_tree_r_dif(l)         =     alb_br_tree_dif(l,ib)  * sdif_br_tree(l,ib)
@@ -2669,12 +2352,6 @@ contains
                br_tree_r_shadewall_dif(l) = br_tree_r_dif(l) * kvw1d(l,1,1)   
                br_tree_r_br_tree_dif(l) = br_tree_r_dif(l) * kvv1d(l,1,1)
                br_tree_r_ar_tree_dif(l) = br_tree_r_dif(l) * kvv1d(l,1,2)
-       
-               ! err_r=br_tree_r_dif(l) -br_tree_r_br_tree_dif(l) -br_tree_r_ar_tree_dif(l)*A_v2(l)/A_v1(l) -br_tree_r_sky_dif(l)-br_tree_r_road_dif(l)*A_g(l)/A_v1(l)-br_tree_r_sunwall_dif(l)*A_w(l)/A_v1(l)-br_tree_r_shadewall_dif(l)*A_w(l)/A_v1(l)
-               ! if (debug_write) then
-               !    write(6,*) '-----br_tree-------l=---', l
-               !    write(6,*) 'err_r',err_r
-               ! end if   
 
                ar_tree_a_dif(l)         = (1._r8-alb_ar_tree_dif(l,ib)) * sdif_ar_tree(l,ib)
                ar_tree_r_dif(l)         =     alb_ar_tree_dif(l,ib)  * sdif_ar_tree(l,ib)
@@ -2683,48 +2360,13 @@ contains
                ar_tree_r_sunwall_dif(l) = ar_tree_r_dif(l) * kvw1d(l,2,1)
                ar_tree_r_shadewall_dif(l) = ar_tree_r_dif(l) * kvw1d(l,2,1)   
                ar_tree_r_roof_dif(l) = ar_tree_r_dif(l) * kvr1d(l,2,2)
-
                ar_tree_r_br_tree_dif(l) = ar_tree_r_dif(l) * kvv1d(l,2,1)
                ar_tree_r_ar_tree_dif(l) = ar_tree_r_dif(l) * kvv1d(l,2,2)
-
-              ! err_r=ar_tree_r_dif(l) -ar_tree_r_ar_tree_dif(l) -ar_tree_r_br_tree_dif(l)*A_v1(l)/A_v2(l) -ar_tree_r_sky_dif(l)-ar_tree_r_road_dif(l)*A_g(l)/A_v2(l)-ar_tree_r_sunwall_dif(l)*A_w(l)/A_v2(l)-ar_tree_r_shadewall_dif(l)*A_w(l)/A_v2(l)-ar_tree_r_roof_dif(l)*A_r(l)/A_v2(l)
-              ! if (debug_write) then
-              !    write(6,*) '-----ar_tree------l=---', l
-              !    write(6,*) 'err_r', err_r  
-               !end if   
 
                roof_a_dif(l)           = (1._r8-alb_roof_dif(l,ib)) * sdif_roof(l,ib)
                roof_r_dif(l)           =     alb_roof_dif(l,ib)  * sdif_roof(l,ib)
                roof_r_sky_dif(l)       = roof_r_dif(l) * krs1d(l,2)
                roof_r_ar_tree_dif(l) = roof_r_dif(l) * krv1d(l,2,2)
-               
-               ! err_r=roof_r_dif(l) -roof_r_ar_tree_dif(l)*A_v2(l)/A_r(l) -roof_r_sky_dif(l)
-               ! if (debug_write) then
-               !    write(6,*) '-----roof------l=---', l
-               !    write(6,*) 'err_r', err_r
-               ! end if   
-
-               if (.not. debug_write) then
-                  ! write(6,*) '------------- Diffuse Solar Radiation Debug Output (l =', l, ') -------------'
-
-                  ! ! Diffuse albedo terms
-                  ! write(6,*) 'alb_improad_dif =', alb_improad_dif(l,ib)
-                  ! write(6,*) 'alb_perroad_dif =', alb_perroad_dif(l,ib)
-                  ! write(6,*) 'alb_wall_dif    =', alb_wall_dif(l,ib)
-                  ! write(6,*) 'alb_ar_tree_dif    =', alb_ar_tree_dif(l,ib)
-                  ! write(6,*) 'alb_br_tree_dif    =', alb_br_tree_dif(l,ib)
-                  ! write(6,*) 'alb_roof_dif    =', alb_roof_dif(l,ib)
-
-                  ! ! Diffuse solar input
-                  ! write(6,*) 'sdif_road     =', sdif_road(l,ib)
-                  ! write(6,*) 'sdif_sunwall  =', sdif_sunwall(l,ib)
-                  ! write(6,*) 'sdif_shadewall=', sdif_shadewall(l,ib)
-                  ! write(6,*) 'sdif_br_tree  =', sdif_br_tree(l,ib)
-                  ! write(6,*) 'sdif_ar_tree  =', sdif_ar_tree(l,ib)
-                  ! write(6,*) 'sdif_roof=', sdif_roof(l,ib) 
-
-                  ! write(6,*) '-------------------------------------------------------------'
-               end if
 
                sabs_improad_dir(l,ib)   = improad_a_dir(l)
                sabs_perroad_dir(l,ib)   = perroad_a_dir(l)
@@ -2757,65 +2399,31 @@ contains
                sref_br_tree_dif(l,ib)   = br_tree_r_sky_dif(l) 
                sref_ar_tree_dif(l,ib)   = ar_tree_r_sky_dif(l) 
                sref_roof_dif(l,ib)   = roof_r_sky_dif(l)
-
-               if (.not. debug_write) then
-                  ! write(6,*) '------------ Absorbed and Reflected SW Flux (sky view component only) ------------'
-                  ! write(6,*) 'l =', l, ', ib =', ib
-
-                  ! ! Absorbed direct shortwave
-                  ! write(6,*) 'sabs_improad_dir =', sabs_improad_dir(l,ib)
-                  ! write(6,*) 'sabs_perroad_dir =', sabs_perroad_dir(l,ib)
-                  ! write(6,*) 'sabs_sunwall_dir =', sabs_sunwall_dir(l,ib)
-                  ! write(6,*) 'sabs_shadewall_dir =', sabs_shadewall_dir(l,ib)
-                  ! write(6,*) 'sabs_br_tree_dir =', sabs_br_tree_dir(l,ib)
-                  ! write(6,*) 'sabs_ar_tree_dir =', sabs_ar_tree_dir(l,ib)
-                  ! write(6,*) 'sabs_roof_dir =', sabs_roof_dir(l,ib)
-
-                  ! ! Absorbed diffuse shortwave
-                  ! write(6,*) 'sabs_improad_dif =', sabs_improad_dif(l,ib)
-                  ! write(6,*) 'sabs_perroad_dif =', sabs_perroad_dif(l,ib)
-                  ! write(6,*) 'sabs_sunwall_dif =', sabs_sunwall_dif(l,ib)
-                  ! write(6,*) 'sabs_shadewall_dif =', sabs_shadewall_dif(l,ib)
-                  ! write(6,*) 'sabs_br_tree_dif =', sabs_br_tree_dif(l,ib)
-                  ! write(6,*) 'sabs_ar_tree_dif =', sabs_ar_tree_dif(l,ib)
-                  ! write(6,*) 'sabs_roof_dif =', sabs_roof_dif(l,ib)
-
-                  ! ! Reflected (to sky) direct shortwave
-                  ! write(6,*) 'sref_improad_dir =', sref_improad_dir(l,ib)
-                  ! write(6,*) 'sref_perroad_dir =', sref_perroad_dir(l,ib)
-                  ! write(6,*) 'sref_sunwall_dir =', sref_sunwall_dir(l,ib)
-                  ! write(6,*) 'sref_shadewall_dir =', sref_shadewall_dir(l,ib)
-                  ! write(6,*) 'sref_br_tree_dir =', sref_br_tree_dir(l,ib)
-                  ! write(6,*) 'sref_ar_tree_dir =', sref_ar_tree_dir(l,ib)
-                  ! write(6,*) 'sref_roof_dir =', sref_roof_dir(l,ib)
-
-                  ! ! Reflected (to sky) diffuse shortwave
-                  ! write(6,*) 'sref_improad_dif =', sref_improad_dif(l,ib)
-                  ! write(6,*) 'sref_perroad_dif =', sref_perroad_dif(l,ib)
-                  ! write(6,*) 'sref_sunwall_dif =', sref_sunwall_dif(l,ib)
-                  ! write(6,*) 'sref_shadewall_dif =', sref_shadewall_dif(l,ib)
-                  ! write(6,*) 'sref_br_tree_dif =', sref_br_tree_dif(l,ib)
-                  ! write(6,*) 'sref_ar_tree_dif =', sref_ar_tree_dif(l,ib)
-                  ! write(6,*) 'sref_roof_dif =', sref_roof_dif(l,ib) 
-
-                  ! write(6,*) '----------------------------------------------------------------------------------'
-               end if
-               
             endif
 
          end do
 
-         ! absorption and reflection for walls and road with multiple reflections
+         ! absorption and reflection for walls, road, roof, and urban trees with multiple reflections
          ! (i.e., absorb and reflect initial reflection in canyon and allow for 
          ! subsequent scattering)
          !
-         ! (1) absorption and reflection of scattered solar radiation
-         !     road: reflected fluxes from walls need to be projected to ground area
-         !     wall: reflected flux from road needs to be projected to wall area
+         ! (1) absorption and reflection of scattered solar radiation.
+         !     Each facet sums the fluxes sent to it by the others, then splits
+         !     that into an absorbed and a reflected part using its albedo.
+         !     No explicit area projection is applied here: the k*1d/f*1d view factors already 
+         !     carry the emitter/receiver area ratio (e.g. kwg1d = vfwt*A_w/A_g in
+         !     UrbanParamsType), so a flux per unit emitter area is converted to
+         !     a flux per unit receiver area by the view factor alone. That is
+         !     why no canyon_hwr appears in the sums below.
          !
          ! (2) add absorbed radiation for ith reflection to total absorbed
          !
-         ! (3) distribute reflected radiation to sky, road, and walls according to view factors
+         ! (3) distribute reflected radiation to sky, road, both walls, the
+         !     below- and above-roof tree and the roof, according to view
+         !     factors. Note two absences that are geometric, not oversights:
+         !     the roof exchanges only with the sky and the above-roof tree,
+         !     and the below-roof tree never reaches the roof (it sits below
+         !     the roof plane), so no br_tree <-> roof term exists.
          !
          ! (4) add solar reflection to sky for ith reflection to total reflection
          !
@@ -2826,18 +2434,12 @@ contains
 
          do fl = 1,num_urbanl
             l = filter_urbanl(fl)
-            debug_write=.false. 
-            ! if (l==3) then   
-            !     debug_write=.false. 
-            ! else 
-            !     debug_write=.false. 
-            ! end if 
             if (coszen(l) > 0._r8) then
 
                ! reflected difect beam
                do iter_dir = 1, n
                   ! step (1)
-                  ! The original vf_rw, vf_wr,vf_sr seems to be unweighted view factor
+                  ! No canyon_hwr factor here: kwg1d already contains A_w/A_g (see step (1) above).
                   stot(l) = (sunwall_r_road_dir(l) + shadewall_r_road_dir(l) + br_tree_r_road_dir(l)&
                             + ar_tree_r_road_dir(l))
 
@@ -2877,7 +2479,6 @@ contains
                   roof_r_dir(l) =     alb_roof_dir(l,ib)  * stot(l)
                       
                   ! step (2)
-
                   sabs_improad_dir(l,ib)   = sabs_improad_dir(l,ib)   + improad_a_dir(l)
                   sabs_perroad_dir(l,ib)   = sabs_perroad_dir(l,ib)   + perroad_a_dir(l)
                   sabs_sunwall_dir(l,ib)   = sabs_sunwall_dir(l,ib)   + sunwall_a_dir(l)
@@ -2886,88 +2487,48 @@ contains
                   sabs_ar_tree_dir(l,ib) = sabs_ar_tree_dir(l,ib) + ar_tree_a_dir(l)
                   sabs_roof_dir(l,ib) = sabs_roof_dir(l,ib) +roof_a_dir(l)
                   
-                  if (.not. debug_write) then
-                  !   write(6,*) '------------ Absorbed and Reflected SW Flux (sky view component only) ------------'
-                  !   write(6,*) 'l =', l, ', ib = n=', ib,n
-
-                  !   ! Absorbed direct shortwave
-                  !   write(6,*) 'sabs_improad_dir =', sabs_improad_dir(l,ib)
-                  !   write(6,*) 'sabs_perroad_dir =', sabs_perroad_dir(l,ib)
-                  !   write(6,*) 'sabs_sunwall_dir =', sabs_sunwall_dir(l,ib)
-                  !   write(6,*) 'sabs_shadewall_dir =', sabs_shadewall_dir(l,ib)
-                  !   write(6,*) 'sabs_br_tree_dir =', sabs_br_tree_dir(l,ib)
-                  !   write(6,*) 'sabs_ar_tree_dir =', sabs_ar_tree_dir(l,ib)
-                  !   write(6,*) 'sabs_roof_dir =', sabs_roof_dir(l,ib)
-
-                  !   write(6,*) '----------------------------------------------------------------------------------'
-                  end if  
-                
                   ! step (3)
+                  ! Second and later scatterings: f*1d (isotropic foliage phase
+                  ! function). The switch away from k*1d is intentional - see the
+                  ! note in !DESCRIPTION above.
 
                   improad_r_sky_dir(l)       = improad_r_dir(l) * fts1d(l)
-                  improad_r_sunwall_dir(l)   = improad_r_dir(l) * fgw1d(l,1)
-                  improad_r_shadewall_dir(l) = improad_r_dir(l) * fgw1d(l,1)
-                  improad_r_br_tree_dir(l) = improad_r_dir(l) * fgv1d(l,1)
-                  improad_r_ar_tree_dir(l) = improad_r_dir(l) * fgv1d(l,2)
-                  
-                  ! err_r=improad_r_dir(l) -improad_r_br_tree_dir(l)*A_v1(l)/A_g(l) -improad_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -improad_r_sky_dir(l)-improad_r_sunwall_dir(l)*A_w(l)/A_g(l)-improad_r_shadewall_dir(l)*A_w(l)/A_g(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----improad--------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if  
-                  
+                  ! improad_r_sunwall_dir(l)   = improad_r_dir(l) * fgw1d(l,1)
+                  ! improad_r_shadewall_dir(l) = improad_r_dir(l) * fgw1d(l,1)
+                  ! improad_r_br_tree_dir(l) = improad_r_dir(l) * fgv1d(l,1)
+                  ! improad_r_ar_tree_dir(l) = improad_r_dir(l) * fgv1d(l,2)
                   
                   perroad_r_sky_dir(l)       = perroad_r_dir(l) * fts1d(l)
-                  perroad_r_sunwall_dir(l)   = perroad_r_dir(l) * fgw1d(l,1)
-                  perroad_r_shadewall_dir(l) = perroad_r_dir(l) * fgw1d(l,1)
-                  perroad_r_br_tree_dir(l) = perroad_r_dir(l) * fgv1d(l,1)
-                  perroad_r_ar_tree_dir(l) = perroad_r_dir(l) * fgv1d(l,2)
-                  ! err_r=perroad_r_dir(l) -perroad_r_br_tree_dir(l)*A_v1(l)/A_g(l) -perroad_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -perroad_r_sky_dir(l)-perroad_r_sunwall_dir(l)*A_w(l)/A_g(l)-perroad_r_shadewall_dir(l)*A_w(l)/A_g (l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----perroad--------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if   
-                  road_r_sky_dir(l)          = road_r_dir(l) * fts1d(l)
+                  ! perroad_r_sunwall_dir(l)   = perroad_r_dir(l) * fgw1d(l,1)
+                  ! perroad_r_shadewall_dir(l) = perroad_r_dir(l) * fgw1d(l,1)
+                  ! perroad_r_br_tree_dir(l) = perroad_r_dir(l) * fgv1d(l,1)
+                  ! perroad_r_ar_tree_dir(l) = perroad_r_dir(l) * fgv1d(l,2)
+
+                  ! road_r_sky_dir(l)          = road_r_dir(l) * fts1d(l)
                   road_r_sunwall_dir(l)      = road_r_dir(l) * fgw1d(l,1)
                   road_r_shadewall_dir(l)    = road_r_dir(l) * fgw1d(l,1)
                   road_r_br_tree_dir(l)    = road_r_dir(l) * fgv1d(l,1)
                   road_r_ar_tree_dir(l)    = road_r_dir(l) * fgv1d(l,2)
-                  ! err_r=road_r_dir(l) -road_r_br_tree_dir(l)*A_v1(l)/A_g(l) -road_r_ar_tree_dir(l)*A_v2(l)/A_g(l) -road_r_sky_dir(l)-road_r_sunwall_dir(l)*A_w(l)/A_g(l)-road_r_shadewall_dir(l)*A_w(l)/A_g(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----road--------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if 
+
                   sunwall_r_sky_dir(l)       = sunwall_r_dir(l) * fws1d(l,1)
                   sunwall_r_road_dir(l)      = sunwall_r_dir(l) * fwg1d(l,1)
                   sunwall_r_shadewall_dir(l) = sunwall_r_dir(l) * fww1d(l,1,1)
                   sunwall_r_br_tree_dir(l) = sunwall_r_dir(l) * fwv1d(l,1,1)
                   sunwall_r_ar_tree_dir(l) = sunwall_r_dir(l) * fwv1d(l,1,2)
-                  ! err_r=sunwall_r_dir(l) -sunwall_r_br_tree_dir(l)*A_v1(l)/A_w(l) -sunwall_r_ar_tree_dir(l)*A_v2(l)/A_w(l) -sunwall_r_sky_dir(l)-sunwall_r_road_dir(l)*A_g(l)/A_w(l)-sunwall_r_shadewall_dir(l)*A_w(l)/A_w(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '------sunwall--------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if                      
+                    
                   shadewall_r_sky_dir(l)     = shadewall_r_dir(l) * fws1d(l,1)
                   shadewall_r_road_dir(l)    = shadewall_r_dir(l) * fwg1d(l,1)
                   shadewall_r_sunwall_dir(l) = shadewall_r_dir(l) * fww1d(l,1,1)
                   shadewall_r_br_tree_dir(l) = shadewall_r_dir(l) * fwv1d(l,1,1)
                   shadewall_r_ar_tree_dir(l) = shadewall_r_dir(l) * fwv1d(l,1,2)
-                  ! err_r=shadewall_r_dir(l) -shadewall_r_br_tree_dir(l)*A_v1(l)/A_w(l) -shadewall_r_ar_tree_dir(l)*A_v2(l)/A_w(l) -shadewall_r_sky_dir(l)-shadewall_r_road_dir(l)*A_g(l)/A_w(l)-shadewall_r_sunwall_dir(l)*A_w(l)/A_w(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----shadewall--------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if   
+ 
                   br_tree_r_sky_dir(l)     = br_tree_r_dir(l) * fvs1d(l,1)
                   br_tree_r_road_dir(l)    = br_tree_r_dir(l) * fvg1d(l,1)
                   br_tree_r_sunwall_dir(l) = br_tree_r_dir(l) * fvw1d(l,1,1)
                   br_tree_r_shadewall_dir(l) = br_tree_r_dir(l) * fvw1d(l,1,1)   
                   br_tree_r_br_tree_dir(l) = br_tree_r_dir(l) * fvv1d(l,1,1)
                   br_tree_r_ar_tree_dir(l) = br_tree_r_dir(l) * fvv1d(l,1,2)
-                  ! err_r=br_tree_r_dir(l) -br_tree_r_br_tree_dir(l) -br_tree_r_ar_tree_dir(l)*A_v2(l)/A_v1(l) -br_tree_r_sky_dir(l)-br_tree_r_road_dir(l)*A_g(l)/A_v1(l)-br_tree_r_sunwall_dir(l)*A_w(l)/A_v1(l)-br_tree_r_shadewall_dir(l)*A_w(l)/A_v1(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----br_tree-------l=---n=', l,n
-                  !    write(6,*) 'err_r',err_r
-                  ! end if    
+  
                   ar_tree_r_sky_dir(l)     = ar_tree_r_dir(l) * fvs1d(l,2)
                   ar_tree_r_road_dir(l)    = ar_tree_r_dir(l) * fvg1d(l,2)
                   ar_tree_r_sunwall_dir(l) = ar_tree_r_dir(l) * fvw1d(l,2,1)
@@ -2975,21 +2536,11 @@ contains
                   ar_tree_r_roof_dir(l) = ar_tree_r_dir(l) * fvr1d(l,2,2)
                   ar_tree_r_br_tree_dir(l) = ar_tree_r_dir(l) * fvv1d(l,2,1)
                   ar_tree_r_ar_tree_dir(l) = ar_tree_r_dir(l) * fvv1d(l,2,2)
-                  !err_r=ar_tree_r_dir(l) -ar_tree_r_ar_tree_dir(l) -ar_tree_r_br_tree_dir(l)*A_v1(l)/A_v2(l) -ar_tree_r_sky_dir(l)-ar_tree_r_road_dir(l)*A_g(l)/A_v2(l)-ar_tree_r_sunwall_dir(l)*A_w(l)/A_v2(l)-ar_tree_r_shadewall_dir(l)*A_w(l)/A_v2(l)-ar_tree_r_roof_dir(l)*A_r(l)/A_v2(l)
-                  !if (debug_write) then
-                  !   write(6,*) '-----ar_tree------l=---n=', l,n
-                  !   write(6,*) 'err_r', err_r  
-                  !end if   
+ 
                   roof_r_sky_dir(l)       = roof_r_dir(l) * frs1d(l,2)
                   roof_r_ar_tree_dir(l) = roof_r_dir(l) * frv1d(l,2,2)
                   
-                  ! err_r=roof_r_dir(l) -roof_r_ar_tree_dir(l)*A_v2(l)/A_r(l) -roof_r_sky_dir(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----roof------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if   
                   ! step (4)
-
                   sref_improad_dir(l,ib)   = sref_improad_dir(l,ib) + improad_r_sky_dir(l)
                   sref_perroad_dir(l,ib)   = sref_perroad_dir(l,ib) + perroad_r_sky_dir(l)
                   sref_sunwall_dir(l,ib)   = sref_sunwall_dir(l,ib) + sunwall_r_sky_dir(l)
@@ -2998,26 +2549,7 @@ contains
                   sref_ar_tree_dir(l,ib)   = sref_ar_tree_dir(l,ib) + ar_tree_r_sky_dir(l) 
                   sref_roof_dir(l,ib)   = sref_roof_dir(l,ib) + roof_r_sky_dir(l) 
                                 
-                 if (.not. debug_write) then
-                  !   write(6,*) '------------ Absorbed and Reflected SW Flux (sky view component only) ------------'
-                  !   write(6,*) 'l =', l, ', ib = n=', ib,n
-
-                  !   ! Reflected (to sky) direct shortwave
-                  !   write(6,*) 'sref_improad_dir =', sref_improad_dir(l,ib)
-                  !   write(6,*) 'sref_perroad_dir =', sref_perroad_dir(l,ib)
-                  !   write(6,*) 'sref_sunwall_dir =', sref_sunwall_dir(l,ib)
-                  !   write(6,*) 'sref_shadewall_dir =', sref_shadewall_dir(l,ib)
-                  !   write(6,*) 'sref_br_tree_dir =', sref_br_tree_dir(l,ib)
-                  !   write(6,*) 'sref_ar_tree_dir =', sref_ar_tree_dir(l,ib)
-                  !   write(6,*) 'sref_roof_dir =', sref_roof_dir(l,ib) 
-
-                  !   write(6,*) '----------------------------------------------------------------------------------'
-                 end if      
-
                   ! step (5)
-                  ! if (debug_write) then
-                  !    write(6,*) 'road_a_dir(l), sunwall_a_dir(l), shadewall_a_dir(l),br_tree_a_dir(l),ar_tree_a_dir(l),roof_a_dir(l)',road_a_dir(l), sunwall_a_dir(l), shadewall_a_dir(l),br_tree_a_dir(l),ar_tree_a_dir(l),roof_a_dir(l)
-                  ! end if 
                   crit = max(road_a_dir(l), sunwall_a_dir(l), shadewall_a_dir(l),br_tree_a_dir(l),ar_tree_a_dir(l),roof_a_dir(l))
                   if (crit < errcrit) exit
                end do
@@ -3031,8 +2563,7 @@ contains
 
                do iter_dif = 1, n
                   ! step (1)
-                  !*canyon_hwr(l) no need to scale?
-                  
+                  ! No canyon_hwr factor here: kwg1d already contains A_w/A_g (see step (1) above).
                   stot(l) = (sunwall_r_road_dif(l) + shadewall_r_road_dif(l) + br_tree_r_road_dif(l)&
                             + ar_tree_r_road_dif(l))
 
@@ -3042,6 +2573,7 @@ contains
                   improad_r_dif(l) =     alb_improad_dif(l,ib)  * stot(l) 
                   road_a_dif(l)    = road_a_dif(l) + improad_a_dif(l)*wtroad_imperv(l)
                   road_r_dif(l)    = road_r_dif(l) + improad_r_dif(l)*wtroad_imperv(l)
+
                   perroad_a_dif(l) = (1._r8-alb_perroad_dif(l,ib)) * stot(l) 
                   perroad_r_dif(l) =     alb_perroad_dif(l,ib)  * stot(l) 
                   road_a_dif(l)    = road_a_dif(l) + perroad_a_dif(l)*(wtroad_perv(l)+wtroad_tree(l))
@@ -3081,87 +2613,49 @@ contains
                   sabs_ar_tree_dif(l,ib) = sabs_ar_tree_dif(l,ib) + ar_tree_a_dif(l)
                   sabs_roof_dif(l,ib) = sabs_roof_dif(l,ib) + roof_a_dif(l)
                   
-                 if (.not. debug_write) then
-                  !   write(6,*) '------------ Absorbed and Reflected SW Flux (sky view component only) ------------'
-                  !   write(6,*) 'l =', l, ', ib = n =', ib,n
-
-                  !   ! Absorbed diffuse shortwave
-                  !   write(6,*) 'sabs_improad_dif =', sabs_improad_dif(l,ib)
-                  !   write(6,*) 'sabs_perroad_dif =', sabs_perroad_dif(l,ib)
-                  !   write(6,*) 'sabs_sunwall_dif =', sabs_sunwall_dif(l,ib)
-                  !   write(6,*) 'sabs_shadewall_dif =', sabs_shadewall_dif(l,ib)
-                  !   write(6,*) 'sabs_br_tree_dif =', sabs_br_tree_dif(l,ib)
-                  !   write(6,*) 'sabs_ar_tree_dif =', sabs_ar_tree_dif(l,ib)
-                  !   write(6,*) 'sabs_roof_dif =', sabs_roof_dif(l,ib)
-
-
-                  !   write(6,*) '----------------------------------------------------------------------------------'
-                 end if  
            
                   ! step (3)
+                  ! Second and later scatterings: f*1d (isotropic foliage phase
+                  ! function). The switch away from k*1d is intentional - see the
+                  ! note in !DESCRIPTION above.
 
                   improad_r_sky_dif(l)       = improad_r_dif(l) * fts1d(l)
-                  improad_r_sunwall_dif(l)   = improad_r_dif(l) * fgw1d(l,1)
-                  improad_r_shadewall_dif(l) = improad_r_dif(l) * fgw1d(l,1)
-                  improad_r_br_tree_dif(l) = improad_r_dif(l) * fgv1d(l,1)
-                  improad_r_ar_tree_dif(l) = improad_r_dif(l) * fgv1d(l,2)
-                  ! err_r=improad_r_dif(l) -improad_r_br_tree_dif(l)*A_v1(l)/A_g(l) -improad_r_ar_tree_dif(l)*A_v2(l)/A_g(l) -improad_r_sky_dif(l)-improad_r_sunwall_dif(l)*A_w(l)/A_g(l)-improad_r_shadewall_dif(l)*A_w(l)/A_g(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----improad--------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if   
+                  ! improad_r_sunwall_dif(l)   = improad_r_dif(l) * fgw1d(l,1)
+                  ! improad_r_shadewall_dif(l) = improad_r_dif(l) * fgw1d(l,1)
+                  ! improad_r_br_tree_dif(l) = improad_r_dif(l) * fgv1d(l,1)
+                  ! improad_r_ar_tree_dif(l) = improad_r_dif(l) * fgv1d(l,2)
+  
                   perroad_r_sky_dif(l)       = perroad_r_dif(l) * fts1d(l)
-                  perroad_r_sunwall_dif(l)   = perroad_r_dif(l) * fgw1d(l,1)
-                  perroad_r_shadewall_dif(l) = perroad_r_dif(l) * fgw1d(l,1)
-                  perroad_r_br_tree_dif(l) = perroad_r_dif(l) * fgv1d(l,1)
-                  perroad_r_ar_tree_dif(l) = perroad_r_dif(l) * fgv1d(l,2)
-                  ! err_r=perroad_r_dif(l) -perroad_r_br_tree_dif(l)*A_v1(l)/A_g(l) -perroad_r_ar_tree_dif(l)*A_v2(l)/A_g(l) -perroad_r_sky_dif(l)-perroad_r_sunwall_dif(l)*A_w(l)/A_g(l)-perroad_r_shadewall_dif(l)*A_w(l)/A_g (l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----perroad--------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if   
-                  road_r_sky_dif(l)          = road_r_dif(l) * fts1d(l)
+                  ! perroad_r_sunwall_dif(l)   = perroad_r_dif(l) * fgw1d(l,1)
+                  ! perroad_r_shadewall_dif(l) = perroad_r_dif(l) * fgw1d(l,1)
+                  ! perroad_r_br_tree_dif(l) = perroad_r_dif(l) * fgv1d(l,1)
+                  ! perroad_r_ar_tree_dif(l) = perroad_r_dif(l) * fgv1d(l,2)
+  
+                  ! road_r_sky_dif(l)          = road_r_dif(l) * fts1d(l)
                   road_r_sunwall_dif(l)      = road_r_dif(l) * fgw1d(l,1)
                   road_r_shadewall_dif(l)    = road_r_dif(l) * fgw1d(l,1)
                   road_r_br_tree_dif(l)    = road_r_dif(l) * fgv1d(l,1)
                   road_r_ar_tree_dif(l)    = road_r_dif(l) * fgv1d(l,2)
-                  ! err_r=road_r_dif(l) -road_r_br_tree_dif(l)*A_v1(l)/A_g(l) -road_r_ar_tree_dif(l)*A_v2(l)/A_g(l) -road_r_sky_dif(l)-road_r_sunwall_dif(l)*A_w(l)/A_g(l)-road_r_shadewall_dif(l)*A_w(l)/A_g(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----road--------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if 
+
                   sunwall_r_sky_dif(l)       = sunwall_r_dif(l) * fws1d(l,1)
                   sunwall_r_road_dif(l)      = sunwall_r_dif(l) * fwg1d(l,1)
                   sunwall_r_shadewall_dif(l) = sunwall_r_dif(l) * fww1d(l,1,1)
                   sunwall_r_br_tree_dif(l) = sunwall_r_dif(l) * fwv1d(l,1,1)
                   sunwall_r_ar_tree_dif(l) = sunwall_r_dif(l) * fwv1d(l,1,2)
-                  ! err_r=sunwall_r_dif(l) -sunwall_r_br_tree_dif(l)*A_v1(l)/A_w(l) -sunwall_r_ar_tree_dif(l)*A_v2(l)/A_w(l) -sunwall_r_sky_dif(l)-sunwall_r_road_dif(l)*A_g(l)/A_w(l)-sunwall_r_shadewall_dif(l)*A_w(l)/A_w(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '------sunwall--------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if                     
+                   
                   shadewall_r_sky_dif(l)     = shadewall_r_dif(l) * fws1d(l,1)
                   shadewall_r_road_dif(l)    = shadewall_r_dif(l) * fwg1d(l,1)
                   shadewall_r_sunwall_dif(l) = shadewall_r_dif(l) * fww1d(l,1,1)
                   shadewall_r_br_tree_dif(l) = shadewall_r_dif(l) * fwv1d(l,1,1)
                   shadewall_r_ar_tree_dif(l) = shadewall_r_dif(l) * fwv1d(l,1,2)
-                  ! err_r=shadewall_r_dif(l) -shadewall_r_br_tree_dif(l)*A_v1(l)/A_w(l) -shadewall_r_ar_tree_dif(l)*A_v2(l)/A_w(l) -shadewall_r_sky_dif(l)-shadewall_r_road_dif(l)*A_g(l)/A_w(l)-shadewall_r_sunwall_dif(l)*A_w(l)/A_w(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----shadewall--------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if   
-                  
+ 
                   br_tree_r_sky_dif(l)     = br_tree_r_dif(l) * fvs1d(l,1)
                   br_tree_r_road_dif(l)    = br_tree_r_dif(l) * fvg1d(l,1)
                   br_tree_r_sunwall_dif(l) = br_tree_r_dif(l) * fvw1d(l,1,1)
                   br_tree_r_shadewall_dif(l) = br_tree_r_dif(l) * fvw1d(l,1,1)   
                   br_tree_r_br_tree_dif(l) = br_tree_r_dif(l) * fvv1d(l,1,1)
                   br_tree_r_ar_tree_dif(l) = br_tree_r_dif(l) * fvv1d(l,1,2)
-                  ! err_r=br_tree_r_dif(l) -br_tree_r_br_tree_dif(l) -br_tree_r_ar_tree_dif(l)*A_v2(l)/A_v1(l) -br_tree_r_sky_dif(l)-br_tree_r_road_dif(l)*A_g(l)/A_v1(l)-br_tree_r_sunwall_dif(l)*A_w(l)/A_v1(l)-br_tree_r_shadewall_dif(l)*A_w(l)/A_v1(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----br_tree-------l=---n=', l,n
-                  !    write(6,*) 'err_r',err_r
-                  ! end if     
+    
                   ar_tree_r_sky_dif(l)     = ar_tree_r_dif(l) * fvs1d(l,2)
                   ar_tree_r_road_dif(l)    = ar_tree_r_dif(l) * fvg1d(l,2)
                   ar_tree_r_sunwall_dif(l) = ar_tree_r_dif(l) * fvw1d(l,2,1)
@@ -3169,20 +2663,11 @@ contains
                   ar_tree_r_roof_dif(l) = ar_tree_r_dif(l) * fvr1d(l,2,2)
                   ar_tree_r_br_tree_dif(l) = ar_tree_r_dif(l) * fvv1d(l,2,1)
                   ar_tree_r_ar_tree_dif(l) = ar_tree_r_dif(l) * fvv1d(l,2,2)
-                  !err_r=ar_tree_r_dif(l) -ar_tree_r_ar_tree_dif(l) -ar_tree_r_br_tree_dif(l)*A_v1(l)/A_v2(l) -ar_tree_r_sky_dif(l)-ar_tree_r_road_dif(l)*A_g(l)/A_v2(l)-ar_tree_r_sunwall_dif(l)*A_w(l)/A_v2(l)-ar_tree_r_shadewall_dif(l)*A_w(l)/A_v2(l)-ar_tree_r_roof_dif(l)*A_r(l)/A_v2(l)
-                  !if (debug_write) then
-                  !   write(6,*) '-----ar_tree------l=---n=', l,n
-                  !   write(6,*) 'err_r', err_r  
-                  !end if  
+ 
                   roof_r_sky_dif(l)       = roof_r_dif(l) * frs1d(l,2)
                   roof_r_ar_tree_dif(l) = roof_r_dif(l) * frv1d(l,2,2)
-                  ! err_r=roof_r_dif(l) -roof_r_ar_tree_dif(l)*A_v2(l)/A_r(l) -roof_r_sky_dif(l)
-                  ! if (debug_write) then
-                  !    write(6,*) '-----roof------l=---n=', l,n
-                  !    write(6,*) 'err_r', err_r
-                  ! end if   
-                  ! step (4)
 
+                  ! step (4)
                   sref_improad_dif(l,ib)   = sref_improad_dif(l,ib) + improad_r_sky_dif(l)
                   sref_perroad_dif(l,ib)   = sref_perroad_dif(l,ib) + perroad_r_sky_dif(l)
                   sref_sunwall_dif(l,ib)   = sref_sunwall_dif(l,ib) + sunwall_r_sky_dif(l)
@@ -3191,24 +2676,7 @@ contains
                   sref_ar_tree_dif(l,ib)   = sref_ar_tree_dif(l,ib) + ar_tree_r_sky_dif(l) 
                   sref_roof_dif(l,ib)   = sref_roof_dif(l,ib) + roof_r_sky_dif(l) 
 
-                  
-                 if (.not. debug_write) then
-                  !   write(6,*) '------------ Absorbed and Reflected SW Flux (sky view component only) ------------'
-                  !   write(6,*) 'l =', l, ', ib = n=', ib,n
-
-                  !   ! Reflected (to sky) diffuse shortwave
-                  !   write(6,*) 'sref_improad_dif =', sref_improad_dif(l,ib)
-                  !   write(6,*) 'sref_perroad_dif =', sref_perroad_dif(l,ib)
-                  !   write(6,*) 'sref_sunwall_dif =', sref_sunwall_dif(l,ib)
-                  !   write(6,*) 'sref_shadewall_dif =', sref_shadewall_dif(l,ib)
-                  !   write(6,*) 'sref_br_tree_dif =', sref_br_tree_dif(l,ib)
-                  !   write(6,*) 'sref_ar_tree_dif =', sref_ar_tree_dif(l,ib)
-                  !   write(6,*) 'sref_roof_dif =', sref_roof_dif(l,ib) 
-
-                  !   write(6,*) '----------------------------------------------------------------------------------'
-                 end if
                   ! step (5)
-
                   crit = max(road_a_dif(l), sunwall_a_dif(l), shadewall_a_dif(l),br_tree_a_dif(l),ar_tree_a_dif(l),roof_a_dif(l))
                   if (crit < errcrit) exit
                end do
@@ -3218,14 +2686,16 @@ contains
                   write (iulog,*) 'clm model is stopping'
                   call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
                endif
-               ! corrected a clear dir/dif typo; handled zero division error when tree area is zero
-               if (lai(l) > 1e-6_r8) then
-                  sref_tree_dir(l,ib) = (sref_br_tree_dir(l,ib)*A_v1(l) + sref_ar_tree_dir(l,ib)*A_v2(l))/(A_v1(l)+A_v2(l))
-                  sref_tree_dif(l,ib) = (sref_br_tree_dif(l,ib)*A_v1(l) + sref_ar_tree_dif(l,ib)*A_v2(l))/(A_v1(l)+A_v2(l))
-                  sabs_tree_dir(l,ib) = (sabs_br_tree_dir(l,ib)*A_v1(l) + sabs_ar_tree_dir(l,ib)*A_v2(l))/(A_v1(l)+A_v2(l))
-                  sabs_tree_dif(l,ib) = (sabs_br_tree_dif(l,ib)*A_v1(l) + sabs_ar_tree_dif(l,ib)*A_v2(l))/(A_v1(l)+A_v2(l))
 
-                  ! sabs_tree_dir_per_col  = (sabs_br_tree_dir*A_v1 + sabs_ar_tree_dir*A_v2) / (wtroad_tree*A_g)???
+               ! handle zero division error when tree area is zero
+               ! sref_improad_dir and sref_perroad_dir are per unit area of their own surface. The
+               ! 'urbanf' column-to-landunit averaging weights the road-tree column by
+               ! wtroad_tree*(1-wtlunit_roof), so give the tree's fluxes per unit road-tree column area (wtroad_tree*A_g)
+               if (lai(l) > 1e-6_r8) then
+                  sref_tree_dir(l,ib) = (sref_br_tree_dir(l,ib)*A_v1(l) + sref_ar_tree_dir(l,ib)*A_v2(l))/(A_g(l)*wtroad_tree(l))
+                  sref_tree_dif(l,ib) = (sref_br_tree_dif(l,ib)*A_v1(l) + sref_ar_tree_dif(l,ib)*A_v2(l))/(A_g(l)*wtroad_tree(l))
+                  sabs_tree_dir(l,ib) = (sabs_br_tree_dir(l,ib)*A_v1(l) + sabs_ar_tree_dir(l,ib)*A_v2(l))/(A_g(l)*wtroad_tree(l))
+                  sabs_tree_dif(l,ib) = (sabs_br_tree_dif(l,ib)*A_v1(l) + sabs_ar_tree_dif(l,ib)*A_v2(l))/(A_g(l)*wtroad_tree(l))
                else
                   sref_tree_dir(l,ib)=0._r8; sref_tree_dif(l,ib)=0._r8
                   sabs_tree_dir(l,ib)=0._r8; sabs_tree_dif(l,ib)=0._r8
@@ -3258,11 +2728,7 @@ contains
                                        + sabs_br_tree_dif(l,ib)*A_v1(l)/A_s(l) + sabs_ar_tree_dif(l,ib)*A_v2(l)/A_s(l)+ sabs_roof_dif(l,ib)*A_r(l)/A_s(l)
                
                  
-                ! conservation check. note: previous conservation checks confirm partioning of total direct
-                ! beam and diffuse radiation from atmosphere to road and walls is conserved as
-                !    sdir (from atmosphere) = sdir_road + (sdir_sunwall + sdir_shadewall)*canyon_hwr
-                !    sdif (from atmosphere) = sdif_road + (sdif_sunwall + sdif_shadewall)*canyon_hwr
-
+                ! conservation check. 
                 stot_dir(l)=sdir_road(l,ib)*A_g(l)/A_s(l)+(sdir_shadewall(l,ib) + sdir_sunwall(l,ib))* A_w(l)/A_s(l) &
                                     +sdir_roof(l,ib)*A_r(l)/A_s(l) + sdir_br_tree(l,ib)*A_v1(l)/A_s(l)+ sdir_ar_tree(l,ib)*A_v2(l)/A_s(l)
                 stot_dif(l)=sdif_road(l,ib)*A_g(l)/A_s(l)+(sdif_shadewall(l,ib) + sdif_sunwall(l,ib))* A_w(l)/A_s(l) &
@@ -3284,10 +2750,9 @@ contains
                   call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
                 endif
 
-                ! canyon albedo
-
-                canyon_alb_dif(l) = sref_canyon_dif(l,ib) / max(stot_dif(l), 1.e-06_r8)
-                canyon_alb_dir(l) = sref_canyon_dir(l,ib) / max(stot_dir(l), 1.e-06_r8)
+               !  ! canyon albedo
+               !  canyon_alb_dif(l) = sref_canyon_dif(l,ib) / max(stot_dif(l), 1.e-06_r8)
+               !  canyon_alb_dir(l) = sref_canyon_dir(l,ib) / max(stot_dir(l), 1.e-06_r8)
              end if 
 
 

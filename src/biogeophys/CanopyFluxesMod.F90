@@ -48,7 +48,6 @@ module CanopyFluxesMod
   use SoilWaterRetentionCurveMod, only : soil_water_retention_curve_type
   use LunaMod               , only : Update_Photosynthesis_Capacity, Acc24_Climate_LUNA,Acc240_Climate_LUNA,Clear24_Climate_LUNA
   use NumericsMod           , only : truncate_small_values
-  use clm_time_manager  , only : get_nstep 
   !
   ! !PUBLIC TYPES:
   implicit none
@@ -638,11 +637,6 @@ contains
         bsun                    => energyflux_inst%bsun_patch                       ! Output: [real(r8) (:)   ]  sunlit canopy transpiration wetness factor (0 to 1)
         bsha                    => energyflux_inst%bsha_patch                       ! Output: [real(r8) (:)   ]  sunlit canopy transpiration wetness factor (0 to 1)
       end if
-
-      !write (6,'(A,I5)') '-------------------(l):get leafn from canopyflux------------------- '
-      !write (6,'(A,I5)') '-------------------time step----------------- ', get_nstep()
-      !write (6,'(A,1X,*(F10.5,1X))') 'leafn_array all = ', leafn_patch
-      !write (6,'(A,1X,*(F10.5,1X))') 'leafn_array all_2 = ', leafn_patch(begp:endp)
 
       ! Determine step size
 

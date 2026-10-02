@@ -387,7 +387,10 @@ contains
       c = filter_nolakec(fc)
       l = col%landunit(c)  
       if (lun%itype(l)/=istwet .AND. lun%itype(l)/=istice) then
-         if (lun%itype(l) == istsoil .or. lun%itype(l) == istcrop) then
+         ! The ground under the urban road tree is bare soil beneath a canopy, like the ground
+         ! under natural vegetation, so it gets the same dry-surface-layer resistance.
+         ! UrbanFluxes adds it to that ground's latent heat resistance.
+         if (lun%itype(l) == istsoil .or. lun%itype(l) == istcrop .or. col%itype(c) == icol_road_tree) then
             vwc_liq = max(h2osoi_liq(c,1),1.0e-6_r8)/(dz(c,1)*denh2o)
 ! eff_porosity not calculated til SoilHydrology
              eff_por_top = max(0.01_r8,watsat(c,1)-min(watsat(c,1), h2osoi_ice(c,1)/(dz(c,1)*denice)))
@@ -411,7 +414,7 @@ contains
             soilresis(c) = dsl(c)/(dg*eps*1.e3) + 20._r8
             soilresis(c) = min(1.e6_r8,soilresis(c))
 
-         else if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_tree) then
+         else if (col%itype(c) == icol_road_perv) then
             soilresis(c) = 1.e6_r8
          else if (col%itype(c) == icol_sunwall .or. col%itype(c) == icol_shadewall) then
             soilresis(c) = 1.e6_r8          

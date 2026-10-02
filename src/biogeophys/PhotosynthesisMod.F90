@@ -3903,7 +3903,7 @@ contains
     !------------------------------------------------------------------------------
     
     associate(                                                    &
-         qflx_tran_veg => waterfluxbulk_inst%qflx_tran_veg_patch    , & ! Input:  [real(r8) (:)   ]  vegetation transpiration (mm H2O/s) (+ = to atm)
+         qflx_tran_veg => waterfluxbulk_inst%qflx_tran_veg_patch    , & ! Output:  [real(r8) (:)   ]  vegetation transpiration (mm H2O/s) (+ = to atm)
          vegwp         => canopystate_inst%vegwp_patch           ,& ! Input/Output: [real(r8) (:,:) ]  vegetation water matric potential (mm)
          vegwp_ln      => canopystate_inst%vegwp_ln_patch         & ! Output: [real(r8) (:,:) ]  vegetation water matric potential (mm) at local noon
     )
@@ -4560,7 +4560,7 @@ contains
          forc_pbot     => atm2lnd_inst%forc_pbot_downscaled_col , & ! Input:  [real(r8) (:)   ]  atmospheric pressure (Pa)
          tgcm          => temperature_inst%thm_patch            , & ! Input:  [real(r8) (:)   ]  air temperature at agcm reference height (kelvin)
          bsw           => soilstate_inst%bsw_col                , & ! Input:  [real(r8) (:,:) ]  Clapp and Hornberger "b"
-         qflx_tran_veg => waterfluxbulk_inst%qflx_tran_veg_patch    , & ! Input:  [real(r8) (:)   ]  vegetation transpiration (mm H2O/s) (+ = to atm)
+         qflx_tran_veg => waterfluxbulk_inst%qflx_tran_veg_patch    , & ! Output:  [real(r8) (:)   ]  vegetation transpiration (mm H2O/s) (+ = to atm)
          vegwp_pd      => canopystate_inst%vegwp_pd_patch       , & ! Output: [real(r8) (:,:) ]  vegetation water matric potential (mm) predawn
          sucsat        => soilstate_inst%sucsat_col               & ! Input:  [real(r8) (:,:) ]  minimum soil suction (mm)
          )

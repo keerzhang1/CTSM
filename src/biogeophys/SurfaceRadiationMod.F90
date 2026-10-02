@@ -400,22 +400,16 @@ contains
     real(r8)          :: wd_sun, wd_sha             ! sunlit/shaded direct  intensity relative to the layer mean
     real(r8)          :: wi_sun, wi_sha             ! sunlit/shaded diffuse intensity relative to the layer mean
     real(r8)          :: i_dir, i_dif               ! absorbed direct/diffuse PAR per unit one-sided leaf area (W/m**2)
-    real(r8)          :: f_2sided                   ! two-sided clumped -> one-sided leaf area conversion (= 2*omega)
-    real(r8)          :: laisum                     ! elai + esai (one-sided, per unit ground area)
-    real(r8)          :: a_gtree                    ! road tree ground area per unit canyon length (m)
+    real(r8)          :: f_perleaf                  ! road-tree column area -> one-sided leaf+stem area conversion (= 1/laisum)
+    real(r8)          :: laisum                     ! elai + esai (one-sided, per unit road-tree column area)
     real(r8),parameter :: fab_min = 1.e-6_r8        ! min mean absorption for a usable sunlit/shaded partition
 
     associate( tlai_z  => surfalb_inst%tlai_z_patch, &    ! Input: [real(r8) (:)   ] tlai increment for canopy layer
           fsun_z      => surfalb_inst%fsun_z_patch, &     ! Input: [real(r8) (:)   ]sunlit fraction of canopy layer
           elai        => canopystate_inst%elai_patch, &   ! Input: [real(r8) (:)   ]one-sided leaf area index
           esai        => canopystate_inst%esai_patch, &   ! Input: [real(r8) (:)   ]one-sided stem area index
-          A_v1        => lun%A_v1, &                      ! Input: [real(r8) (:)   ]two-sided clumped leaf area, urban tree canopy below roof
-          A_v2        => lun%A_v2, &                      ! Input: [real(r8) (:)   ]two-sided clumped leaf area, urban tree canopy above roof
-          wtroad_tree => lun%wtroad_tree, &               ! Input: [real(r8) (:)   ]weight of road tree column to total road
-          ht_roof     => lun%ht_roof, &                   ! Input: [real(r8) (:)   ]height of urban roof (m)
-          canyon_hwr  => lun%canyon_hwr, &                ! Input: [real(r8) (:)   ]urban canyon height to width ratio
-          sabs_tree_dif      =>    solarabs_inst%sabs_tree_dif_lun      , & ! Input: [real(r8) (:,:) ]  diffuse solar absorbed  by above-roof treeetation per unit treeetation area per unit incident flux
-          sabs_tree_dir      =>    solarabs_inst%sabs_tree_dir_lun      , & ! Input: [real(r8) (:,:) ]  direct  solar absorbed  by above-roof treeetation per unit treeetation area per unit incident flux
+          sabs_tree_dif      =>    solarabs_inst%sabs_tree_dif_lun      , & ! Input: [real(r8) (:,:) ]  diffuse solar absorbed by the road tree canopy per unit road-tree column area per unit incident flux
+          sabs_tree_dir      =>    solarabs_inst%sabs_tree_dir_lun      , & ! Input: [real(r8) (:,:) ]  direct  solar absorbed by the road tree canopy per unit road-tree column area per unit incident flux
 
           forc_solad_col  => atm2lnd_inst%forc_solad_downscaled_col, &   ! Input: [real(r8) (:)   ]direct beam radiation, column (W/m**2)
           forc_solai  => atm2lnd_inst%forc_solai_grc, &   ! Input: [real(r8) (:)   ]diffuse radiation (W/m**2)
@@ -469,27 +463,25 @@ contains
         ! If sun/shade big leaf code, nrad=1 and fluxes from SurfaceAlbedo
         ! are canopy integrated so that layer values equal big leaf values.
 
-        ! UrbanAlbedoMod normalizes sabs_tree_dir/dif by the two-sided, clumping-weighted
-        ! leaf area A_v1+A_v2, while parsun_z/parsha_z are per unit one-sided leaf area.
-        ! f_2sided converts between the two. Because lad is elaisai_per_uroad/tree_tht the
-        ! canopy depth cancels and A_v1+A_v2 = 2*omega*(elai+esai)*wcan*wtroad_tree, so
-        ! this ratio reduces to 2*omega - but it is built from the stored A_v's rather than
-        ! omega (a local in UrbanParamsInit) so it stays tied to the same source of truth
-        ! as the sabv conversion in UrbanRadiationMod.
-        f_2sided = 0._r8
+        ! UrbanAlbedoMod gives sabs_tree_dir/dif as the whole canopy's absorption per unit
+        ! road-tree column area, i.e. per unit area of the ground the crowns cover (the same
+        ! basis as sabv and the column weights), while parsun_z/parsha_z are per unit
+        ! one-sided leaf+stem area. elai and esai are per unit road-tree column area too,
+        ! so dividing by laisum = elai+esai spreads the canopy absorption over its
+        ! one-sided leaf+stem area.
+        f_perleaf = 0._r8
         if (col%itype(c) == icol_road_tree) then
-           laisum  = elai(p) + esai(p)
-           a_gtree = wtroad_tree(l)*ht_roof(l)/canyon_hwr(l)
-           if (laisum > 0._r8 .and. a_gtree > 0._r8) then
-              f_2sided = (A_v1(l) + A_v2(l)) / (a_gtree*laisum)
+           laisum = elai(p) + esai(p)
+           if (laisum > 0._r8) then
+              f_perleaf = 1._r8 / laisum
            end if
         end if
 
         do iv = 1, nrad(p)
            if (col%itype(c) == icol_road_tree) then
               ! Mean absorbed PAR per unit one-sided leaf area, before the sunlit/shaded split
-              i_dir = forc_solad_col(c,ipar)*sabs_tree_dir(l,ipar)*f_2sided
-              i_dif = forc_solai(g,ipar)    *sabs_tree_dif(l,ipar)*f_2sided
+              i_dir = forc_solad_col(c,ipar)*sabs_tree_dir(l,ipar)*f_perleaf
+              i_dif = forc_solai(g,ipar)    *sabs_tree_dif(l,ipar)*f_perleaf
 
               ! Split by the two-stream sunlit/shaded intensity ratio. fabd_sun_z is per unit
               ! sunlit lai+sai and fabd_sha_z per unit shaded lai+sai, so the normalizer is

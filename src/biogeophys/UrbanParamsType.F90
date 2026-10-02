@@ -12,8 +12,7 @@ module UrbanParamsType
   use clm_varctl   , only : iulog, fsurdat
   use clm_varcon   , only : grlnd, spval, ispval
   use LandunitType , only : lun
-  ! KZ: mark for delete after debugging   
-  use clm_time_manager  , only : get_nstep  
+
   !
   implicit none
   save
@@ -27,7 +26,6 @@ module UrbanParamsType
   public  :: IsProgBuildTemp   ! If using the prognostic building temperature method
   public  :: UrbanPhenology   ! 
   !
-  !-------------------[kz.1]Ray tracing test-------------------------  
   ! PRIVATE MEMBER FUNCTIONS
   private :: montecarlo_view_factors    ! Calculates the view factors between all 'surfaces'  
   private :: ComputeViewFactors        ! Compute Monte Carlo view factors for one urban landunit
@@ -37,7 +35,6 @@ module UrbanParamsType
   private :: init_random_seed  ! Initializes the random seed for ray tracing calculations
   private :: ray_up            ! Computes the contribution to view factors of rays traveling upwards
   private :: ray_dn            ! Computes the contribution to view factors of rays traveling downwards
-  !-------------------[kz.1]Ray tracing test-------------------------  
   ! !PRIVATE TYPE
   type urbinp_type
      real(r8), pointer :: canyon_hwr      (:,:)  
@@ -89,10 +86,7 @@ module UrbanParamsType
 
   ! PUBLIC TYPE
   type, public :: urbanparams_type
-  !-------------------[kz.2]Ray tracing test-------------------------  
      ! these output variables are kept for diagnosis purpose for now
-     ! f[s1][s2]1d_out: view factor from s1 to s2
-     ! KZ: mark for delete after debugging
      real(r8), pointer :: fww1d_out       (:,:,:) ! Longwave radiation view factor from wall to wall 
      real(r8), pointer :: fvv1d_out       (:,:,:) ! Longwave radiation view factor from vegetation to vegetation 
      real(r8), pointer :: fwv1d_out       (:,:,:) ! Longwave radiation view factor from wall to vegetation 
@@ -159,9 +153,8 @@ module UrbanParamsType
      real(r8), pointer :: svfw_f_out      (:,:)    ! Unweighted longwave sky view factor for wall  
      real(r8), pointer :: svfv_f_out      (:,:)    ! Unweighted longwave sky view factor for vegetation  
      real(r8), pointer :: svfr_f_out      (:,:)    ! Unweighted longwave sky view factor for roof  
-     ! confirm: what is their difference?
      real(r8), pointer :: vfst_f_out      (:)      ! Unweighted longwave view factor from sky to ground  
-     real(r8), pointer :: svft_f_out      (:)      ! Unweighted longwave sky view factor for ground  
+     real(r8), pointer :: svft_f_out      (:)      ! Unweighted longwave sky view factor of the ground (ground -> sky)
 
      ! Unweighted shortwave radiation view factor outputs
      real(r8), pointer :: vfww_k_out      (:,:,:)  ! Unweighted shortwave view factor from wall to wall  
@@ -184,18 +177,12 @@ module UrbanParamsType
      real(r8), pointer :: svfv_k_out      (:,:)    ! Unweighted shortwave sky view factor for vegetation  
      real(r8), pointer :: svfr_k_out      (:,:)    ! Unweighted shortwave sky view factor for roof  
      real(r8), pointer :: vfst_k_out      (:)      ! Unweighted shortwave view factor from sky to ground  
-     real(r8), pointer :: svft_k_out      (:)      ! Unweighted shortwave sky view factor for ground  
+     real(r8), pointer :: svft_k_out      (:)      ! Unweighted shortwave sky view factor of the ground (ground -> sky)
      
-     real(r8), pointer :: A_v1     (:)      ! Leaf area for urban tree canopy below roof   
-     real(r8), pointer :: A_v2      (:)     ! Leaf area for urban tree canopy above roof   
-     real(r8), pointer :: h1      (:)       ! Height of tree canopy crown below roof (m)
-     real(r8), pointer :: h2      (:)       ! Depth of tree canopy crown (m)
-
      real(r8), pointer :: frontal_ai_out      (:)      ! frontal area index for output 
      real(r8), pointer :: plan_ai_out      (:)      ! plan area index for output
      real(r8), pointer :: z_d_town_out      (:)      ! displacement height for output
      real(r8), pointer :: z_0_town_out      (:)      ! roughness length for output
-  ! ------------------[kz.2]Ray tracing test-------------------------  
      real(r8), allocatable :: wind_hgt_canyon     (:)   ! lun height above road at which wind in canyon is to be computed (m)
      real(r8), allocatable :: em_roof             (:)   ! lun roof emissivity
      real(r8), allocatable :: em_improad          (:)   ! lun impervious road emissivity
@@ -215,9 +202,9 @@ module UrbanParamsType
      real(r8), allocatable :: alb_wall_dir        (:,:) ! lun direct  wall albedo
      real(r8), allocatable :: alb_wall_dif        (:,:) ! lun diffuse wall albedo
 
-     real(r8), allocatable :: tree_elaisai_per_uroad        (:) !
-     real(r8), allocatable :: tree_lai_per_vega        (:) !
-     integer, allocatable :: tree_pft_urb        (:) !
+     real(r8), allocatable :: tree_elaisai_per_uroad        (:) ! lun road tree exposed leaf + stem area index (elai+esai, snow-adjusted) per unit total road area (m^2/m^2)
+     real(r8), allocatable :: tree_lai_per_vega        (:) ! lun road tree LAI per unit tree-covered area, interpolated from monthly surfdata TREE_LAI_URB (m^2/m^2)
+     integer, allocatable :: tree_pft_urb        (:) ! lun PFT index of the road tree patch, from surfdata TREE_PFT_URB (-)
 
      integer , pointer     :: nlev_improad        (:)   ! lun number of impervious road layers (-)
      real(r8), pointer     :: tk_wall             (:,:) ! lun thermal conductivity of urban wall (W/m/K)
@@ -292,11 +279,7 @@ contains
     real(r8)            :: timwt(2)              ! interpolation weights (sum to 1)
     integer, parameter  :: nzcanm = 5            ! max vertical levels at urban resolution (for view-factor array allocation)
     !---------------------------------------------------------------------
-    
-!-------------------[kz.3]Ray tracing test-------------------------  
-
-!-------------------[kz.3]Ray tracing test-------------------------   
-    
+        
     begp = bounds%begp; endp = bounds%endp
     begc = bounds%begc; endc = bounds%endc
     begl = bounds%begl; endl = bounds%endl
@@ -338,7 +321,7 @@ contains
     allocate(this%alb_wall_dir        (begl:endl,numrad))   ; this%alb_wall_dir        (:,:) = nan    
     allocate(this%alb_wall_dif        (begl:endl,numrad))   ; this%alb_wall_dif        (:,:) = nan
     allocate(this%eflx_traffic_factor (begl:endl))          ; this%eflx_traffic_factor (:)   = nan
-!-------------------[kz.4]Ray tracing test-------------------------  
+
     allocate(this%fww1d_out           (begl:endl,nzcanm,nzcanm))          ; this%fww1d_out       (:,:,:) = nan
     allocate(this%fvv1d_out           (begl:endl,nzcanm,nzcanm))          ; this%fvv1d_out       (:,:,:) = nan
     allocate(this%fwv1d_out           (begl:endl,nzcanm,nzcanm))          ; this%fwv1d_out       (:,:,:) = nan
@@ -431,11 +414,6 @@ contains
     allocate(this%svfv_k_out           (begl:endl,nzcanm))                 ; this%svfv_k_out       (:,:)   = nan
     allocate(this%svfr_k_out           (begl:endl,nzcanm))                 ; this%svfr_k_out       (:,:)   = nan
 
-    allocate(this%A_v2                 (begl:endl))                        ; this%A_v2             (:)     = nan
-    allocate(this%A_v1                 (begl:endl))                        ; this%A_v1             (:)     = nan
-    allocate(this%h1                 (begl:endl))                        ; this%h1             (:)     = nan
-    allocate(this%h2                 (begl:endl))                        ; this%h2             (:)     = nan
-
     allocate(this%z_d_town_out         (begl:endl))                        ; this%z_d_town_out     (:)     = nan
     allocate(this%z_0_town_out         (begl:endl))                        ; this%z_0_town_out     (:)     = nan
     allocate(this%plan_ai_out         (begl:endl))                        ; this%plan_ai_out     (:)     = nan
@@ -481,14 +459,11 @@ contains
          this%tree_pft_urb(l) = urbinp%tree_pft_urb(g,dindx)
 
           ! Landunit level initialization for urban wall and roof layers and interfaces
-
           lun%canyon_hwr(l)   = urbinp%canyon_hwr(g,dindx)
-!-------------------[kz.5]Ray tracing test-------------------------            
           lun%tree_lai_urb_monthly(l,:)          = urbinp%tree_lai_urb(g,dindx,:)
           lun%wtroad_tree(l)     = urbinp%wtroad_tree(g,dindx)       
           lun%tree_bht_urb(l)          = urbinp%tree_bht_urb(g,dindx)
           lun%tree_tht_urb(l)     = urbinp%tree_tht_urb(g,dindx)       
-!-------------------[kz.5]Ray tracing test-------------------------     
           lun%wtroad_perv(l)  = urbinp%wtroad_perv(g,dindx)
           lun%ht_roof(l)      = urbinp%ht_roof(g,dindx)
           !confirm: do we really need to assign this value? Or is it just a initialization?
@@ -588,7 +563,16 @@ contains
           ! frontal_ai = max(2._r8 * (1._r8 - plan_ai) * lun%canyon_hwr(l)/ rpi, 0.05_r8)
 
           ! Use plan_ai = roof fraction. See notes from 6-9-21
-          plan_ai = lun%wtlunit_roof(l)
+         !  plan_ai = lun%wtlunit_roof(l)
+
+
+          ! Restrict this value to that of "real cities" as shown in Figure 1 in Grimmond and Ok (1999).
+          ! This is to avoid unrealistic combinations of plan and frontal area index that can generate
+          ! extremely small values of roughness length that result in stagnant urban canopy air and very
+          ! high daytime temperatures.
+
+          plan_ai = max(min(lun%wtlunit_roof(l), 0.62_r8), 0.1_r8)
+
 
           ! Use relationship derived from Porson (2010) and Masson (2020)
           frontal_ai = lun%wall_to_plan_area_ratio(l)/rpi
@@ -599,17 +583,11 @@ contains
           ! Calculate aerodynamic displacement height and roughness length
           call ComputeUrbanRoughness(this, l)
 
-         !   write(6,*) '----------------urban roughness------------ '
-         !   write(6,*) 'plan_ai(l) = ', plan_ai
-         !   write(6,*) 'frontal_ai(l) = ', frontal_ai
-         !   write(6,*) 'z_d_town(l) = ', lun%z_d_town(l)
-         !   write(6,*) 'z_0_town(l) = ', lun%z_0_town(l)
        else ! Not urban point 
 
           this%eflx_traffic_factor(l) = spval
           this%t_building_min(l) = spval
 
-!-------------------[kz.7]Ray tracing test-------------------------     
           this%fww1d_out(l,:,:)      = spval
           this%fvv1d_out(l,:,:)      = spval
           this%fwv1d_out(l,:,:)      = spval
@@ -705,7 +683,6 @@ contains
           this%z_d_town_out(l)        = spval
           this%z_0_town_out(l)        = spval
           
-!-------------------[kz.7]Ray tracing test-------------------------     
        end if
     end do
 
@@ -732,23 +709,23 @@ contains
     integer, parameter  :: nzcanm = 5        ! Maximum number of vertical levels at urban resolution
     integer             :: maxbhind          ! Maximum vertical layer for highest building or tree
     integer             :: maxind            ! Index of the highest level with roofs or the highest layer with tree foliage, whichever is higher
-    real(r8)            :: lad(nzcanm)       ! Leaf area density in the canyon column [m-1]
-    real(r8)            :: lads(nzcanm)      ! Leaf area density in the canyon column [m-1] for shortwave calcs
-    real(r8)            :: ladl(nzcanm)      ! Leaf area density in the canyon column [m-1] for longwave calcs
-    real(r8)            :: omega(nzcanm)     ! Leaf clumping index (Eq. 15 in Krayenhoff et al. 2020)
-    ! ToDo: replace dzcan with ht_roof; replace wcan, wbui  
+    real(r8)            :: lad(nzcanm)       ! Canyon-space-average leaf area density [m2 m-3] = LAI per road area / crown
+                                             ! depth. NOT the in-crown value (montecarlo forms that as lad/wtroad_tree).
+    real(r8)            :: lads(nzcanm)      ! As lad, for shortwave calcs; set equal to lad below
+    real(r8)            :: ladl(nzcanm)      ! As lad, for longwave calcs; set equal to lad below
+    real(r8)            :: omega(nzcanm)             ! Leaf clumping index 
     real(r8)            :: dzcan             ! Height of buildings [m]
-    real(r8)            :: pb_in(nzcanm)     ! Probability to have a building with an height equal or higher than each level
-    real(r8)            :: ss_in(nzcanm)     ! Roof fraction at each level 
+    real(r8)            :: pb_in(nzcanm+1)     ! Probability to have a building with an height equal or higher than each level
+    real(r8)            :: ss_in(nzcanm+1)     ! Roof fraction at each level 
     real(r8)            :: wcan              ! Width of the canyons [m]
     real(r8)            :: wbui              ! Width of the buildings [m]
     real(r8)            :: wtroad_tree          ! Canopy cover within the canyon (between-building) space
-    real(r8)            :: dray              ! Ray step [m]
-    real(r8)            :: hsky              ! A height scaling factor for sky ray calculations
-    integer             :: nrays             ! Number of rays from foliage layer (Number from surfaces will be half)
-    integer             :: nsky              ! A parameter controlling the number of rays starting from the sky
-    real(r8)            :: h1                ! tree crown bottom height
-    real(r8)            :: h2                ! tree crown vertical height
+    real(r8)            :: dray              ! Ray step, normalized by dzcan [-] (NOT metres)
+    real(r8)            :: hsky              ! Sky-ray start height as a multiple of the domain top; must be > 1
+    integer             :: nrays             ! Points generated on the unit sphere; a foliage layer fires nrays-2 rays.
+    integer             :: nsky              ! Number of sky-ray start bins per level (a multiplier, not a ray count)
+    real(r8)            :: h1                ! Crown bottom height above ground [m]
+    real(r8)            :: h2                ! Crown DEPTH [m], not crown-top height
 
     !Output of view factor calculation
     !------
@@ -813,7 +790,7 @@ contains
     real(r8)            :: vfsr_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to roof
     real(r8)            :: vfsv_f(nzcanm)             ! Unweighted longwave radiation view factor from sky to vegetation
     real(r8)            :: vfst_f                     ! Unweighted longwave radiation view factor from sky to ground    
-    real(r8)            :: svft_f                     ! Unweighted longwave sky view factor for ground
+    real(r8)            :: svft_f                     ! Unweighted longwave sky view factor of the ground (ground -> sky)
 
     ! Unweighted shortwave radiation view factors (for initialization)
     real(r8)            :: vfww_k(nzcanm,nzcanm)      ! Unweighted shortwave radiation view factor from wall to wall
@@ -832,7 +809,7 @@ contains
     real(r8)            :: vfsr_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to roof
     real(r8)            :: vfsv_k(nzcanm)             ! Unweighted shortwave radiation view factor from sky to vegetation
     real(r8)            :: vfst_k                     ! Unweighted shortwave radiation view factor from sky to ground
-    real(r8)            :: svft_k                     ! Unweighted shortwave sky view factor for ground
+    real(r8)            :: svft_k                     ! Unweighted shortwave sky view factor of the ground (ground -> sky)
     
     ! Unweighted sky view factors (for initialization)
     real(r8)            :: svfw_f(nzcanm)             ! Unweighted longwave sky view factor for wall
@@ -841,9 +818,7 @@ contains
     real(r8)            :: svfw_k(nzcanm)             ! Unweighted shortwave sky view factor for wall
     real(r8)            :: svfv_k(nzcanm)             ! Unweighted shortwave sky view factor for vegetation
     real(r8)            :: svfr_k(nzcanm)             ! Unweighted shortwave sky view factor for roof
-    real(r8)            :: rnum                       ! A temporary random number to generate various tree geometry for test purpose
     !-----------------------------------------------------------------------
-
     ! Single-layer urban canyon setup for the view factor calculation
     maxbhind=2
     maxind=2
@@ -855,47 +830,49 @@ contains
     dray=0._r8 
     h1=0.0_r8
     h2=0.0_r8
-    
-    ss_in(2)=1._r8
+    ! ss(k) = pb(k) - pb(k+1)
+    ! ss_in(1) = 0 -- no roofs at ground level
+    ss_in(2)=1._r8 ! 100% of roofs at z = dzcan
     pb_in(1)=1._r8
     pb_in(2)=1._r8
-    nrays=50000
+
+   
     
     ! Could change these values if view factors from sky are not accurate, especially nsky
     nsky=1
     hsky=1.5_r8
 
    dzcan=lun%ht_roof(l)
-   wcan=lun%ht_roof(l)/lun%canyon_hwr(l)        
+   wcan=lun%ht_roof(l)/lun%canyon_hwr(l)  
+   ! confirmed this expression      
    wbui = lun%ht_roof(l)/(lun%canyon_hwr(l)*(1._r8-lun%wtlunit_roof(l))/lun%wtlunit_roof(l))
-   call RANDOM_NUMBER(rnum)
 
    if (this%tree_elaisai_per_uroad(l) > 1e-6_r8) then
       !Eq. 15 in Krayenhoff et al. 2020
       !Use LAI per road area between buildings, which is what used in the Krayenhoff et al. 2020 paper.
+      ! confirmed this equation, and it is consistent with the derivation in the Krayenhoff et al. 2020 paper
+      ! omega of all layers are the same
       omega=-1.0_r8 / (0.5_r8 * this%tree_elaisai_per_uroad(l) ) * log(1.0_r8 - lun%wtroad_tree(l) * &
             (1.0_r8 - exp(-0.5_r8 * this%tree_elaisai_per_uroad(l)/lun%wtroad_tree(l))))
    else
       omega = 0._r8
-   endif            
+   endif     
 
-   dray=0.05_r8*min(min(dzcan,wcan),wbui)/dzcan
+   ! nrays=50000
+   ! dray=0.05_r8*min(min(dzcan,wcan),wbui)/dzcan
+   nrays=NAN
+   dray=NAN*min(min(dzcan,wcan),wbui)/dzcan
 
-   ! TODO: when tree lai and tree height are both 0, the lad should be 0, and A_v1 and A_v2 should be 0?
    if (this%tree_elaisai_per_uroad(l) > 1e-6_r8) then
       if ((lun%tree_bht_urb(l)+lun%tree_tht_urb(l))<= lun%ht_roof(l)) then
-         ! LAD is in respect to the realistic tree span, not the roof height
-         ! corrected
-         ! confirm: corrected the lun%A_v1(l) formula
          lad(1)=max(this%tree_elaisai_per_uroad(l)/lun%tree_tht_urb(l), 1e-6_r8)
-         ! corrected: when there is no tree above roof, lad (2) is 0
          lad(2) = 0._r8
-         ! TODO confirm formula of A_v1 and its unit [m]?
-         ! Note: this is two-sided leaf area!
+         ! A_v1 unit check: wcan [m] * lad [m2 m-3] * omega [-] * crown depth [m] * 2 = [m], i.e. two-sided,
+         ! clumping-weighted leaf area per unit canyon LENGTH. Consistent with A_vs/A_vl inside
+         ! montecarlo_view_factors, which are the same quantity divided by dzcan.
          lun%A_v1(l)=max(wcan*lad(1)*omega(1)*lun%tree_tht_urb(l)*2._r8, 1e-6_r8)
          lun%A_v2(l)=0._r8 
       else if ((lun%tree_bht_urb(l)+lun%tree_tht_urb(l)) > lun%ht_roof(l)) then
-         ! confirm: corrected the lun%A_v1(l) formula
          ! the lad in the first and second layer should be the same and should be in respect to the realistic tree span
          lad(1)=max(this%tree_elaisai_per_uroad(l)/lun%tree_tht_urb(l), 1e-6_r8)
          lad(2) =max(this%tree_elaisai_per_uroad(l)/lun%tree_tht_urb(l), 1e-6_r8)
@@ -1067,20 +1044,18 @@ contains
    else
       ! The same assumption as in UT&C
       r_tree=0.25_r8*lun%wtroad_tree(l)*lun%ht_roof(l)/lun%canyon_hwr(l)
-      ! corrected tree height 
       ht_tree=lun%tree_bht_urb(l)+lun%tree_tht_urb(l)
       k_opt=0.5_r8
-      ! Doublecheck: here I think we should use tree_elaisai_per_uroad(l)
-      p_2d=exp(-k_opt*this%tree_elaisai_per_uroad(l))
+      ! doublechek: it is wrong to use tree_elaisai_per_uroad (LAI per road area); for tree porosity, it should be tree_lai_per_vega (LAI per vegetation area)
+      p_2d=exp(-k_opt*this%tree_lai_per_vega(l))
       p_3d=p_2d**0.4_r8
-      A_pv=4.0_r8*r_tree
+      A_pv=4.0_r8*r_tree ! essentially it is lun%wtroad_tree(l)*lun%ht_roof(l)/lun%canyon_hwr(l)
       A_pb=lun%ht_roof(l)/lun%canyon_hwr(l)*lun%wtlunit_roof(l)/(1-lun%wtlunit_roof(l))
       A_tot=A_pb+lun%ht_roof(l)/lun%canyon_hwr(l)
-      bv_drag_ratio = (-1.251_r8*p_3d**2_r8+0.489_r8*p_3d+0.803_r8)/C_d
-      ! corrected the building height variable
+      bv_drag_ratio = (-1.251_r8*p_3d**2.0_r8+0.489_r8*p_3d+0.803_r8)/C_d
       lun%ht_can_eff(l) = (lun%ht_roof(l)*A_pb+ht_tree*(1.0_r8-p_3d)*A_pv)/(A_pb+(1.0_r8-p_3d)*A_pv)
 
-   ! The unsheltered and actual frontal area may be swaped in Meili's SI
+      ! The unsheltered and actual frontal area may be swaped in Meili's SI
       ! I *think* unsheltered fromtal area is the part above z-zd, and actual frontal area is ht_roof
       ! there is no need to calculate the unsheltered frontal area but I'll keep them for now
       ! It's best to confirm with Kent and Meili about the definition of unsheltered and actual frontal area.
@@ -1089,20 +1064,10 @@ contains
 
       ! I think the frontal area of tree can also be adjusted
       frontal_b = lun%ht_can_eff(l)
-      frontal_v = 2_r8 * r_tree
+      frontal_v = 2_r8 * r_tree ! may use crown depth tree_tht?
 
       frontal_b_unsh = frontal_b * (lun%ht_can_eff(l) - lun%z_d_town(l))/lun%ht_can_eff(l)
       frontal_v_unsh = frontal_b * (lun%ht_can_eff(l) - lun%z_d_town(l))/lun%ht_can_eff(l)
-   
-      !write (6,'(A,I5)') '-------------------(l):before frontal_b------------------- ', l
-      !write (6,'(A,I5)') '-------------------time step----------------- ', get_nstep()
-      !write (6,'(A,1X,*(F12.5,1X))') 'A_pb, bv_drag_ratio ', A_pb, bv_drag_ratio
-      !write (6,'(A,1X,*(F12.5,1X))') 'ht_tree, A_pv ', ht_tree, A_pv
-      !write (6,'(A,1X,*(F12.5,1X))') 'lun%wtlunit_roof(l), A_pb ', lun%wtlunit_roof(l), A_pb
-      !write (6,'(A,1X,*(F12.5,1X))') 'frontal_b_unsh, frontal_v_unsh ', frontal_b_unsh, frontal_v_unsh
-      !write (6,'(A,1X,*(F12.5,1X))') 'lun%ht_can_eff(l), lun%z_d_town(l) ', lun%ht_can_eff(l), lun%z_d_town(l)
-
-            
    end if
 
    ! Calculate the roughness length
@@ -1147,7 +1112,7 @@ contains
     !
     ! !LOCAL VARIABLES:
     integer  :: f                     ! filter index
-    integer  :: p, c               ! patch, column, gridcell indices
+    integer  :: p, c               ! patch, column indices
     integer  :: l                     ! landunit index
     integer  :: months(2)             ! the two months to interpolate between (1-12)
     real(r8) :: timwt(2)              ! interpolation weights (sum to 1)
@@ -1160,8 +1125,8 @@ contains
          wtroad_tree          => lun%wtroad_tree         , & ! Input:  [real(r8) (:)  ] weight of road tree column to total road
          tree_lai_per_vega    => urbanparams_inst%tree_lai_per_vega  , & ! Output: [real(r8) (:)  ] interpolated LAI per vegetation area
          tree_elaisai_per_uroad   => urbanparams_inst%tree_elaisai_per_uroad   ,& ! Output: [real(r8) (:)  ] interpolated LAI per road area
-         h1            => lun%tree_bht_urb                      , & ! Input:  [real(r8) (:)   ]  the height of of tree crown base
-         h2            => lun%tree_tht_urb                       , & ! Input:  [real(r8) (:)   ]  the depth of of tree crown    
+         h1            => lun%tree_bht_urb                      , & ! Input:  [real(r8) (:)   ]  the height of tree crown base
+         h2            => lun%tree_tht_urb                       , & ! Input:  [real(r8) (:)   ]  the depth of tree crown    
          frac_sno           => waterdiagnosticbulk_inst%frac_sno_col   , & ! Input:  [real(r8) (:) ] fraction of ground covered by snow (0 to 1)
          snow_depth         => waterdiagnosticbulk_inst%snow_depth_col , & ! Input:  [real(r8) (:) ] snow height (m)
          tlai               => canopystate_inst%tlai_patch    ,          & ! Output: [real(r8) (:) ] one-sided leaf area index, no burying by snow
@@ -1177,12 +1142,17 @@ contains
       ! These depend only on the date, so compute them once for all landunits.
       call GetMonthlyInterpWeights(next_time_step=.true., months=months, timwt=timwt)
 
+
+
+      ! another thing worthing doing: call UrbanPhenology once during initialization like ATES-SP already calls SatellitePhenology at init
+      ! Restart: elai/esai come back from the restart file with SAI and snow burial included. Init recomputes tree_elaisai_per_uroad as LAI only, so the two disagree until the first radiation step.
+      ! it is okay to solve this later
       do f = 1, num_urbantreep
          p = filter_urbantreep(f)
          c = patch%column(p)
          l = patch%landunit(p)
 
-         ! urbanparams has a guardian statement to makesure the tree_lai_urb_monthly=0 when wtroad_tree(l)/h1(l) is too small
+         ! urbanparams has a guardian statement to make sure the tree_lai_urb_monthly=0 when wtroad_tree(l)/h1(l) is too small
          tree_lai_per_vega(l)  = timwt(1)*tree_lai_urb_monthly(l,months(1)) &
                                  + timwt(2)*tree_lai_urb_monthly(l,months(2))
 
@@ -1223,11 +1193,12 @@ contains
          endif
 
          ! area weight by snow covered fraction
-         ! Not we do this no matter what use_fates_sp is
-         ! if(.not.use_fates_sp)then
+         ! we do this no matter what use_fates_sp is
 
+         ! if(.not.use_fates_sp)then
          ! Do not set these in FATES_SP mode as they turn on the 'vegsol' filter and also
          ! are duplicated by the FATE variables (in the FATES IFP indexing space)
+         
          elai(p) = max(tlai(p)*(1.0_r8 - frac_sno(c)) + tlai(p)*fb*frac_sno(c), 0.0_r8)
          esai(p) = max(tsai(p)*(1.0_r8 - frac_sno(c)) + tsai(p)*fb*frac_sno(c), 0.0_r8)
 
@@ -1292,7 +1263,7 @@ contains
     ! Fractional position through the current month, measured at mid-day
     t = (kda-0.5_r8) / ndaypm(kmo)
     ! if t < 0.5, it(1)=0 (first half of month); otherwise it(1)=1
-    it(1) = t + 0.5_r8
+    it(1) = int(t + 0.5_r8)
     it(2) = it(1) + 1
     ! months(1) and months(2) are the two months to interpolate between
     months(1) = kmo + it(1) - 1
@@ -1900,9 +1871,6 @@ contains
 
   end subroutine CheckUrban
 
-!-------------------[kz.12]Ray tracing test------------------------- 
-
-  !----------------------------------------------------------------------- 
   subroutine montecarlo_view_factors(nzcanm,dzcan,wcan,wbui,&
       wtroad_tree,lad,lads,ladl,lai,omega,ss,pb,dray,maxind,maxbhind,n,nsky,hsky,h1,h2,&
       fww1d,fvv1d,fwv1d,fvw1d,fwr1d,frw1d,fvr1d,frv1d,fwg1d,fgw1d,fgv1d,fsw1d,fvg1d,fsg1d,fsr1d,&
@@ -1920,28 +1888,29 @@ contains
     ! ARGUMENTS:
     implicit none
     integer         , intent(in) :: nzcanm           ! Maximum number of vertical levels at urban resolution
-    real(r8)        , intent(in) :: dzcan            ! Vertical layer thickness [m]; building height in the single-layer setup
+    real(r8)        , intent(in) :: dzcan            ! Vertical layer thickness [m]; = building height in this single-layer setup.
     real(r8)        , intent(in) :: wcan             ! Width of the canyons [m]
     real(r8)        , intent(in) :: wbui             ! Width of the buildings [m]
-    real(r8)        , intent(in) :: wtroad_tree       ! Fraction of canyon-floor/road area occupied or covered by tree canopy [-]
-    real(r8)        , intent(in) :: lad(nzcanm)      ! In-crown LAD where foliage exists
-    real(r8)        , intent(in) :: lads(nzcanm)     ! In-crown LAD where foliage exists shortwave calcs
-    real(r8)        , intent(in) :: lai     ! LAI
-    real(r8)        , intent(in) :: ladl(nzcanm)     ! In-crown LAD where foliage exists longwave calcs
-    real(r8)        , intent(in) :: omega(nzcanm)    ! Leaf clumping index     
-    ! TODO: check if it's better to declare with nzcanm+1 
-    real(r8)        , intent(in) :: ss(nzcanm)       ! Roof fraction at each level
-    real(r8)        , intent(in) :: pb(nzcanm)       ! Probability to have a building with an height equal or higher than each level
-    real(r8)        , intent(in) :: dray             ! Ray step [m]
-    integer         , intent(in) :: maxind           ! Maximum vertical layer index
-    ! TODO: maxbhind is Highest building/roof level index
-    integer         , intent(in) :: maxbhind         ! Maximum vertical layer for highest building or tree
-    integer         , intent(in) :: n                ! Number of Monte Carlo rays 
-    integer         , intent(in) :: nsky             ! Number of rays from sky
-    real(r8)        , intent(in) :: hsky             ! A height scaling factor for sky ray calculations    
+    real(r8)        , intent(in) :: wtroad_tree      ! Tree canopy cover as a fraction of the canyon-floor/road area [-]
+    real(r8)        , intent(in) :: lad(nzcanm)      ! Canyon-space-average leaf area density of each layer [m2 m-3], i.e. LAI per road
+                                                     ! area divided by crown depth. NOT the in-crown value - that is lad_tree below.
+    real(r8)        , intent(in) :: lads(nzcanm)     ! As lad, but for shortwave calcs [m2 m-3]. Caller currently sets lads = lad.
+    real(r8)        , intent(in) :: lai              ! Exposed tree leaf+stem area index per unit road area [m2 m-2]
+                                                     ! (tree_elaisai_per_uroad). Only used as an on/off switch for lad_tree.
+    real(r8)        , intent(in) :: ladl(nzcanm)     ! As lad, but for longwave calcs [m2 m-3]. Caller currently sets ladl = lad.
+    real(r8)        , intent(in) :: omega(nzcanm)    ! Tree-crown-scale leaf clumping index [-] (Eq. 15 in Krayenhoff et al. 2020)
+    real(r8)        , intent(in) :: ss(nzcanm+1)       ! Roof fraction of each level [-]. 
+    real(r8)        , intent(in) :: pb(nzcanm+1)       ! Probability to have a building with a height equal to or higher than each level [-].
+    real(r8)        , intent(in) :: dray             ! Ray step, normalized by dzcan [-] (NOT metres).
+    integer         , intent(in) :: maxind           ! Index of the highest level containing roofs or tree foliage, whichever is higher
+    integer         , intent(in) :: maxbhind         ! Index of the highest level containing buildings (highest roof level).
+    integer         , intent(in) :: n                ! Number of points generated on the unit sphere. n-2 ray directions are produced;
+    integer         , intent(in) :: nsky             ! Number of sky-ray start positions per level (a multiplier, not a ray count);
+                                                     ! total rays released from the sky per level = nsky*nk.
+    real(r8)        , intent(in) :: hsky             ! Start height of sky rays, as a multiple of the domain-top height (maxind layers). Must be > 1.
     integer         , intent(in) :: l                ! Urban landunit index
-    real(r8)        , intent(in) :: h1               ! Crown bottom height above ground [m]
-    real(r8)        , intent(in) :: h2               ! Crown depth/thickness [m], not crown-top height
+    real(r8)        , intent(in) :: h1               ! Crown bottom height above ground [m]; 
+    real(r8)        , intent(in) :: h2               ! Crown depth/thickness [m], not crown-top height; 
         
     ! Area-weighted longwave view factors
     real(r8), intent(out) :: fww1d(nzcanm,nzcanm)        ! Longwave view factor from wall to wall 
@@ -2034,70 +2003,74 @@ contains
     
     ! LOCAL VARIABLES:    
     real(r8), parameter :: pi = 3.1415926535897932384626433832795_r8
-    ! TODO: lad_tree may need to be changed!!!!
-    real(r8)            :: lad_tree(nzcanm)              ! Tree crown space-average leaf area density
+    real(r8)            :: lad_tree(nzcanm)              ! In-crown (crown-volume average) leaf area density [m2 m-3] = lad/wtroad_tree.
     integer             :: k, izcan, jzcan, kzcan        ! Indices
-    real(r8)            :: A_s                           ! Area of urban unit (canyon + building) (normalized)
-    real(r8)            :: A_g                           ! Area of the ground (normalized)
-    real(r8)            :: A_w(nzcanm)                   ! Area of the wall (normalized)
-    real(r8)            :: A_w_max(nzcanm)               ! Area of the wall (ensure it is positive)
-    real(r8)            :: A_v(nzcanm)                   ! Normalized active two-sided foliage area for each layer
-    real(r8)            :: A_v_max(nzcanm)               ! Area of the vegetation (ensure it is positive)
-    real(r8)            :: A_r(nzcanm)                   ! Area of the roof
-    real(r8)            :: A_r_max(nzcanm)               ! Area of the roof (ensure it is positive)
-    real(r8)            :: A_vs(nzcanm)                  ! Normalized active two-sided foliage area for shortwave calcs
-    real(r8)            :: A_vs_max(nzcanm)              ! Normalized active two-sided foliage area for shortwave calcs (ensure it is positive)
-    real(r8)            :: A_vl(nzcanm)                  ! Normalized active two-sided foliage area for longwave calcs
-    real(r8)            :: A_vl_max(nzcanm)              ! Normalized active two-sided foliage area for longwave calcs (ensure it is positive)
-    real(r8)            :: wtot                          ! Total domain width
-    real(r8)            :: xdom                          ! Domain width normalized by building height
+    real(r8)            :: A_s                           ! Plan area of the urban unit (canyon + building), normalized by dzcan;
+                                                         ! this is also the area of the sky 'surface' (= xdom)
+    real(r8)            :: A_g                           ! Plan area of the canyon floor / road, normalized by dzcan
+    real(r8)            :: A_w(nzcanm)                   ! Area of the wall at each level, normalized by dzcan (= pb(izcan+1))
+    real(r8)            :: A_w_max(nzcanm)               ! A_w floored at 1e-6 so it can safely be used as a divisor
+    real(r8)            :: A_r(nzcanm)                   ! Area of the roof at each level, normalized by dzcan
+    real(r8)            :: A_r_max(nzcanm)               ! A_r floored at 1e-6 so it can safely be used as a divisor
+    real(r8)            :: A_vs(nzcanm)                  ! Active two-sided foliage area per layer for shortwave calcs, normalized by
+                                                         ! dzcan and already multiplied by the clumping factor omega
+    real(r8)            :: A_vs_max(nzcanm)              ! A_vs floored at 1e-6 so it can safely be used as a divisor
+    real(r8)            :: A_vl(nzcanm)                  ! Active two-sided foliage area per layer for longwave calcs, normalized by
+                                                         ! dzcan and already multiplied by the clumping factor omega
+    real(r8)            :: A_vl_max(nzcanm)              ! A_vl floored at 1e-6 so it can safely be used as a divisor
+    real(r8)            :: wtot                          ! Total domain width (canyon + building) [m]
+    real(r8)            :: xdom                          ! Total domain width normalized by dzcan (= wtot/dzcan)
     real(r8)            :: bldfrac                       ! Fraction of building width in total domain width
-    real(r8)            :: kbs_vf                        ! Extinction coefficient for vegetation foliage
-    real(r8)            :: rayy                          ! Ray y-coordinate
-    real(r8)            :: rayx                          ! Ray x-coordinate 
-    real(r8)            :: xfr                           ! Horizontal ray position within the current canyon-building iteration, normalized by combined canyon-building width
+    real(r8)            :: kbs_vf                        ! Foliage extinction coefficient used in the ray tracing [-]; 0.5 for a
+                                                         ! spherical leaf-angle distribution with rays normal to the target surface
+    real(r8)            :: rayy                          ! Ray vertical position, in units of dzcan (so layer izcan spans izcan-1 to izcan)
+    real(r8)            :: rayx                          ! Ray horizontal position, in units of dzcan
+    real(r8)            :: xfr                           ! rayx folded back into one canyon+building period, still in units of dzcan
     integer             :: kk,nk,ii                      ! Indices
     real(r8)            :: phi, phi1                     ! Azimuthal angle
-    real(r8)            :: h                             ! z-coordinate/cos(theta) used in spherical ray-direction sampling
+    real(r8)            :: h                             ! Evenly spaced z-component of a point on the unit sphere (= cos(theta))
     real(r8)            :: theta                         ! Zenith angle calculated as acos(h)
     real(r8)            :: rnum                          ! A random number    
-    real(r8)            :: x, y, z2                      ! Cartesian coordinates of a point
-    real(r8)            :: xxe(n), zze(n)                ! Flattened 2D coordinates (remove y-dimension)
-    real(r8)            :: xxe2(n), zze2(n)              ! Flattened 2D coordinates (remove y-dimension) for preferential reflection
-    real(r8)            :: xr, z2r                       ! Cartesian coordinates
-    real(r8)            :: xxhr(n), zzhr(n)              ! Flattened 2D coordinates in hemispherical distribution    
+    real(r8)            :: x, y, z2                      ! Cartesian components of a point on the unit sphere (a ray direction).
+    real(r8)            :: xxe(n), zze(n)                ! x- and z-components of the ray direction unit vectors, flattened onto the
+                                                         ! x-z plane (y removed) and renormalized to unit length
+    real(r8)            :: xxe2(n), zze2(n)              ! As xxe/zze, but for the ray set with preferential reflection over transmission
+    real(r8)            :: xr, z2r                       ! x- and z-components of a hemispherically (Lambert cosine) distributed ray direction
+    real(r8)            :: xxhr(n), zzhr(n)              ! x- and z-components of the hemispherically distributed ray direction unit
+                                                         ! vectors; these are the rays released from surfaces (ground, roof, wall, sky)
     real(r8)            :: circ32e(n)                    ! Ratio of 3D ray travel distance to its 2D projection
     real(r8)            :: circ32e2(n)                   ! Ratio of 3D ray travel distance to its 2D projection for preferential reflection
     real(r8)            :: hemi32r(n)                    ! Ratio of 3D ray travel distance to its 2D projection   
     real(r8)            :: rzen                          ! A zenith angle generated using Lambert's cosine law
-    real(r8)            :: raz                           ! A random azimuthal angle between 0 and 2π
-    real(r8)            :: minray                        ! Minimum ray strength
+    real(r8)            :: raz                           ! A random azimuthal angle between 0 and 2*pi
+    real(r8)            :: minray                        ! Ray strength below which the ray is no longer tracked
     
     real(r8)            :: vft_tot                      ! Total view factor from ground
     real(r8)            :: vfs_tot                      ! Total view factor from sky
     real(r8)            :: vfr_tot(nzcanm)              ! Total view factors from roof     
     real(r8)            :: vfw_tot(nzcanm)              ! Total view factors from wall
     real(r8)            :: vfv_tot(nzcanm)              ! Total view factors from vegetation 
-    integer             :: nsrays                       ! Adjusted number of rays starting from the sky
+    integer             :: nsrays                       ! Number of sky-ray start bins across the domain (= maxind*nsky); used only to
+                                                        ! spread the sky-ray start positions rayx evenly over the domain
     
-    real(r8)            :: svfw(nzcanm)                 ! Summed view factors from walls to sky
-    real(r8)            :: svfr(nzcanm)                 ! Summed view factors from roofs to sky
-    real(r8)            :: svft                         ! Summed view factors from ground to sky
-    real(r8)            :: svfv(nzcanm)                 ! Summed view factors from vegetation to sky
+    real(r8)            :: svfw(nzcanm)                 ! Sky view factor of each wall level (ray-summed, then divided by the ray count)
+    real(r8)            :: svfr(nzcanm)                 ! Sky view factor of each roof level (ray-summed, then divided by the ray count)
+    real(r8)            :: svft                         ! Sky view factor of the ground (ray-summed, then divided by the ray count).
+    real(r8)            :: svfv(nzcanm)                 ! Sky view factor of each foliage level (ray-summed, then divided by the ray count)
     
-    real(r8)            :: vfr(nzcanm)                  ! Contribution to view factors to roof surfaces
-    real(r8)            :: vfw(nzcanm)                  ! Contribution to view factors to wall surfaces
-    real(r8)            :: vfv(nzcanm)                  ! Contribution to view factors to vegetation  
-    real(r8)            :: vft                          ! Contribution to view factors to ground 
+    real(r8)            :: vfr(nzcanm)                  ! Single-ray contribution to the view factor to each roof level, from ray_up/ray_dn
+    real(r8)            :: vfw(nzcanm)                  ! Single-ray contribution to the view factor to each wall level, from ray_up/ray_dn
+    real(r8)            :: vfv(nzcanm)                  ! Single-ray contribution to the view factor to each foliage level, from ray_up/ray_dn
+    real(r8)            :: vft                          ! Single-ray contribution to the view factor to the ground, from ray_dn
     
-    real(r8)            :: xxt                          ! x coordinate in sky calculation
+    real(r8)            :: xxt                          ! x-component of the ray direction for rays released from the sky
     real(r8)            :: circ32es                     ! Ratio of 3D ray travel distance to its 2D projection in vegetation vf calculation
     real(r8)            :: zzes                         ! z-direction component in vegetation vf calculation
-    real(r8)            :: xxrt                         ! x coordinate in roof/road/vegetation calculation
+    real(r8)            :: xxrt                         ! x-component of the ray direction for rays released from roof/road/foliage
     
     real(r8)            :: raystr                       ! Ray strength
-    real(r8)            :: bld                          ! Building presence indicators
-    real(r8)            :: bld_old                      ! Building presence indicators from the previous step
+    real(r8)            :: bld                          ! 1 if the ray is currently over a building column, 0 if over the canyon
+    real(r8)            :: bld_old                      ! Value of bld at the previous ray step (used to detect wall/roof crossings)
     real(r8)            :: pb_old                       ! Pb from the previous step
     
     real(r8)            :: vfww(nzcanm, nzcanm)         ! View factor from wall to wall
@@ -2111,30 +2084,24 @@ contains
     real(r8)            :: vfsr(nzcanm)                 ! View factors from sky to roof
     real(r8)            :: vfsw(nzcanm)                 ! View factors from sky to wall
     real(r8)            :: vfsv(nzcanm)                 ! View factors from sky to vegetation
+
     real(r8)            :: vfswtmp(nzcanm, nzcanm)      ! Temporary view factors from sky to wall
     real(r8)            :: vfsrtmp(nzcanm, nzcanm)      ! Temporary view factors from sky to roof
     real(r8)            :: vfsvtmp(nzcanm, nzcanm)      ! Temporary view factors from sky to vegetation
-    real(r8)            :: vfsttmp(nzcanm)              ! Temporary view factors from sky to ground
+    real(r8)            :: vfsttmp(nzcanm)              ! Per-start-bin contribution to vfst from sky rays
     real(r8)            :: vfwt(nzcanm)                 ! View factor from wall to ground
     real(r8)            :: vftw(nzcanm)                 ! View factor from ground to wall
     real(r8)            :: vftv(nzcanm)                 ! View factor from ground to vegetation
     real(r8)            :: vfvt(nzcanm)                 ! View factor from vegetation to ground
-    real(r8)            :: vfst                         ! View factors from sky to ground
+    real(r8)            :: vfst                         ! View factor from sky to ground, accumulated over the sky-ray start bins
 
-    logical             :: horiz                        ! Whether the surface is horizontal 
-    ! TODO: change it to ! Ray strength intercepted by wall and roof during current step
-    real(r8)            :: wfact, rfact                 ! Ray strength attenuated by wall and roof
-    real(r8)            :: raystrtmp                    ! Temporary ray strength
-    real(r8)            :: pbinc                        ! Probability increment
-    integer             :: rayyint                      ! Current vertical layer 
-    integer             :: j, i                         ! Indices
-    integer             :: rayyint2                     ! Vertical layer 
-    logical             :: roof, strike                 ! Logical states for ray tracing
-    logical             :: solar                        ! Logical flags indicating if this is shortwave radiation calcs    
+    logical             :: horiz                        ! .true. if the emitting surface is horizontal (ground, roof, sky);
+                                                        ! .false. for a vertical wall
+    logical             :: solar                        ! .true. while computing the shortwave (solar) pass, .false. for longwave
     integer             :: start_time, end_time, clock_rate    ! Timekeeping variables
     real(r8)            :: elapsed_time                        ! Elapsed time 
-    logical             :: foliage                      ! Whether the surface is vegetation or not     
-    logical  :: debug_write = .false.                  ! true => write out many intermediate variables for debugging            
+    logical             :: foliage                      ! .true. if the ray originates from a foliage (tree crown) layer
+    logical  :: debug_write                  ! true => write out many intermediate variables for debugging
     !----------------------------------------------------------------
     ! Get the clock rate (ticks per second)
     call system_clock(count_rate=clock_rate)
@@ -2171,53 +2138,49 @@ contains
       vfst_k=0._r8; svft_k=0._r8
       svfw_k=0._r8; svfv_k=0._r8; svfr_k=0._r8
     !----------------------------------------------------------------
-    ! Shortwave attenuation by vegetation
-    ! Extinction coefficient
-    ! discuss: the kbs can be calculated as 1/(2cos(theta))
-    ! kbs of 0.5 assumes leaf angles are random and evenly distribued in the street canyon
-    ! how would kbs influenced final view factor results?
+    ! Foliage extinction coefficient for the ray tracing. Krayenhoff et al. (2014) Sect. 3.3.2 
+    ! K_bs = 0.5 is the spherical (random, uniformly distributed) leaf-angle distribution value, and is what
     kbs_vf=1.0_r8/2.0_r8
     
+    ! no-tree guard 
     if (lai > 1e-6_r8) then
       lad_tree=lad/wtroad_tree
     else
       lad_tree=0.0_r8
     endif
     
+    ! Fixed seed. A deterministic seed is required here so that the
+    ! view factors are reproducible run-to-run and bit-for-bit identical on restart.
     call init_random_seed(1234)
     call RANDOM_NUMBER(rnum)
     
     !----------------------------------------------------------------------------
-    ! Generate evenly-spaced points on a sphere of radius 1.
-    ! Get xxe, zze, circ32e
+    ! Generate evenly-spaced points on a sphere of radius 1 
+    ! Get xxe, zze, circ32e -> the FULL-SPHERE direction set used by rays leaving a foliage layer
+    ! (Krayenhoff et al. 2014 Sect. 3.3.1: 'Rays leaving a layer of tree foliage are assumed isotropic and
+    !  therefore choose from a full sphere (4 pi solid angle)').
     !----------------------------------------------------------------------------
-    ! (This code is originally written by Joseph O'Rourke and Min Xu, June 1997,
-    !  and was converted to Fortran from C++.)
+    ! (This code is originally written by Joseph O'Rourke and Min Xu, June 1997, and was converted to Fortran from C++.)
 
-    ! initialize kk and phil1
+    ! kk counts the hemispherical (surface) directions accumulated below; phi1 carries the running spiral azimuth
     kk=1
     phi1=0.0_r8
-    ! n is the number of rays (nrays), or the number of points on the edge of the sphere
-    ! total ray number n-2
+    ! The loop deliberately runs k=2..n-1, skipping the two poles (h=-1 and h=+1) where the spiral azimuth
+    ! increment below would divide by sqrt(1-h*h)=0. That is why exactly n-2 foliage directions are produced.
   	do k=2,n-1    
        h=-1.0_r8+2.0_r8*real(k-1,r8)/real(n-1,r8)
        theta=acos(h)
 
-       if (theta < 0._r8 .or. theta > pi) then
-          write(6,*)'Error'
-          stop
-       endif
-
+       ! Spiral azimuth step (Rakhmanov-Saff-Zhou)
        phi=phi1+3.6_r8/(sqrt(real(n,r8)*(1._r8-h*h))) 
-       ! Somehow using amod function will return very unreasonable results
-       ! Here, use floor() instead
-       !phi=amod(phi,2._r8*pi) 
+
+       ! Wrap into [0,2*pi). Same as modulo(phi,2._r8*pi); 
        phi = phi - (2._r8*pi) * floor(phi / (2._r8*pi))
        phi1=phi
        
        !Convert spherical coordinates (theta, phi) to Cartesian coordinates (x, y, z2)
        x=cos(phi)*sin(theta)
-       y=sin(phi)*sin(theta)
+      !  y=sin(phi)*sin(theta)
        z2=h
        
        !----------------------------------------------------------------------------
@@ -2229,22 +2192,18 @@ contains
 
        !! ADDING IN preferential reflection over transmission (ratio 3:2) for
        ! solar radiation (due to preference of NIR to reflect rather than
-       ! transmit through leaves, and direct solar to arrive from above):
+       ! transmit through leaves, and direct solar to arrive from above).
        call RANDOM_NUMBER(rnum)
        
        !----------------------------------------------------------------------------
        ! Generate evenly-spaced points on a sphere of radius 1 with preferential refelection
        ! Get xxe2, zze2, circ32e2
        !----------------------------------------------------------------------------
-       ! confirm: why a threshold of 0.8 is used to get 3:2 preferential reflection over transmission?
-       ! I thought it leads to a 1:4 reflection-to-transmission ratio?
        if (z2 < 0._r8 .and. rnum > 0.8_r8) then
           z2=abs(z2)
        endif
        
        ! Flattened into 2-D (remove y-dimension) and increase all 2-D vector lengths to lie on the unit circle
-       ! For preferential reflection
-  
        xxe2(k-1)=x/sqrt(x*x+z2*z2)
        zze2(k-1)=z2/sqrt(x*x+z2*z2)
        
@@ -2252,18 +2211,13 @@ contains
        circ32e2(k-1)=1._r8/sqrt(x*x+z2*z2)
        
        !----------------------------------------------------------------------------
-       ! Generate random points over a sphere
-       ! Get xx, zz, circ32
-       ! I deleted this part because the xx, zz, circ32 are not used
-       !----------------------------------------------------------------------------
-       
-       !----------------------------------------------------------------------------
        ! Generate random points with hemispherical distribution
        ! Get xxhr, zzhr, hemi32r
        !----------------------------------------------------------------------------
-       ! hemispherical distribution (for sfcs)
-       ! z2 has been flipped to be positive in the preferential reflection part; will this influence hemispherical distribution?
-       if (z2 > 0._r8) then
+       ! hemispherical distribution (for rays leaving solid surfaces: ground, roof, wall, sky)
+       ! Gate on h, not z2: z2 may have been flipped just above, which would give nk ~ 0.6*(n-2) instead of
+       ! (n-2)/2 and break the 2:1 foliage:surface ray ratio required by Krayenhoff et al. (2014) Sect. 3.3.1.
+       if (h > 0._r8) then
           ! random hemispherical angles with cosine probability density (Lambert's cosine law)
           call RANDOM_NUMBER(rnum)
           rzen=asin(sqrt(rnum))      ! Actual Lambert cosine law (Siegel and Howell 2002)...
@@ -2278,29 +2232,23 @@ contains
           xxhr(kk)=xr/sqrt(xr*xr+z2r*z2r) 
           zzhr(kk)=z2r/sqrt(xr*xr+z2r*z2r)
           hemi32r(kk)=1._r8/sqrt(xr*xr+z2r*z2r)
-          
-          ! confirm: should I add this statement to avoid to long ray travel?
-          ! redo if too close to horizontal (it will take too long for the ray to attenuate)
-          !if (abs(zzhr(kk)/xxhr(kk)).lt.0.001_r8) goto 189
-          
+                   
           kk=kk+1
        endif
     enddo
-    ! nk is half of n-2
+    ! Number of hemispherical (surface) ray directions: exactly (n-2)/2, since the gate above tests h
     nk=kk-1
     
     !-----------------------------------------------------------------------
     ! ray strength at which we stop tracking the ray:
     minray=max(0.000001_r8,0.0001_r8*pb(maxbhind))
-
-    !write(6,*)'before view factor calcs'
     
     call system_clock(end_time)        
     ! Calculate elapsed time in seconds
     elapsed_time = real(end_time - start_time,r8) / real(clock_rate,r8)
     
-    ! write the elapsed time for each iteration  
-    !write(*, '(A, I0, A, F6.3)') 'Preparing stage elapsed time for l = ', l, ': ', elapsed_time, ' seconds'
+   !  write the elapsed time for each iteration  
+   !  write(*, '(A, I0, A, F6.3)') 'Preparing stage elapsed time for l = ', l, ': ', elapsed_time, ' seconds'
         
     !-----------------------------------------------------------------------
     !! VIEW FACTOR CALCULATIONS
@@ -2310,20 +2258,9 @@ contains
     ! Width of the two columns (canyon and building)
     wtot=wcan+wbui
     bldfrac=wbui/wtot
-    xdom=wtot/dzcan !
-    if (debug_write) then
-        write(6,*)'wcan,wbui,wtot,dzcan',wcan,wbui,wtot,dzcan
-        write(6,*)'lad1, lad2',lad(1),lad(2)
-    end if
-    
-    nsrays=(maxind)*nsky
-    if (debug_write) then
-        write(6,*)'dray,nsky,hsky',dray,nsky,hsky
-    end if    
-    
-    ! confirm: need to check if svft should be reset separately for longwave and shortwave passes
-    svft=0._r8 !double check
-        
+    xdom=wtot/dzcan 
+    nsrays=(maxind)*nsky 
+     
     solar=.false.
     goto 359
 
@@ -2335,9 +2272,9 @@ contains
 
 359   continue
 
-    if (.not.solar) then
+   !  if (.not.solar) then
        !write(6,*)'----------LONGWAVE VIEW FACTORS----------'
-    endif
+   !  endif
     
     ! total view factors (diagnostics to see if they add up to 1.0 for each surface)
     vft_tot=0._r8
@@ -2352,11 +2289,14 @@ contains
     ! MAIN IZCAN LOOP:
     do izcan=1,maxind
        vfst=0._r8
+       svft=0._r8
        svfw(izcan)=0._r8
        svfr(izcan)=0._r8
        svfv(izcan)=0._r8
+
+       ! consider run these reset loops to nzcanm instead of maxind.
        do jzcan=1,maxind
-         ! w=walls; r=roofs; v=vegetation (trees); t=streets; s=sky
+         ! w=walls; r=roofs; v=vegetation (trees); t=ground; s=sky
           vfww(izcan,jzcan)=0._r8
           vfwr(izcan,jzcan)=0._r8
           vfwv(izcan,jzcan)=0._r8
@@ -2379,27 +2319,17 @@ contains
        vftv(izcan)=0._r8
        vfvt(izcan)=0._r8
 
-       !write(6,*)'izcan=',izcan
        !-----------------------------------------------------
        !write(6,*)'SKY...'
-       ! rays starting from SKY
-       ! Use maxind additional rays for the sky relative to other surfaces.
-       !write(6,*)'nsrays=',nsrays,xdom,nk,nsky
+       ! rays starting from SKY.
        horiz=.true.
        do ii=1,nsky
           do kk=1,nk
-          ! here nk is half of nrays(n)-2
              raystr=1._r8
              call RANDOM_NUMBER(rnum)
-             ! Starting at a location at hsky times the highest tree/building, spread out evenly in the x-direction 
-             ! nsrays (=2?) is used here to make sure rayx is between 0 and 1
-             ! discuss: not sure why it is between 0 and 1
+             ! Rays leaving the 'sky' begin at a random horizontal location in equal bins
              rayx=(real((izcan-1)*nsky+ii,r8)-rnum)/real(nsrays,r8)*xdom
-             if (hsky < 1._r8) then
-                write(6,*)'hsky (ray start height for sky diffuse view &
-                         factors) must be greater than 1; hsky=',hsky
-                stop
-             endif
+
              ! Ray's starting vertical position
              rayy=max(real(maxind,r8)*hsky,real(maxind,r8)+2._r8*dray)
 
@@ -2419,7 +2349,6 @@ contains
              
              ! test where a ray is horizontally (i.e. building or canyon/tree space):
              ! xfr>bldfrac means canyon, xfr<bldfrac means building (i.e. bld=1)
-             ! xfr=amod(rayx,xdom); where use an alternative expression using floor()
              xfr = rayx - xdom* floor(rayx /xdom)
              bld=0._r8
              if (xfr/xdom >= 1._r8-bldfrac) bld=1._r8
@@ -2428,12 +2357,7 @@ contains
              call ray_dn(minray,rayx,rayy,bld,bld_old,raystr, &
                       xxt,-zzhr(kk),hemi32r(kk),xdom,dray,dzcan,bldfrac,pb, &
                       pb_old,ss,kbs_vf,lad,omega,horiz,h1,h2, vfw,vfr,vfv,vft)
-             if (kk<2) then
-                if (debug_write) then
-                    write(6,*)'sky vfw,vfr',vfw,vfr
-                    write(6,*)'sky vfv,vft',vfv,vft
-                end if
-             end if
+
              do kzcan=1,nzcanm
                 vfsw(kzcan)=vfsw(kzcan)+vfw(kzcan)
                 vfsr(kzcan)=vfsr(kzcan)+vfr(kzcan)
@@ -2450,6 +2374,7 @@ contains
           vfsrtmp(izcan,jzcan)=vfsr(jzcan)/real(nk,r8)/real(nsky,r8)
           vfsvtmp(izcan,jzcan)=vfsv(jzcan)/real(nk,r8)/real(nsky,r8)
        enddo
+
        vfsttmp(izcan)=vfst/real(nk,r8)/real(nsky,r8)
        !-----------------------------------------------------
        ! rays starting from WALLS
@@ -2464,7 +2389,7 @@ contains
              rayx=0._r8
              ! random:
              call RANDOM_NUMBER(rnum)
-             ! ray’s starting vertical position is random
+             ! ray's starting vertical position is random
              rayy=real(izcan,r8)-rnum
              
              ! use random hemispherical distribution
@@ -2474,13 +2399,7 @@ contains
              call ray_up(minray,maxind,rayx,rayy,bld,bld_old,raystr, &
                         xxhr(kk),zzhr(kk),hemi32r(kk),xdom,dray,dzcan,&
                         bldfrac,pb,kbs_vf,lad_tree,lad,omega,horiz,vfw,vfv,h1,h2,foliage)
-             ! delete later
-             if (kk<2) then
-                 if (debug_write) then
-                     write(6,*)'wall up vfw,vfv',vfw,vfv
-                 end if 
-             end if
-             ! write(6,*)'raystr,lad_tree',raystr,lad_tree
+
              do kzcan=1,nzcanm
                 vfww(izcan,kzcan)=vfww(izcan,kzcan)+vfw(kzcan)
                 vfwv(izcan,kzcan)=vfwv(izcan,kzcan)+vfv(kzcan)
@@ -2492,12 +2411,7 @@ contains
              call ray_dn(minray,rayx,rayy,bld,bld_old,raystr,&
                         xxhr(kk),zzhr(kk),hemi32r(kk),xdom,dray,dzcan,&
                         bldfrac,pb,pb_old,ss,kbs_vf,lad,omega,horiz,h1,h2, vfw,vfr,vfv,vft)
-             if (kk<2) then
-                 if (debug_write) then
-                     write(6,*)'wall dn vfw,vfr',vfw,vfr
-                     write(6,*)'wall dn vfv,vft',vfv,vft
-                 end if 
-             end if                        
+
              do kzcan=1,nzcanm
                 vfww(izcan,kzcan)=vfww(izcan,kzcan)+vfw(kzcan)
                 vfwr(izcan,kzcan)=vfwr(izcan,kzcan)+vfr(kzcan)
@@ -2520,6 +2434,8 @@ contains
        ! rays starting from VEGETATION in CANOPY COLUMN
        if (lad(izcan) > 0._r8) then
            !write(6,*)'CANOPY VEGETATION...'
+           ! horiz=.true. here does NOT mean 'the emitter is a horizontal surface'. 
+           ! it just means that the ray direction is not rotated 
            horiz=.true.
            do k=1,n-2
               ! starting at a random location in the vegetation
@@ -2530,11 +2446,9 @@ contains
               rayx=rnum*xdom*(1._r8-bldfrac)
               
               call RANDOM_NUMBER(rnum)
-              ! constrain vertical location to be within h1 and h1+h2
-              !rayy=real(izcan,r8)-rnum
-              ! this rayy distribution consider maximum 2 tree layers
-              ! it should be modified if more than 2 layers are considered in the future
+
               if ((h1+h2)<=dzcan) then 
+               ! when (h1+h2)<=dzcan, only izcan=1 is computed
                   rayy=(h1 + h2*rnum)/dzcan
               else if ((h1+h2)>dzcan) then 
                   if (izcan==1) then
@@ -2544,10 +2458,6 @@ contains
                   end if
               end if
               
-              ! use evenly distributed spherical distribution
-              ! confirm: here why even distribution instead of random is used?
-              ! make all rays head 'downstream' (this works due to the symmetry of the geometry)
-              ! also use different ray directional distributions for solar and longwave
               if (solar) then
                  xxrt=xxe2(k)
                  zzes=zze2(k)
@@ -2571,14 +2481,7 @@ contains
               call ray_up(minray,maxind,rayx,rayy,bld,bld_old,raystr, &
                          xxrt,zzes,circ32es,xdom,dray,dzcan,bldfrac,pb,&
                          kbs_vf,lad_tree,lad,omega,horiz,vfw,vfv,h1,h2,foliage)    
-              ! delete later
-              if (k<2) then
-                  if (debug_write) then
-                     write(6,*)'veg up vfw,vfv',vfw,vfv
-                  end if 
-              end if                
-              ! write(6,*)'foliage,vfw,vfv',foliage,vfw,vfv
-              ! write(6,*)'n,raystr,lad_tree',n,raystr,lad_tree                     
+               
               do kzcan=1,nzcanm
                  vfvw(izcan,kzcan)=vfvw(izcan,kzcan)+vfw(kzcan)
                  vfvv(izcan,kzcan)=vfvv(izcan,kzcan)+vfv(kzcan)
@@ -2591,11 +2494,7 @@ contains
               call ray_dn(minray,rayx,rayy,bld,bld_old,raystr,&
                         xxrt,zzes,circ32es,xdom,dray,dzcan,bldfrac, &
                         pb,pb_old,ss,kbs_vf,lad,omega,horiz,h1,h2, vfw,vfr,vfv,vft)
-              if (k<2) then
-                  if (debug_write) then
-                      write(6,*)'veg dn vfw,vfr',vfw,vfr
-                  end if
-              end if                           
+                        
               do kzcan=1,nzcanm
                  vfvw(izcan,kzcan)=vfvw(izcan,kzcan)+vfw(kzcan)
                  vfvr(izcan,kzcan)=vfvr(izcan,kzcan)+vfr(kzcan)
@@ -2610,12 +2509,11 @@ contains
 648    continue
            enddo  ! end rays (k) loop for VEGETATION
 
+           ! n-2 is the number of foliage rays actually fired (the k loop above). 
            svfv(izcan)=svfv(izcan)/real(n-2,r8)
            vfvt(izcan)=vfvt(izcan)/real(n-2,r8)
            vfv_tot(izcan)=vfv_tot(izcan)+vfvt(izcan)+svfv(izcan)
        endif  ! if izcan has a foliage layer
-       
-       !write(6,*)'AFTER CANOPY FOLIAGE'
 
        !-----------------------------------------------------
        ! rays starting from ROOFS
@@ -2628,7 +2526,6 @@ contains
              bld_old=1._r8
              raystr=1._r8
              rayy=real(izcan-1,r8)
-             ! random:
              ! start at a random point on the roof
              call RANDOM_NUMBER(rnum)
              rayx=xdom*((1._r8-bldfrac)+rnum*bldfrac)
@@ -2645,13 +2542,7 @@ contains
              call ray_up(minray,maxind,rayx,rayy,bld,bld_old,raystr,&
                        xxrt,zzhr(kk),hemi32r(kk),xdom,dray,dzcan,&
                        bldfrac,pb,kbs_vf,lad_tree,lad,omega,horiz,vfw,vfv,h1,h2,foliage)
-             ! delete later
-             if (kk<2) then
-                 if (debug_write) then
-                    write(6,*)'roof up vfw,vfv',vfw,vfv
-                 end if
-             end if 
-             ! write(6,*)'raystr,lad_tree',raystr,lad_tree            
+
              do kzcan=1,nzcanm
                 vfrw(izcan,kzcan)=vfrw(izcan,kzcan)+vfw(kzcan)
                 vfrv(izcan,kzcan)=vfrv(izcan,kzcan)+vfv(kzcan)
@@ -2693,11 +2584,7 @@ contains
        call ray_up(minray,maxind,rayx,rayy,bld,bld_old,raystr,&
                  xxrt,zzhr(kk),hemi32r(kk),xdom,dray,dzcan,bldfrac,&
                  pb,kbs_vf,lad_tree,lad,omega,horiz,vfw,vfv,h1,h2,foliage)
-       if (kk<2) then
-           if (debug_write) then
-              write(6,*)'road up vfw,vfv',vfw,vfv
-           end if
-       end if    
+   
        do kzcan=1,nzcanm
           vftw(kzcan)=vftw(kzcan)+vfw(kzcan)
           vftv(kzcan)=vftv(kzcan)+vfv(kzcan)
@@ -2706,10 +2593,11 @@ contains
     enddo  ! end rays (kk) loop for ROAD
 
     svft=svft/real(nk,r8)
-    ! vft_tot=vft_tot+svft
 
     do izcan=1,nzcanm
        !divide by 2 here because there are two walls at each level, and we want the vf from the road to only one of them
+
+      ! has vf from other surfaces to wall divided by 2 already?
        vftw(izcan)=vftw(izcan)/real(nk,r8)/2._r8
        vftv(izcan)=vftv(izcan)/real(nk,r8)
     enddo   
@@ -2727,7 +2615,6 @@ contains
           vfw_tot(izcan)=vfw_tot(izcan)+vfww(izcan,jzcan)+ &
                          vfwr(izcan,jzcan)+vfwv(izcan,jzcan)
           ! divide by 2 here because there are two walls at each level, and we want the vf from the roof to only one of them
- 
           vfrw(izcan,jzcan)=vfrw(izcan,jzcan)/real(nk,r8)/2._r8
           vfrv(izcan,jzcan)=vfrv(izcan,jzcan)/real(nk,r8)
           vfr_tot(izcan)=vfr_tot(izcan)+vfrw(izcan,jzcan)*2._r8+vfrv(izcan,jzcan)
@@ -2737,7 +2624,7 @@ contains
           vfvv(izcan,jzcan)=vfvv(izcan,jzcan)/real(n-2,r8)          	     
           vfv_tot(izcan)=vfv_tot(izcan)+2._r8*vfvw(izcan,jzcan)+&
                          vfvr(izcan,jzcan)+vfvv(izcan,jzcan)         
-                         
+          ! the index swap is intended               
           vfsw(izcan)=vfsw(izcan)+vfswtmp(jzcan,izcan)
           vfsr(izcan)=vfsr(izcan)+vfsrtmp(jzcan,izcan)
           vfsv(izcan)=vfsv(izcan)+vfsvtmp(jzcan,izcan)
@@ -2745,66 +2632,40 @@ contains
     enddo  
     
     do izcan=1,maxind
+      ! they need to be divided by maxind
        vfsw(izcan)=vfsw(izcan)/real(maxind,r8)/2._r8
        vfsr(izcan)=vfsr(izcan)/real(maxind,r8)
        vfsv(izcan)=vfsv(izcan)/real(maxind,r8)
        vfs_tot=vfs_tot+2._r8*vfsw(izcan)+vfsr(izcan)+vfsv(izcan)
-       if (debug_write) then
-           write(6,*)'i,sw,sr',izcan,vfsw(izcan),vfsr(izcan)
-       end if
     enddo
-    
-    if (debug_write) then
-        do izcan=1,maxind
-           write(6,*)'i,tv,vt',izcan,vftv(izcan),vfvt(izcan)                                     
-           write(6,*)'i,sv',izcan,vfsv(izcan)
-        enddo    
-    end if
-    
+    ! they need to be divided by maxind
     vfst=vfst/real(maxind,r8)
     vfs_tot=vfs_tot+vfst
-    if (debug_write) then
-        write(6,*)'st',vfst
-    end if 
+ 
     vft_tot=svft
     do jzcan=1,maxind	             
        vft_tot=vft_tot+2._r8*vftw(jzcan)+vftv(jzcan)           
     enddo
     
-    if (debug_write) then
-        write(6,*)'vft,vfs',vft_tot,vfs_tot
-        
-        do izcan=1,maxind            	 
-           write(6,*)'i,vfw,vfr',izcan,vfw_tot(izcan),vfr_tot(izcan)                                              	 
-           write(6,*)'i,vfv',izcan,vfv_tot(izcan)                                    
-        enddo
-    end if 
     !Calculate the modified radiation and the streets fluxes 
     !-------------------------------------------------------
     ! areas of all elements (normalized by dzcan, i.e., xdom = domain width/dzcan)
     do izcan=1,maxind
        A_w(izcan)=pb(izcan+1)
-       ! TO GET ACTUAL RADIATION FLUX DENSITIES ON LEAVES, NEED TO MULTIPLY THEM BY OMEGA
-       !A_v(izcan)=xdom*(1._r8-bldfrac)*lad(izcan)*omega(izcan)*dzcan*2._r8
-       !A_vs(izcan)=xdom*(1._r8-bldfrac)*lads(izcan)*omega(izcan)*dzcan*2._r8
-       !A_vl(izcan)=xdom*(1._r8-bldfrac)*ladl(izcan)*omega(izcan)*dzcan*2._r8
+       ! two-sided vegetation area 
        if ((h1+h2)<= dzcan) then
           if (izcan==1) then
-             A_v(izcan)=xdom*(1._r8-bldfrac)*lad(izcan)*omega(izcan)*h2*2._r8
              A_vs(izcan)=xdom*(1._r8-bldfrac)*lads(izcan)*omega(izcan)*h2*2._r8
              A_vl(izcan)=xdom*(1._r8-bldfrac)*ladl(izcan)*omega(izcan)*h2*2._r8
           else if (izcan==2) then
-             A_v(izcan)=0._r8
              A_vs(izcan)=0._r8
              A_vl(izcan)=0._r8
           end if 
        else if ((h1+h2) > dzcan) then
            if (izcan==1) then
-              A_v(izcan)=xdom*(1._r8-bldfrac)*lad(izcan)*omega(izcan)*(dzcan-h1)*2._r8
               A_vs(izcan)=xdom*(1._r8-bldfrac)*lads(izcan)*omega(izcan)*(dzcan-h1)*2._r8
               A_vl(izcan)=xdom*(1._r8-bldfrac)*ladl(izcan)*omega(izcan)*(dzcan-h1)*2._r8
            else if (izcan==2) then
-              A_v(izcan)=xdom*(1._r8-bldfrac)*lad(izcan)*omega(izcan)*(h1+h2-dzcan)*2._r8
               A_vs(izcan)=xdom*(1._r8-bldfrac)*lads(izcan)*omega(izcan)*(h1+h2-dzcan)*2._r8
               A_vl(izcan)=xdom*(1._r8-bldfrac)*ladl(izcan)*omega(izcan)*(h1+h2-dzcan)*2._r8
            end if 
@@ -2812,7 +2673,6 @@ contains
        A_r(izcan)=xdom*bldfrac*ss(izcan)
       
        A_w_max(izcan)=max(1.e-6_r8,A_w(izcan))
-       A_v_max(izcan)=max(1.e-6_r8,A_v(izcan))
        A_vs_max(izcan)=max(1.e-6_r8,A_vs(izcan))
        A_vl_max(izcan)=max(1.e-6_r8,A_vl(izcan))
        A_r_max(izcan)=max(1.e-6_r8,A_r(izcan))
@@ -2827,7 +2687,6 @@ contains
     ! view factors multiplied by relative areas (so that correct flux densities are exchanged):  
        do izcan=1,maxind
           do jzcan=1,maxind
-            ! confirm: do we need to handle surfaces with zero areas?
              kww1d(izcan,jzcan)=vfww(izcan,jzcan)*A_w(izcan)/A_w_max(jzcan)
              kvv1d(izcan,jzcan)=vfvv(izcan,jzcan)*A_vs(izcan)/A_vs_max(jzcan)
              kwv1d(izcan,jzcan)=vfwv(izcan,jzcan)*A_w(izcan)/A_vs_max(jzcan)
@@ -2854,6 +2713,7 @@ contains
           kgw1d(izcan)=vftw(izcan)*A_g/A_w_max(izcan)
           kgv1d(izcan)=vftv(izcan)*A_g/A_vs_max(izcan)
           kvg1d(izcan)=vfvt(izcan)*A_vs(izcan)/A_g
+
           ksw1d(izcan)=vfsw(izcan)*A_s/A_w_max(izcan)
           ksr1d(izcan)=vfsr(izcan)*A_s/A_r_max(izcan)
           ksv1d(izcan)=vfsv(izcan)*A_s/A_vs_max(izcan)
@@ -2909,6 +2769,7 @@ contains
           fgw1d(izcan)=vftw(izcan)*A_g/A_w_max(izcan)
           fgv1d(izcan)=vftv(izcan)*A_g/A_vl_max(izcan)
           fvg1d(izcan)=vfvt(izcan)*A_vl(izcan)/A_g
+
           fsw1d(izcan)=vfsw(izcan)*A_s/A_w_max(izcan)
           fsr1d(izcan)=vfsr(izcan)*A_s/A_r_max(izcan)
           fsv1d(izcan)=vfsv(izcan)*A_s/A_vl_max(izcan)
@@ -2934,20 +2795,6 @@ contains
        svft_f=svft
        vfst_f=vfst
 
-      ! write(iulog,*) '--- ray tracing ---'
-      ! write(iulog,*) 'A_g             = ', A_g
-      ! write(iulog,*) 'A_w_max             = ', A_w_max
-      ! write(iulog,*) 'A_v1            = ', A_v(1)
-      ! write(iulog,*) 'A_v2            = ', A_v(2)
-      ! write(iulog,*) 'A_r_max             = ', A_r_max
-      ! write(iulog,*) 'A_s             = ', A_s
-      ! write(iulog,*) 'fsg1d(l)        = ', fsg1d,vfst
-      ! write(iulog,*) 'fsw1d(l,1)      = ', fsw1d(1),vfsw(1)
-      ! write(iulog,*) 'fsr1d(l,2)         = ', fsr1d(2),vfsr(2)
-      ! write(iulog,*) 'fsv1d(l,1)       = ', fsv1d(1),vfsv(1)
-      ! write(iulog,*) 'fsv1d(l,2)       = ', fsv1d(2),vfsv(2)
-
-       
     endif
  
     call system_clock(end_time)        
@@ -2980,16 +2827,16 @@ contains
     ! !DESCRIPTION:
     ! This routine figures out whether a ray passing a corner at the upstream
     ! edge of a building strikes the roof and the wall of the layer above, or
-    ! just the current wall layer
+    ! just the current wall layer (see Fig. 4 of Krayenhoff et al. 2014)
     ! ----------------------------------------------------------------------
     ! !ARGUMENTS:
     implicit none
     real(r8)        , intent(in)  :: bldfrac   ! Fraction of building width in total domain width   
-    real(r8)        , intent(in)  :: xdom      ! Domain width normalized by building height
-    real(r8)        , intent(in)  :: rayx      ! Ray x-coordinate
-    real(r8)        , intent(in)  :: rayy      ! Ray y-coordinate
-    integer         , intent(in)  :: rayyint   ! Current vertical layer     
-    real(r8)        , intent(in)  :: zre       ! Zenith angle of the ray
+    real(r8)        , intent(in)  :: xdom      ! Total domain width (canyon+building) normalized by dzcan
+    real(r8)        , intent(in)  :: rayx      ! Ray horizontal position, in units of dzcan
+    real(r8)        , intent(in)  :: rayy      ! Ray vertical position, in units of dzcan (ray_up passes -rayy)
+    integer         , intent(in)  :: rayyint   ! Layer boundary just crossed (ray_up passes -rayyint_old)
+    real(r8)        , intent(in)  :: zre       ! Zenith angle (atan) of the ray path; compared with the angle to the corner
     logical         , intent(out) :: strike    ! Logical flag indicating strike or not
 
     strike=.false.
@@ -3007,15 +2854,15 @@ contains
     !-----------------------------------------------------------------------
     ! !DESCRIPTION:
     ! This routine figures out whether a ray passing a corner at the downstream
-    ! edge of a building strikes the roof or not
+    ! edge of a building strikes the roof or not (see Fig. 4 of Krayenhoff et al. 2014)
     ! ----------------------------------------------------------------------
     ! !ARGUMENTS:
     implicit none
-    real(r8)        , intent(in)  :: xdom      ! Domain width normalized by building height
-    real(r8)        , intent(in)  :: rayx      ! Ray x-coordinate
-    real(r8)        , intent(in)  :: rayy      ! Ray y-coordinate
-    integer         , intent(in)  :: rayyint   ! Current vertical layer 
-    real(r8)        , intent(in)  :: zre       ! Zenith angle of the ray
+    real(r8)        , intent(in)  :: xdom      ! Total domain width (canyon+building) normalized by dzcan
+    real(r8)        , intent(in)  :: rayx      ! Ray horizontal position, in units of dzcan
+    real(r8)        , intent(in)  :: rayy      ! Ray vertical position, in units of dzcan
+    integer         , intent(in)  :: rayyint   ! Layer boundary just crossed
+    real(r8)        , intent(in)  :: zre       ! Zenith angle (atan) of the ray path; compared with the angle to the corner
     logical         , intent(out) :: strike    ! Logical flag indicating strike or not
 
     strike=.false.
@@ -3075,40 +2922,36 @@ contains
     implicit none
     integer,  parameter     :: nzcanm = 5     ! Maximum number of vertical levels at urban resolution
     real(r8), intent(in)    :: minray         ! Minimum ray strength    
-    integer,  intent(in)    :: maxind         ! Maximum vertical levels with building
-    real(r8), intent(inout) :: rayx, rayy     ! Ray x-coordinate and y-coordinate
-    real(r8), intent(inout) :: bld, bld_old   ! Building presence indicators for current and previous steps
+    integer,  intent(in)    :: maxind         ! Index of the highest level with roofs or foliage; ray is dropped once
+                                              ! rayyint > maxind+1, and its remaining strength becomes the sky view factor
+    real(r8), intent(inout) :: rayx, rayy     ! Ray horizontal and VERTICAL position, both in units of dzcan
+    real(r8), intent(inout) :: bld, bld_old   ! 1 if over a building column, 0 if over the canyon; this step and the last
     real(r8), intent(inout) :: raystr         ! Ray strength
-    real(r8), intent(in)    :: xx, zz         ! 2D coordinates of ray directions
-    real(r8), intent(in)    :: hemi32         ! Ratio of 3D ray travel distance to its 2D projection  
-    real(r8), intent(in)    :: xdom           ! Domain width normalized by building height
-    real(r8), intent(in)    :: dray           ! Ray step [m]
-    real(r8), intent(in)    :: dzcan          ! Height of buildings [m]
+    real(r8), intent(in)    :: xx, zz         ! x- and z-COMPONENTS of the ray direction unit vector (not coordinates)
+    real(r8), intent(in)    :: hemi32         ! Ratio of 3D to 2D ray travel distance (f_i in Krayenhoff et al. 2014 Eq. 9)
+    real(r8), intent(in)    :: xdom           ! Total domain width (canyon+building) normalized by dzcan
+    real(r8), intent(in)    :: dray           ! Ray step, normalized by dzcan [-] (NOT metres)
+    real(r8), intent(in)    :: dzcan          ! Vertical layer thickness [m]; converts normalized lengths back to metres
     real(r8), intent(in)    :: bldfrac        ! Fraction of building width in total domain width
-    ! confirm: the input is pb_in(4), but we define pb in this function with a dimension of 5.
-    ! When pb(5) is used, is it nan or 0? Is it necessary to add another line to initialize pb(5) =0?
-    ! Or define all pb_in and ss_in with a dimension of 5?
     real(r8), intent(in)    :: pb(nzcanm + 1) ! Probability to have a building with an height equal or higher than each level
-    real(r8), intent(in)    :: kbs            ! Extinction coefficient.
-    real(r8), intent(in)    :: lad_tree(nzcanm)! Tree crown average leaf area density [m-1]        
-    real(r8), intent(in)    :: lad(nzcanm)    ! Leaf area density in the canyon column [m-1]
-    real(r8), intent(in)    :: omega(nzcanm)  ! Leaf clumping index (Eq. 15 in Krayenhoff et al. 2020)   
-    logical,  intent(in)    :: horiz          ! Whether the surface is horizontal
-    real(r8), intent(out)   :: vfw(nzcanm)    ! Contribution to view factors to wall surfaces
-    real(r8), intent(out)   :: vfv(nzcanm)    ! Contribution to view factors to vegetation
-    logical,  intent(in)    :: foliage        ! Whether the surface is vegetation or not
-    real(r8),  intent(in)    :: h1                ! tree crown bottom height
-    real(r8),  intent(in)    :: h2                ! tree crown vertical height
-    
-    ! LOCAL VARIABLES:
-    integer              :: rayyint, rayyint2 ! Current vertical layer (ceiling value of rayy)
+    real(r8), intent(in)    :: kbs            ! Foliage extinction coefficient [-]; 0.5 for a spherical leaf-angle distribution
+    real(r8), intent(in)    :: lad_tree(nzcanm)! In-crown leaf area density [m2 m-3] = lad/wtroad_tree
+    real(r8), intent(in)    :: lad(nzcanm)    ! Canyon-space-average leaf area density [m2 m-3] (not the in-crown value)
+    real(r8), intent(in)    :: omega(nzcanm)  ! Leaf clumping index 
+    logical,  intent(in)    :: horiz          ! Direction mapping: .true. => (rx,ry)=(xx,zz); .false. rotates onto a wall normal
+    real(r8), intent(out)   :: vfw(nzcanm)    ! THIS ray's strength intercepted by each wall level
+    real(r8), intent(out)   :: vfv(nzcanm)    ! THIS ray's strength intercepted by each foliage level
+    logical,  intent(in)    :: foliage        ! .true. if the ray ORIGINATES in a foliage layer (selects the lad_tree
+    real(r8),  intent(in)    :: h1                ! Crown bottom height above ground [m]; divided by dzcan internally
+    real(r8),  intent(in)    :: h2                ! Crown DEPTH [m], not crown-top height; divided by dzcan internally
+    integer              :: rayyint, rayyint2 ! Current vertical layer, and the wall layer being lit
     integer              :: rayyint_old       ! Previous vertical layer (ceiling value of rayy)
     integer              :: izcan             ! Indices
     real(r8)             :: rx, ry            ! Directions for ray traveling, adjusted based on horiz
-    real(r8)             :: xfr               ! A fraction position for ray x-coordinate
-    real(r8)             :: wfact             ! Ray strength attenuated by wall
-    real(r8)             :: raystrtmp         ! Temporary ray strength
-    logical              :: strike            ! Logical flags
+    real(r8)             :: xfr               ! rayx folded into one canyon+building period, in units of dzcan
+    real(r8)             :: wfact             ! Ray strength intercepted by the wall this step
+    real(r8)             :: raystrtmp         ! Ray strength before foliage attenuation, to get the intercepted amount
+    logical              :: strike            ! Corner test result: .true. => the lower wall layer was struck
     !-----------------------------------------------------------------------
     ! rays originating from walls
     rx=zz
@@ -3131,7 +2974,7 @@ contains
        rayx=rayx+rx*dray
        rayy=rayy+ry*dray
        rayyint=ceiling(rayy)
-       !xfr=amod(rayx,xdom)
+
        xfr = (rayx - xdom * floor(rayx /xdom))
        
        if (xfr/xdom >= 1._r8-bldfrac) then
@@ -3139,7 +2982,9 @@ contains
           bld=1._r8
           rayyint2=rayyint
           if (rayyint > rayyint_old) then !ray travels across vertical layers
-             ! the inputs to corner_up are slightly different than in ray_dn
+             ! The negated rayy and rayyint_old mirror the upward geometry onto the downward case corner_up was
+             ! written for, so that (rayyint - rayy) inside it is the distance past the boundary just crossed in
+             ! strick = true means the lower wall layer was struck
              call corner_up(bldfrac,xdom,rayx,-rayy, -rayyint_old,&
                            atan(rx/max(1.e-6_r8,ry)),strike)
              if (strike) then
@@ -3168,8 +3013,6 @@ contains
        endif
        if(rayyint > maxind+1) goto 541
        bld_old=bld
-       !write(6,*)'ray up: vfact,wfact',(raystrtmp-raystr),wfact
-       !write(6,*)'rayyint,lad(rayyint),omega(rayyint)',rayyint,lad(rayyint),omega(rayyint)       
     enddo
 
 541   continue
@@ -3189,42 +3032,46 @@ contains
     ! !ARGUMENTS:
     implicit none
     integer,  parameter     :: nzcanm = 5     ! Maximum number of vertical levels at urban resolution
-    real(r8), intent(in)    :: minray         ! Minimum ray strength
-    real(r8), intent(inout) :: rayx, rayy     ! Ray x-coordinate and y-coordinate
-    real(r8), intent(inout) :: bld, bld_old   ! Building presence indicators for current and previous steps
+    real(r8), intent(in)    :: minray         ! Ray strength below which the ray is no longer tracked
+    real(r8), intent(inout) :: rayx, rayy     ! Ray horizontal and vertical position, both in units of dzcan
+    real(r8), intent(inout) :: bld, bld_old   ! 1 if over a building column, 0 if over the canyon; 
     real(r8), intent(inout) :: raystr         ! Ray strength
-    real(r8), intent(in)    :: xx, zz         ! 2D coordinates of ray directions
-    real(r8), intent(in)    :: dist32         ! Ratio of 3D ray travel distance to its 2D projection  
-    real(r8), intent(in)    :: xdom           ! Domain width normalized by building height
-    real(r8), intent(in)    :: dray           ! Ray step [m]
-    real(r8), intent(in)    :: dzcan          ! Height of buildings [m]
+    real(r8), intent(in)    :: xx, zz         ! x- and z-components of the ray direction unit vector (not coordinates)
+    real(r8), intent(in)    :: dist32         ! Ratio of 3D to 2D ray travel distance
+    real(r8), intent(in)    :: xdom           ! Total domain width (canyon+building) normalized by dzcan
+    real(r8), intent(in)    :: dray           ! Ray step, normalized by dzcan [-] 
+    real(r8), intent(in)    :: dzcan          ! Vertical layer thickness [m]; converts normalized lengths back to metres
     real(r8), intent(in)    :: bldfrac        ! Fraction of building width in total domain width
     real(r8), intent(in)    :: pb(nzcanm + 1) ! Probability to have a building with an height equal or higher than each level
-    real(r8), intent(inout) :: pb_old         ! Pb from the previous step
+    real(r8), intent(inout) :: pb_old         ! Pb from the previous step (the pb already accounted for, so pbinc is the
+                                              ! newly exposed building fraction); 
     real(r8), intent(in)    :: ss(nzcanm + 1) ! Roof fraction at each level 
-    real(r8), intent(in)    :: kbs            ! Extinction coefficient.
-    real(r8), intent(in)    :: lad(nzcanm)    ! Leaf area density in the canyon column [m-1]
-    real(r8), intent(in)    :: omega(nzcanm)  ! Leaf clumping index (Eq. 15 in Krayenhoff et al. 2020)   
-    logical,  intent(in)    :: horiz          ! Whether the surface is horizontal
-    real(r8),  intent(in)    :: h1                ! tree crown bottom height
-    real(r8),  intent(in)    :: h2                ! tree crown vertical height
-    real(r8), intent(out)   :: vfw(nzcanm)    ! Contribution to view factors to wall surfaces
-    real(r8), intent(out)   :: vfr(nzcanm)    ! Contribution to view factors to roof surfaces
-    real(r8), intent(out)   :: vfv(nzcanm)    ! Contribution to view factors to vegetation
-    real(r8), intent(out)   :: vft            ! Contribution to view factors to ground
+    real(r8), intent(in)    :: kbs            ! Foliage extinction coefficient [-]; 0.5 for a spherical leaf-angle distribution
+    real(r8), intent(in)    :: lad(nzcanm)    ! Canyon-space-average leaf area density [m2 m-3] (not the in-crown value)
+    real(r8), intent(in)    :: omega(nzcanm)  ! Leaf clumping index 
+    logical,  intent(in)    :: horiz          ! Direction mapping: .true. => (rx,ry)=(xx,zz); 
+    real(r8),  intent(in)    :: h1                ! Crown bottom height above ground [m]; 
+    real(r8),  intent(in)    :: h2                ! Crown DEPTH [m], not crown-top height; 
+    real(r8), intent(out)   :: vfw(nzcanm)    ! THIS ray's strength intercepted by each wall level
+    real(r8), intent(out)   :: vfr(nzcanm)    ! THIS ray's strength intercepted by each roof level
+    real(r8), intent(out)   :: vfv(nzcanm)    ! THIS ray's strength intercepted by each foliage level
+    real(r8), intent(out)   :: vft            ! THIS ray's strength reaching the ground
 
     ! !LOCAL VARIABLES:
-    integer              :: rayyint, rayyint2 ! Current vertical layer (ceiling value of rayy)
-    integer              :: izcan, kzcan      ! Indices
+    ! rayyint = vertical layer holding the ray (= ceiling(rayy)); rayyint2 = wall layer being lit, which is rayyint or rayyint+1 after an upstream-corner strike
+    integer              :: rayyint, rayyint2 ! Current vertical layer, and the wall layer being lit
+    integer              :: izcan      ! Indices 
     real(r8)             :: rx, ry            ! Directions for ray traveling, adjusted based on horiz
-    real(r8)             :: xfr               ! A fraction position for ray x-coordinate
-    real(r8)             :: wfact             ! Ray strength attenuated by wall
-    real(r8)             :: rfact             ! Ray strength attenuated by roof
-    real(r8)             :: raystrtmp         ! Temporary ray strength
+    real(r8)             :: xfr               ! rayx folded into one canyon+building period, in units of dzcan
+    real(r8)             :: wfact             ! Ray strength intercepted by the wall this step
+    real(r8)             :: rfact             ! Ray strength intercepted by the roof this step
+    real(r8)             :: raystrtmp         ! Ray strength before foliage attenuation, to get the intercepted amount
     real(r8)             :: pbinc             ! Increment in building probability.
-    real(r8)             :: blde              ! Effective building presence indicators?
-    real(r8)             :: sseff(nzcanm + 1) ! Effective roof area fraction adjusted by pb
-    logical              :: roof, strike      ! Logical flags
+    real(r8)             :: blde              ! bld for the ROOF test only; forced to 1 after a downstream-corner roof strike
+    real(r8)             :: sseff(nzcanm) ! Effective roof probability, rescaled onto the building-free column (Eq. 8)
+    ! roof = .false. means this step lit a wall but no roof (upstream corner missed);
+    ! strike = corner test result, .true. means the ray hit the roof/upper wall at the corner
+    logical              :: roof, strike      ! Ray-tracing state flags
     !-----------------------------------------------------------------------
     ! rays originating from walls
     rx=zz
@@ -3243,30 +3090,29 @@ contains
     enddo
     
     vft=0._r8
-    
-    ! rays going down
-    ! Determine which vertical layer the ray is located in
-    ! discuss: this line can be removed
-    rayyint=ceiling(rayy)
-
-    ! Adjust effective roof fraction by wall fraction
+   
+    ! Effective roof probability 
+    ! confirm sseff value with Scott
+    ! sseff = (0, 1, 0, 0, 0)
     do izcan=1,nzcanm
        if (pb(izcan+1) < 1._r8) then
           sseff(izcan)=ss(izcan)/(1._r8-pb(izcan+1))
        else
-          sseff(izcan)=ss(izcan)! discuss here sseff should be ss or zero?
+          sseff(izcan)=ss(izcan)! effectively ss(izcan)=0
        endif
     enddo
 
     do while (raystr > minray)
        rayx=rayx+rx*dray
        rayy=rayy+ry*dray
+       ! Determine which vertical layer the ray is located in
        rayyint=ceiling(rayy)
        rayyint2=rayyint
+       ! the rayyint+1 index translate to the pb index
+       ! rayyint counts layers, while pb counts levels
        pbinc=pb(rayyint+1)-pb_old
        ! Test where a ray is horizontally (i.e. building or canyon/tree space):
        ! xfr>bldfrac means canyon, xfr<bldfrac means building (i.e. bld=1)
-       !xfr=amod(rayx,xdom) !Reaplce amod() with an alternative expression of floor()
        xfr = (rayx - xdom * floor(rayx /xdom))
        bld=0._r8
        if(xfr/xdom >= 1._r8-bldfrac) bld=1._r8
@@ -3295,7 +3141,7 @@ contains
              if (ceiling(rayy-ry*dray)-rayyint > 0) then !the ray traveled across a verctial layer
                  ! building corner or wall layer division at 'upstream' edge of the building
                  call corner_up(bldfrac,xdom,rayx,rayy,rayyint,&
-                               atan(rx/max(1.e-6,(-ry))),strike)
+                               atan(rx/max(1.e-6_r8,(-ry))),strike)
                  if (strike) then !the ray impinged on the roof and the wall of the layer above
                     ! next wall layer higher is being lit (and roofs too)
   		               rayyint2=rayyint+1
@@ -3308,19 +3154,17 @@ contains
        endif
 
        if(rayyint2 < 1) goto 223
-       !! WALLS
+       !! WALLS - Eq. 4: W(iz) = r_{j-1}*Lambda(iz+1), charged only on a canyon->building crossing, which is what
+       !! max(bld-bld_old,0) detects. pb/max(1e-6,pb)*pb is a guarded way of writing pb (0 when pb=0, no 0/0).
+       !! Only one wall is tracked since rays always march +x; the caller halves where the two walls must be split.
        wfact=raystr*max(bld-bld_old,0._r8)*pb(rayyint2+1)/max(1.e-6_r8,pb(rayyint2+1))*pb(rayyint2+1)
        vfw(rayyint2)=vfw(rayyint2)+wfact
        raystr=raystr-wfact
 223      continue
-       ! Question: is it possible to execute goto 223 but it is not roof?
-       ! I feel it should always be roof because it hit 'downstream' edge of the building?
-       if(.not.roof) goto 224
-       !! ROOFS
+
+       if (.not.roof) goto 224
        rfact=blde*raystr*pbinc/max(1.e-6_r8,pbinc)*sseff(rayyint+1)
-       
-       ! important, otherwise could end up with negative ray strength!
-       ! rfact = max(0._r8, min(rfact, raystr))??
+       ! prevent negative ray strength
        rfact=min(rfact,raystr)        
                           
        vfr(rayyint+1)=vfr(rayyint+1)+rfact                 
@@ -3343,25 +3187,22 @@ contains
           vfv(rayyint)=vfv(rayyint)+(raystrtmp-raystr)
        endif
  
-       if (rayy < 0._r8) goto 226
        bld_old=bld
       
        if (pbinc > 0._r8) then
           pb_old=pb(rayyint+1)
        endif
-       !write(6,*)'ray down: vfact,rfact,wfact',(raystrtmp-raystr),rfact,wfact
-       !write(6,*)'rayyint,lad(rayyint),omega(rayyint)',rayyint,lad(rayyint),omega(rayyint)
     enddo
     
 226  continue    
 
-    !! ROADS
+    !! ROADS 
     vft=vft+raystr
     if (raystr > minray .and. ((rayx-rx*dray) - xdom * &
        floor((rayx-rx*dray)/xdom))/xdom > 1._r8-bldfrac .and. pb(2) > 0.999999_r8) then                                        
         write(iulog,*)'PROBLEM (ray_dn), radiation reaching building interior ground,raystr,rayx,rayy=',raystr,rayx,rayy
         write(iulog,*)'xdom,bldfrac',xdom,bldfrac
-        write(iulog,*) amod(rayx-rx*dray,xdom)/xdom,1._r8-bldfrac
+        write(iulog,*) ((rayx-rx*dray) - xdom * floor((rayx-rx*dray)/xdom))/xdom,1._r8-bldfrac
         write(iulog,*)'izcan',izcan
         write(iulog,*)'xx,zz,dist',xx,zz,dist32
         do izcan=1,nzcanm
@@ -3371,7 +3212,6 @@ contains
         call endrun(msg=errmsg(sourcefile, __LINE__))
     endif
   end subroutine ray_dn
-!-------------------[kz.12]Ray tracing test-------------------------   
    
   !-----------------------------------------------------------------------
 

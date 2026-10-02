@@ -10,7 +10,7 @@ module UrbanFluxesMod
   use shr_log_mod          , only : errMsg => shr_log_errMsg
   use decompMod            , only : bounds_type, subgrid_level_landunit
   use clm_varpar           , only : numrad
-  use clm_varctl           , only : iulog, use_cn, use_c13, use_hydrstress
+  use clm_varctl           , only : iulog, use_cn, use_c13, use_hydrstress, use_luna
   use abortutils           , only : endrun  
   use UrbanParamsType      , only : urbanparams_type
   use UrbanParamsType      , only : urban_wasteheat_on, urban_hac_on, urban_hac
@@ -39,7 +39,11 @@ module UrbanFluxesMod
   use OzoneBaseMod          , only : ozone_base_type
   use clm_time_manager  , only : get_nstep 
   use SoilMoistStressMod    , only : calc_effective_soilporosity, calc_root_moist_stress,calc_volumetric_h2oliq
+  use SurfaceResistanceMod  , only : do_soil_resistance_sl14
   use PhotosynthesisMod     , only : Photosynthesis, Fractionation, PhotosynthesisHydraulicStress
+  use PhotosynthesisMod     , only : PhotosynthesisTotal
+  use LunaMod               , only : Update_Photosynthesis_Capacity, Acc24_Climate_LUNA, Acc240_Climate_LUNA, Clear24_Climate_LUNA
+  use LunaMod               , only : is_time_to_run_LUNA
   use SoilWaterRetentionCurveMod, only : soil_water_retention_curve_type
   use array_utils     , only : find_k_max_indices
 
@@ -112,7 +116,7 @@ contains
     !
     ! !DESCRIPTION: 
     ! Turbulent and momentum fluxes from urban canyon (consisting of roof, sunwall, 
-    ! shadewall, pervious and impervious road).
+    ! shadewall, urban tree, pervious and impervious road).
 
     ! !USES:
     use clm_varcon          , only : cpair, vkc, spval, grav, pondmx_urban, rpi, rgas, sb, hvap
@@ -184,6 +188,7 @@ contains
     real(r8) :: canyon_u_wind(bounds%begl:bounds%endl)               ! u-component of wind speed inside canyon (m/s)
     real(r8) :: canyon_wind(bounds%begl:bounds%endl)                 ! net wind speed inside canyon (m/s)
     real(r8) :: canyon_resistance(bounds%begl:bounds%endl)           ! resistance to heat and moisture transfer from canyon road/walls to canyon air (s/m)
+    real(r8) :: resis_tree_grnd_q                                    ! resistance to water vapor transfer from the ground under the urban tree to canyon air (s/m)
 
     real(r8) :: ur(bounds%begl:bounds%endl)                          ! wind speed at reference height (m/s)
     real(r8) :: ustar(bounds%begl:bounds%endl)                       ! friction velocity (m/s)
@@ -208,8 +213,8 @@ contains
     real(r8) :: qaf_denom(bounds%begl:bounds%endl)                   ! denominator of qaf equation (m/s)
     real(r8) :: wtas(bounds%begl:bounds%endl)                        ! sensible heat conductance for urban air to atmospheric air (m/s)
     real(r8) :: wtaq(bounds%begl:bounds%endl)                        ! latent heat conductance for urban air to atmospheric air (m/s)
-    real(r8) :: wts_sum(bounds%begl:bounds%endl)                     ! sum of wtas, wtus_roof, wtus_road_perv, wtus_road_imperv, wtus_sunwall, wtus_shadewall
-    real(r8) :: wtq_sum(bounds%begl:bounds%endl)                     ! sum of wtaq, wtuq_roof, wtuq_road_perv, wtuq_road_imperv, wtuq_sunwall, wtuq_shadewall
+    real(r8) :: wts_sum(bounds%begl:bounds%endl)                     ! sum of wtas, wtus_roof, wtus_road_perv, wtus_road_imperv, wtus_sunwall, wtus_shadewall, wtus_road_tree, wtus_road_tree_perv
+    real(r8) :: wtq_sum(bounds%begl:bounds%endl)                     ! sum of wtaq, wtuq_roof, wtuq_road_perv, wtuq_road_imperv, wtuq_sunwall, wtuq_shadewall, wtuq_road_tree, wtuq_road_tree_perv
     real(r8) :: beta(bounds%begl:bounds%endl)                        ! coefficient of convective velocity
     real(r8) :: zii(bounds%begl:bounds%endl)                         ! convective boundary layer height (m)
     real(r8) :: fm(bounds%begl:bounds%endl)                          ! needed for BGC only to diagnose 10m wind speed
@@ -250,8 +255,8 @@ contains
     real(r8) :: wtus_shadewall_unscl(bounds%begl:bounds%endl)        ! sensible heat conductance for shadewall (not scaled) (m/s)
     real(r8) :: wtuq_shadewall_unscl(bounds%begl:bounds%endl)        ! latent heat conductance for shadewall (not scaled) (m/s)
     real(r8) :: wc                                                   ! convective velocity (m/s)
-    real(r8) :: eflx_sh_grnd_scale(bounds%begp:bounds%endp)          ! scaled sensible heat flux from ground (W/m**2) [+ to atm] 
-    real(r8) :: qflx_evap_soi_scale(bounds%begp:bounds%endp)         ! scaled soil evaporation (mm H2O/s) (+ = to atm) 
+    real(r8) :: eflx_sh_grnd_scale(bounds%begp:bounds%endp)          ! scaled sensible heat flux from ground (W/m**2) [+ to atm] (for the tree column they include the canopy fluxes)
+    real(r8) :: qflx_evap_soi_scale(bounds%begp:bounds%endp)         ! scaled soil evaporation (mm H2O/s) (+ = to atm) (for the tree column they include the canopy fluxes)
     real(r8) :: eflx_wasteheat_roof(bounds%begl:bounds%endl)         ! sensible heat flux from urban heating/cooling sources of waste heat for roof (W/m**2)
     real(r8) :: eflx_wasteheat_sunwall(bounds%begl:bounds%endl)      ! sensible heat flux from urban heating/cooling sources of waste heat for sunwall (W/m**2)
     real(r8) :: eflx_wasteheat_shadewall(bounds%begl:bounds%endl)    ! sensible heat flux from urban heating/cooling sources of waste heat for shadewall (W/m**2)
@@ -274,7 +279,6 @@ contains
     real(r8) :: qsat_ref2m                                           ! 2 m height surface saturated specific humidity [kg/kg]
 
     real(r8) :: dayl_factor(bounds%begp:bounds%endp) ! scalar (0-1) for daylength effect on Vcmax
-    !real(r8) :: dayl_factor_l(bounds%begl:bounds%endl)                 ! scalar (0-1) for daylength effect on Vcmax
     real(r8) :: el(bounds%begp:bounds%endp)          ! vapor pressure on leaf surface [pa]
     real(r8) :: qsatl(bounds%begp:bounds%endp)       ! leaf specific humidity [kg/kg]
     real(r8) :: svpts(bounds%begp:bounds%endp)       ! saturation vapor pressure at t_veg (pa)
@@ -288,22 +292,17 @@ contains
 
     real(r8) :: rb(bounds%begp:bounds%endp)                        ! leaf boundary layer resistance on patch level [s/m]
     real(r8) :: rbl(bounds%begl:bounds%endl)                        ! leaf boundary layer resistance on landunit level [s/m]
-    real(r8) :: frac_veg_nosno_l(bounds%begl:bounds%endl)                        ! leaf boundary layer resistance on landunit level [s/m]
+    real(r8) :: frac_veg_nosno_l(bounds%begl:bounds%endl)                        ! the fraction of vegetation not covered by snow (0 or 1)
     
     real(r8) :: rshal(bounds%begl:bounds%endl)                 ! leaf shaded stomatal resistance (s/m) (output from Photosynthesis)
     real(r8) :: rsunl(bounds%begl:bounds%endl)                 ! leaf sunlit stomatal resistance (s/m) (output from Photosynthesis)
     real(r8) :: laisunl(bounds%begl:bounds%endl)                 ! leaf sunlit leaf area 
     real(r8) :: laishal(bounds%begl:bounds%endl)                 ! leaf shaded leaf area
-    real(r8) :: W_roof                                            ! Building width
-    real(r8) :: W_road                                     ! Road width
-    real(r8) :: W_tree                                                ! Effective tree area width
-    real(r8) :: W_tot                                                ! Total width = W_roof + W_road + W_tree
-    real(r8) :: dleaf                                                ! characteristic leaf dimension (m)
+    real(r8) :: dleaf_patch(bounds%begp:bounds%endp)                                                ! characteristic leaf dimension (m)
     real(r8) :: Cv                                                ! Turbulent transfer coefficient between the canopy surface and canopy air
-    integer  :: jtop(bounds%begc:bounds%endc)            ! lbning
+    integer  :: jtop(bounds%begc:bounds%endc)            ! top soil level per column
     !
     real(r8), parameter :: lapse_rate = 0.0098_r8 ! Dry adiabatic lapse rate (K/m)
-    integer , parameter  :: niters = 40           ! maximum number of iterations for surface temperature (t_veg convergence)
     integer , parameter  :: itmin = 3             ! minimum number of iterations before checking convergence
     real(r8), parameter :: btran0 = 0.0_r8  ! initial value
     real(r8), parameter  :: delmax = 1.0_r8       ! max allowed t_veg Newton step (K)
@@ -312,25 +311,24 @@ contains
     integer, parameter :: itmax_urban_fluxes = 40 ! maximum number of iterations for urban fluxes convergence 
 
     ! Variables for Newton-Raphson t_veg iteration (landunit-indexed)
-    real(r8) :: taf_numer_notree(bounds%begl:bounds%endl) ! taf numerator from non-tree surfaces only
-    real(r8) :: taf_denom_notree(bounds%begl:bounds%endl) ! taf denominator from non-tree surfaces only
-    real(r8) :: qaf_numer_notree(bounds%begl:bounds%endl) ! qaf numerator from non-tree surfaces only
-    real(r8) :: qaf_denom_notree(bounds%begl:bounds%endl) ! qaf denominator from non-tree surfaces only
-    real(r8) :: exposed_urb_tree_laisai(bounds%begl:bounds%endl) ! exposed urban tree leaf plus stem area index, elai+esai (m2/m2)
+    real(r8) :: taf_numer_notree(bounds%begl:bounds%endl) ! taf numerator from all terms except the tree canopy
+    real(r8) :: taf_denom_notree(bounds%begl:bounds%endl) ! taf denominator from all terms except the tree canopy
+    real(r8) :: qaf_numer_notree(bounds%begl:bounds%endl) ! qaf numerator from all terms except the tree canopy
+    real(r8) :: qaf_denom_notree(bounds%begl:bounds%endl) ! qaf denominator from all terms except the tree canopy
+    real(r8) :: exposed_urb_tree_laisai(bounds%begl:bounds%endl) ! exposed urban tree leaf plus stem area index per unit road tree area, elai+esai (m2/m2)
     real(r8) :: dt_veg(bounds%begl:bounds%endl)       ! Newton step for urban tree temperature (K)
     real(r8) :: del(bounds%begl:bounds%endl)         ! |dt_veg| for step limiting
-    real(r8) :: del2(bounds%begl:bounds%endl)         ! |dt_veg| for step limiting
-    real(r8) :: ecidif                               ! excess energies [W/m2]
+    real(r8) :: del2(bounds%begl:bounds%endl)         ! del from the previous iteration
+    real(r8) :: ecidif                               ! Excess water flux in kg/m²/s.
     real(r8) :: err(bounds%begl:bounds%endl)         ! energy residual after step limiting (W/m**2)
     real(r8) :: err_tree(bounds%begl:bounds%endl)         ! energy residual after interation (W/m**2)
-    real(r8) :: erre                                  ! balance error after step limiting (W/m**2)
+    real(r8) :: erre                                  !  energy correction from damping efe when it changes sign (W/m**2)
     real(r8) :: tlbef(bounds%begl:bounds%endl)       ! t_veg before Newton step (K)
     logical  :: conv_tree(bounds%begl:bounds%endl)        ! landunit-level convergence flag for t_veg
     ! Per-patch variables for Newton-Raphson
     real(r8) :: qsatldT(bounds%begp:bounds%endp)          ! d(qsat)/dT at t_veg (kg/kg/K)
-    ! Scalar temporaries for Newton-Raphson (reused each iteration/patch)
     real(r8) :: efsh      ! tree sensible heat flux [W/m**2]
-    real(r8) :: efe(bounds%begl:bounds%endl)      ! tree transpiration flux [kg/m**2/s]
+    real(r8) :: efe(bounds%begl:bounds%endl)      ! Latent heat flux from the tree (evaporation + transpiration) in W/m²
     real(r8) :: dHdTv_NR       ! dH/dTv Jacobian [W/m**2/K]
     real(r8) :: dlEdTv_NR      ! d(lambda*E)/dTv Jacobian [W/m**2/K]
     real(r8) :: energy_resid_NR ! energy balance residual [W/m**2]
@@ -340,11 +338,10 @@ contains
     integer  :: nmozsgn(bounds%begl:bounds%endl)     ! number of times stability changes sign
     real(r8) :: rpp(bounds%begl:bounds%endl)                                  ! fraction of potential evaporation from leaf [-]
     real(r8) :: rppdry(bounds%begl:bounds%endl)                               ! fraction of potential evaporation through transp [-]
-    real(r8) :: efeb(bounds%begl:bounds%endl)        ! latent heat flux from leaf (previous iter) [mm/s]
-    real(r8) :: efeold                               ! latent heat flux from leaf (previous iter) [mm/s]
-    real(r8) :: efpot                                ! potential latent energy flux [kg/m2/s]
-    real(r8) :: A_g                                ! ground area
-    real(r8) :: h2ocan                                   ! total canopy water (mm H2O)
+    real(r8) :: efeb(bounds%begl:bounds%endl)        ! latent heat flux from leaf (previous iter) W/m²
+    real(r8) :: efeold                               ! latent heat flux from leaf (previous iter) W/m²
+    real(r8) :: efpot                                ! potential evaporation [kg/m2/s]
+    real(r8) :: h2ocan(bounds%begp:bounds%endp)                                   ! total canopy water (mm H2O)
 
     real(r8), pointer   :: bsun(:)          ! sunlit canopy transpiration wetness factor (0 to 1)
     real(r8), pointer   :: bsha(:)          ! shaded canopy transpiration wetness factor (0 to 1)
@@ -355,14 +352,12 @@ contains
     integer  :: filter_urbantree_uncov_c(bounds%endc-bounds%begc+1)    ! temporary column filter
     integer  :: fnp                               ! number of values in patch filter copy
     integer  :: filter_exposedurbantree_uncov_p(bounds%endp-bounds%begp+1)    ! temporary patch filter
-    integer  :: fnoldl,fnoldc,fnoldp                                ! temporary copy of patch count
+    integer  :: fnoldl,fnoldc,fnoldp                                ! temporary copy of landunit, column and patch counts
     real(r8) :: det(bounds%begl:bounds%endl)         ! maximum leaf temp. change in two consecutive iter [K]
-    real(r8) :: dele(bounds%begl:bounds%endl)        ! change in latent heat flux from leaf [K]
+    real(r8) :: dele(bounds%begl:bounds%endl)        ! change in latent heat flux from leaf [W/m²]
    real(r8) :: qaf_p(bounds%begp:bounds%endp)                        ! patch level canopy air specific humidity (kg/kg)
    real(r8) :: snocan_baseline(bounds%begp:bounds%endp)  ! baseline of snocan for use in truncate_small_values
           !-----------------------------------------------------------------------
-    ! Why this statement is incorrect..?
-    !SHR_ASSERT_ALL_FL((ubound(leafn_patch) == (/bounds%endp/)), sourcefile, __LINE__)
 
     associate(                                                                & 
       begp                =>   bounds%begp                               , &
@@ -371,7 +366,9 @@ contains
       endc                =>   bounds%endc                               , &
       begl                =>   bounds%begl                               , &
       endl                =>   bounds%endl                               , &
-      watsat                 => soilstate_inst%watsat_col                    , & ! Input:  [real(r8) (:,:) ]  volumetric soil water at saturation (porosity)   (constant)                     
+      dleaf                  => pftcon%dleaf                                 , & ! Input:  characteristic leaf dimension (m)
+
+watsat                 => soilstate_inst%watsat_col                    , & ! Input:  [real(r8) (:,:) ]  volumetric soil water at saturation (porosity)   (constant)                     
       btran                  => energyflux_inst%btran_patch                  , & ! Output: [real(r8) (:)   ]  transpiration wetness factor (0 to 1)  
       h2osoi_liqvol          => waterdiagnosticbulk_inst%h2osoi_liqvol_col            , & ! Output: [real(r8) (:,:) ]  volumetric liquid water (v/v) 
           dayl                   => grc%dayl                                     , & ! Input:  [real(r8) (:)   ]  daylength (s)
@@ -409,6 +406,7 @@ contains
 
          rootr_road_perv     =>   soilstate_inst%rootr_road_perv_col        , & ! Input:  [real(r8) (:,:) ]  effective fraction of roots in each soil layer for urban pervious road
          soilalpha_u         =>   soilstate_inst%soilalpha_u_col            , & ! Input:  [real(r8) (:)   ]  Urban factor that reduces ground saturated specific humidity (-)
+         soilresis           =>   soilstate_inst%soilresis_col              , & ! Input:  [real(r8) (:)   ]  soil evaporative resistance S&L14 (s/m); used for the ground under the urban tree
          rootr               =>   soilstate_inst%rootr_patch                , & ! Output: [real(r8) (:,:) ]  effective fraction of roots in each soil layer (SMS method only) 
 
          t_grnd              =>   temperature_inst%t_grnd_col               , & ! Input:  [real(r8) (:)   ]  ground surface temperature (K)                    
@@ -456,7 +454,8 @@ contains
          qg                  =>   waterdiagnosticbulk_inst%qg_col                    , & ! Input:  [real(r8) (:)   ]  specific humidity at ground surface (kg/kg)       
          h2osoi_ice          =>   waterstatebulk_inst%h2osoi_ice_col            , & ! Input:  [real(r8) (:,:) ]  ice lens (kg/m2)                                
          h2osoi_liq          =>   waterstatebulk_inst%h2osoi_liq_col            , & ! Input:  [real(r8) (:,:) ]  liquid water (kg/m2)                            
-         qaf                 =>   waterdiagnosticbulk_inst%qaf_lun                   , & ! Output: [real(r8) (:)   ]  urban canopy air specific humidity (kg/kg)        
+         qaf                 =>   waterdiagnosticbulk_inst%qaf_lun                   , & ! Output: [real(r8) (:)   ]  urban canopy air specific humidity (kg/kg)
+         rhaf                =>   waterdiagnosticbulk_inst%rh_af_patch               , & ! Output: [real(r8) (:)   ]  fractional humidity of canopy air, urban tree (for LUNA) [-]
          q_ref2m             =>   waterdiagnosticbulk_inst%q_ref2m_patch             , & ! Output: [real(r8) (:)   ]  2 m height surface specific humidity (kg/kg)      
          rh_ref2m            =>   waterdiagnosticbulk_inst%rh_ref2m_patch            , & ! Output: [real(r8) (:)   ]  2 m height surface relative humidity (%)          
          rh_ref2m_u          =>   waterdiagnosticbulk_inst%rh_ref2m_u_patch          , & ! Output: [real(r8) (:)   ]  2 m height surface relative humidity (%)          
@@ -496,7 +495,7 @@ contains
          qflx_evap_veg       =>   waterfluxbulk_inst%qflx_evap_veg_patch        , & ! Output: [real(r8) (:)   ]  vegetation evaporation (mm H2O/s) (+ = to atm)
          eflx_sh_veg            => energyflux_inst%eflx_sh_veg_patch            , & ! Output: [real(r8) (:)   ]  sensible heat flux from leaves (W/m**2) [+ to atm] 
          em_tree_urb         =>   urbanparams_inst%em_tree_urb                  , & ! Input:  [real(r8) (:)   ]  urban tree emissivity
-         sabg                =>   solarabs_inst%sabg_patch                      , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by tree patch (W/m**2)
+         sabg                =>   solarabs_inst%sabg_patch                      , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by ground (W/m**2)
          sabv               =>    solarabs_inst%sabv_patch                   , & ! Output: [real(r8) (:)   ]  solar radiation absorbed by vegetation (W/m**2)   
          fwet                   => waterdiagnosticbulk_inst%fwet_patch                   , & ! Input:  [real(r8) (:)   ]  fraction of canopy that is wet (0 to 1)                               
          fdry                   => waterdiagnosticbulk_inst%fdry_patch                   , & ! Input:  [real(r8) (:)   ]  fraction of foliage that is green and dry [-]                         
@@ -513,12 +512,8 @@ contains
          )
       if (use_hydrstress) then
         bsun                    => energyflux_inst%bsun_patch                       ! Output: [real(r8) (:)   ]  sunlit canopy transpiration wetness factor (0 to 1)
-        bsha                    => energyflux_inst%bsha_patch                       ! Output: [real(r8) (:)   ]  sunlit canopy transpiration wetness factor (0 to 1)
+        bsha                    => energyflux_inst%bsha_patch                       ! Output: [real(r8) (:)   ]  shaded canopy transpiration wetness factor (0 to 1)
       end if
-      ! -----------------------------------------------------------------
-      ! Time step initialization of photosynthesis variables
-      ! -----------------------------------------------------------------
-      call photosyns_inst%TimeStepInit(bounds)
 
       ! Define fields that appear on the restart file for non-urban landunits 
       ! TODO: check all new variables - do we need to initialize them as spval?
@@ -536,79 +531,65 @@ contains
       zii(begl:endl)  = 1000._r8          ! Should be set to the same values as in Biogeophysics1Mod
 
       ! set as nan for SP mode, required by Fractionation subroutine
+      ! Claude says Fractionation accepts it but never reads it, so this variable can be removed
       downreg_patch(begp:endp) = nan 
-      
-      rb1(begp:endp) = 0._r8
 
       conv_tree(begl:endl) = .false.
+      obuold(begl:endl) = 0._r8
+      nmozsgn(begl:endl) = 0
 
       ! Determine step size
       dtime = get_step_size_real()
 
       ! Make a local copy of the exposedvegp filter. With the current implementation,
       ! this is needed because the filter is modified in the iteration loop.
-
-      !! run with hydro stress photo
       fnl = num_urbanl
       filter_urban_uncov_l(1:fnl) = filter_urbanl(1:fnl)
 
       fnp = num_exposedurbtreep
       filter_exposedurbantree_uncov_p(1:fnp) = filter_exposedurbtreep(1:fnp)
       
-      ! num_urbantreep
-      !filter_urbantreep(1:fnp)
-
       fnc = num_urbantreec
       filter_urbantree_uncov_c(1:fnc) = filter_urbantreec(1:fnc)
 
       exposed_urb_tree_laisai(begl:endl) = 0._r8
 
+      !hard-coded turbulent transfer coefficient between the canopy surface and canopy air
+      Cv=0.01_r8
+
       do f = 1, num_urbantreep
          p = filter_urbantreep(f)
+         c = patch%column(p)
          l = patch%landunit(p)
+         g = patch%gridcell(p)
          del(l)    = 0._r8  ! change in leaf temperature from previous iteration
          efeb(l)   = 0._r8  ! latent head flux from leaf for previous iteration
-         obuold(l) = 0._r8
+         
          btran(p)  = btran0
          err_tree(l)   = 0._r8
          rppdry(l)= 0._r8
          rpp(l) = 0._r8
          qflx_tran_veg(p) = 0._r8
+         rb1(p) = 0._r8
 
          ! Exposed leaf plus stem area of the tree canopy. There is at most one
          ! tree patch per urban landunit, so this is just the patch value carried
          ! to the landunit index used by the canyon conductances below. It is zero
          ! for a snow-buried canopy, which is exactly the noexposedurbtreep set.
          exposed_urb_tree_laisai(l) = elai(p) + esai(p)
-      end do
 
-      ! calculate daylength control for Vcmax
-      ! Assign landunit level lai to pacth level lai_p
-      do f = 1, num_urbantreep
-        p = filter_urbantreep(f)
-        l = patch%landunit(p)
-        g = patch%gridcell(p)
-        ! calculate dayl_factor as the ratio of (current:max dayl)^2
-        ! set a minimum of 0.01 (1%) for the dayl_factor
-        dayl_factor(p)=min(1._r8,max(0.01_r8,(dayl(g)*dayl(g))/(max_dayl(g)*max_dayl(g))))
-      end do
-      
-      ! these constants are required to calculate leaf boundary resistance
-      !hard-coded characteristic dimension of the leaves in the direction of wind flow
-      ! from clm50_params file - dleaf is mostly 0.4, Cv is 0.01
-      dleaf=0.04_r8
-      !hard-coded turbulent transfer coefficient between the canopy surface and canopy air
-      Cv=0.01_r8
-      
-      !------------------------------------------------------------------------
-      ! The loop below tries to calculate some variables required to run Photosynthesis subroutine
-      ! svpts, eah, co2, o2
-      !------------------------------------------------------------------------
-      do f = 1, num_urbantreep
-         p = filter_urbantreep(f)
-         c = patch%column(p)
-         g = patch%gridcell(p)
-         l = patch%landunit(p)
+         dleaf_patch(p)=dleaf(patch%itype(p))
+         !------------------------------------------------------------------------
+         ! Calculate daylength control for Vcmax
+         ! calculate dayl_factor as the ratio of (current:max dayl)^2
+         ! set a minimum of 0.01 (1%) for the dayl_factor
+         !------------------------------------------------------------------------
+         dayl_factor(p)=min(1._r8,max(0.01_r8,(dayl(g)*dayl(g))/(max_dayl(g)*max_dayl(g))))
+   
+         !------------------------------------------------------------------------
+         ! The loop below tries to calculate some variables required to run Photosynthesis subroutine
+         ! svpts, eah, co2, o2
+         !------------------------------------------------------------------------
          ! this is calculating saturated specific humidity at the leaf temperature, which is required to run Photosynthesis subroutine
          call QSat (t_veg(p), forc_pbot_c(c), qsatl(p), es = el(p), qsdT=qsatldT(p))
          svpts(p) = el(p)
@@ -619,11 +600,6 @@ contains
          co2(p) = forc_pco2(g)
          o2(p)  = forc_po2(g)
 
-         nmozsgn(l) = 0
-
-         ! Record initial veg/stem temperatures
-         ! haven't define tl_ini yet
-         ! tl_ini(p) = t_veg(p)
       end do
       
       !------------------------------------------------------------------------
@@ -648,7 +624,7 @@ contains
        jtop(bounds%begc:bounds%endc) = 1
        
        !------------------------------------------------------------------------
-       ! Compute waterstatebulk_inst%h2osoi_vol_col/vol_liq which is required to run calc_root_moist_stress
+       ! Compute waterdiagnosticbulk_inst%h2osoi_liqvol_col which is required to run calc_root_moist_stress
        ! The required input eff_porosity was just computed by calc_effective_soilporosity
        ! The required input h2osoi_liq has been computed somewhere for urban road tree column (see subroutine CalculateSurfaceHumidity of SurfaceHumidityMod.F90)
        !------------------------------------------------------------------------
@@ -665,7 +641,7 @@ contains
              
      !------------------------------------------------------------------------
      ! Compute root moisture stress (btran) for urban road tree columns, which is required to run Photosynthesis subroutine
-     ! This subroutine requires active_layer_inst, soilstate_inst%watsat, sucsat, bsw ,waterstatebulk_inst%h2osoi_vol_col
+     ! This subroutine requires active_layer_inst, soilstate_inst%watsat, sucsat, bsw ,waterstatebulk_inst%h2osoi_vol_col -- or waterdiagnosticbulk_inst%h2osoi_liqvol_col?????
      ! SoilStateInitTimeConstMod.F90
      ! 
      ! The required input soilstate_inst%rootfr_patch is computed in the init_vegrootfr from RootBiophysMod.F90
@@ -733,7 +709,7 @@ contains
               log( (forc_hgt_u_patch(lun%patchi(l))-z_d_town(l)) / z_0_town(l) )
 
          ! U component of canyon wind 
-
+         ! this assumes that the existence of tree does NOT change the flow regime
          if (canyon_hwr(l) < 0.5_r8) then  ! isolated roughness flow
             canyon_u_wind(l) = canyontop_wind(l) * exp( -0.5_r8*canyon_hwr(l)* &
                  (1._r8-(wind_hgt_canyon(l)/ht_can_eff(l))) )
@@ -804,14 +780,12 @@ contains
       qaf_denom_notree(begl:endl) = 0._r8
 
       ! Set counter for leaf temperature iteration (itlef)
-      iter = 0    
-
+      iter = 1    
       ! Start stability iteration
       call t_startf('urban_iter')
       ITERATION : do while (iter <= itmax_urban_fluxes .and. fnl > 0)
          ! Get friction velocity, relation for potential
          ! temperature and humidity profiles of surface boundary layer.
-
 
          call frictionvel_inst%FrictionVelocity(begl, endl, &
                fnl, filter_urban_uncov_l, &
@@ -836,7 +810,7 @@ contains
             eah(p) = forc_pbot_c(c) * qaf(l) / 0.622_r8   ! pa
             qaf_p(p) = qaf(l)
 
-            rb(p)=1/Cv*(ustar(l)/dleaf)**(-0.5_r8)
+            rb(p)=1/Cv*(ustar(l)/dleaf_patch(p))**(-0.5_r8)
             rbl(l)=rb(p)
             rb1(p)=rb(p)
 
@@ -867,7 +841,6 @@ contains
             ! resistance from urban surfaces (roof, pervious and impervious road, sunlit and
             ! shaded walls) to urban canopy air, since it is only dependent on wind speed
             ! Also from Masson 2000.
-
             canyon_resistance(l) = cpair * forc_rho(g) / (11.8_r8 + 4.2_r8*canyon_wind(l))
 
          end do
@@ -928,7 +901,6 @@ contains
                atm2lnd_inst, temperature_inst, surfalb_inst, solarabs_inst, &
                canopystate_inst, ozone_inst, photosyns_inst, phase='sun')
          end if
-
           !------------------------------------------------------------------------
           ! Compute photosyns_inst%alphapsnsun_patch, which is required by Photosynthesis
           ! Question: so the alphapsn computed is used by Photosynthesis in the next time step?
@@ -978,10 +950,9 @@ contains
                rppdry(l) = 0._r8
             end if
 
-            ! need to convert LAI per tree area into LAI per road area
-            ! the efpot therefore is also LE per road area
+            ! the efpot kg/m²/s
             efpot = forc_rho(g)*((exposed_urb_tree_laisai(l))/rb(p))*(qsatl(p)-qaf(l))
-            h2ocan = liqcan(p) + snocan(p)
+            h2ocan(p) = liqcan(p) + snocan(p)
 
             ! for now, use use_hydrstress=false scenario
             ! Eq. 5.111
@@ -993,7 +964,7 @@ contains
                      rpp(l) = fwet(p)
                   end if
                   !Check total evapotranspiration from leaves
-                  rpp(l) = min(rpp(l), (qflx_tran_veg(p)+h2ocan/dtime)/efpot)
+                  rpp(l) = min(rpp(l), (qflx_tran_veg(p)+h2ocan(p)/dtime)/efpot)
                else
                   rpp(l) = 1._r8
                end if
@@ -1008,7 +979,7 @@ contains
                      qflx_tran_veg(p) = 0._r8 ! this means rppdry(l)=0
                   end if
                   !Check total evapotranspiration from leaves
-                  rpp(l) = min(rpp(l), (qflx_tran_veg(p)+h2ocan/dtime)/efpot)
+                  rpp(l) = min(rpp(l), (qflx_tran_veg(p)+h2ocan(p)/dtime)/efpot)
                else
                   !No transpiration if potential evaporation less than zero
                   rpp(l) = 1._r8
@@ -1034,24 +1005,12 @@ contains
 
          end do
 
-
          ! Gather other terms for other urban columns for numerator and denominator of
          ! equations for urban canopy air temperature and specific humidity
-          
          do fc = 1,num_urbanc
             c = filter_urbanc(fc)
             l = col%landunit(c)
             
-            ! ! roof width
-            ! W_roof=ht_roof(l)/canyon_hwr(l)*wtlunit_roof(l)/(1-wtlunit_roof(l))
-            ! ! road width
-            ! W_road=ht_roof(l)/canyon_hwr(l)
-            ! ! effective tree area width
-            ! ! doublecheck this value
-            ! ! W_tree=
-            ! ! The sensible and latend heat flux is per unit road area
-            ! W_tree=wtroad_tree(l)*ht_roof(l)/canyon_hwr(l)
-            ! W_tot=W_roof+W_road+W_tree
             if (ctype(c) == icol_roof) then
 
                ! scaled sensible heat conductance
@@ -1098,19 +1057,24 @@ contains
                ! unscaled sensible heat conductance
                wtus_road_tree_perv_unscl(l) = 1._r8/canyon_resistance(l)
 
+               ! Water vapor from the ground under the tree also passes through the S&L14 dry
+               ! surface layer resistance, in series with the canyon resistance, as CanopyFluxes
+               ! does for the ground beneath natural vegetation (wtgq). As there, it is not
+               ! applied to dew (qaf > qg). The sensible heat conductance is unchanged.
+
+               ! by default soil_resis_method = 1 and L14 method is active
+               if (do_soil_resistance_sl14() .and. qaf(l) <= qg(c)) then
+                  resis_tree_grnd_q = canyon_resistance(l) + soilresis(c)
+               else
+                  resis_tree_grnd_q = canyon_resistance(l)
+               end if
+
                ! scaled latent heat conductance
-               wtuq(c) = wtroad_tree(l)*(1._r8-wtlunit_roof(l))/canyon_resistance(l)
+               wtuq(c) = wtroad_tree(l)*(1._r8-wtlunit_roof(l))/resis_tree_grnd_q
                wtuq_road_tree_perv(l) = wtuq(c)
                ! unscaled latent heat conductance
-               wtuq_road_tree_perv_unscl(l) = 1._r8/canyon_resistance(l)
+               wtuq_road_tree_perv_unscl(l) = 1._r8/resis_tree_grnd_q
                
-               ! first set all urban tree columns to zero
-               wtus(c) = 0._r8
-               wtus_road_tree(l) = wtus(c)
-               wtus_road_tree_unscl(l) = 0._r8
-               wtuq(c) = 0._r8
-               wtuq_road_tree(l) = wtuq(c)
-               wtuq_road_tree_unscl(l) = 0._r8
             else if (ctype(c) == icol_road_imperv) then
 
                ! scaled sensible heat conductance
@@ -1191,7 +1155,6 @@ contains
             end if
 
          end do
-
          ! Save non-tree numerators/denominators for Newton-Raphson Jacobian calculation
          do fl = 1, fnl
             l = filter_urban_uncov_l(fl)
@@ -1211,7 +1174,7 @@ contains
             l = patch%landunit(p)
 
             ! scaled sensible heat conductance
-            wtus(c) = wtroad_tree(l)*(1._r8-wtlunit_roof(l))/(rbl(l)/(exposed_urb_tree_laisai(l)))
+            wtus(c) =wtroad_tree(l)*(1._r8-wtlunit_roof(l))/(rbl(l)/(exposed_urb_tree_laisai(l)))
             wtus_road_tree(l) = wtus(c)
             ! unscaled sensible heat conductance
             wtus_road_tree_unscl(l) = 1._r8/(rbl(l)/(exposed_urb_tree_laisai(l)))
@@ -1219,7 +1182,7 @@ contains
             ! scaled latent heat conductance
             ! conductance = laisunl(l)/(rbl(l)+rsunl(l)) + laishal(l)/(rbl(l)+rshal(l)) = 1/resistance
             ! For now, the leaf water vapor resistence is 1/(laisunl(l)/(rbl(l)+rsunl(l)) + laishal(l)/(rbl(l)+rshal(l)))
-            wtuq(c) = wtroad_tree(l)*(1._r8-wtlunit_roof(l))*frac_veg_nosno_l(l)*(exposed_urb_tree_laisai(l))* rpp(l)/rbl(l)
+            wtuq(c) =wtroad_tree(l)*(1._r8-wtlunit_roof(l))*frac_veg_nosno_l(l)*(exposed_urb_tree_laisai(l))* rpp(l)/rbl(l)
             wtuq_road_tree(l) = wtuq(c)
             ! unscaled latent heat conductance
             wtuq_road_tree_unscl(l) = frac_veg_nosno_l(l)*(exposed_urb_tree_laisai(l))* rpp(l)/rbl(l)
@@ -1235,6 +1198,7 @@ contains
             ! Use scaled sensible/latent conductances (consistent with taf/qaf formula).
             ! c_other_s = sum of all non-tree sensible conductances = taf_denom_notree(l)
             ! c_tree_s  = scaled tree sensible conductance = wtus_road_tree(l)
+
             ! Sensible heat: H_tree = -rho*Cp*(T_ac - t_veg)*c_tree_s
             !   with T_ac = (taf_numer_notree + c_tree_s*t_veg)/(c_other_s + c_tree_s)
             !   simplifies to: H_tree = -rho*Cp * c_tree_s*(taf_numer_notree - c_other_s*t_veg)
@@ -1243,6 +1207,7 @@ contains
             ! should we use scaled or unscaled conductance?
             ! I think we should use unscaled conductance to compute flux per unit urban tree area
             
+            ! if LAI is per road tree area, the the H calculated here is also per road tree area
             efsh = -forc_rho(g) * cpair * wtus_road_tree_unscl(l) * &
                  (taf_numer_notree(l) - taf_denom_notree(l)*t_veg(p)) / &
                  (taf_denom_notree(l) + wtus_road_tree(l))
@@ -1270,9 +1235,8 @@ contains
             dlEdTv_NR = hvap * forc_rho(g) * qaf_denom_notree(l) * wtuq_road_tree_unscl(l) / &
                  (qaf_denom_notree(l) + wtuq_road_tree(l)) * qsatldT(p)
 
-            A_g=ht_roof(l)/canyon_hwr(l)
-            ! Energy residual: sabg absorbed - lwnet_tree outgoing - sensible - latent
-            ! now I convert sabg and lwnet_tree into flux per urban tree area in UrbanRadiation mod
+            ! Energy residual: solar absorbed - lwnet_tree outgoing - sensible - latent
+            ! sabv, lwnet_tree, efsh and efe are all fluxes per unit road-tree column area
             energy_resid_NR = sabv(p) - lwnet_tree(l)- efsh -  efe(l)
 
             ! Newton-Raphson denominator (LW emission linearization + Jacobians)
@@ -1314,8 +1278,8 @@ contains
             ! within the leaf temperature iteration, this ends up being a small inconsistency.
 
             if ( use_hydrstress ) then
-               ecidif = max(0._r8, qflx_evap_veg(p)-qflx_tran_veg(p)-h2ocan/dtime)
-               qflx_evap_veg(p) = min(qflx_evap_veg(p),qflx_tran_veg(p)+h2ocan/dtime)
+               ecidif = max(0._r8, qflx_evap_veg(p)-qflx_tran_veg(p)-h2ocan(p)/dtime)
+               qflx_evap_veg(p) = min(qflx_evap_veg(p),qflx_tran_veg(p)+h2ocan(p)/dtime)
             else
                ecidif = 0._r8
                if (efpot > 0._r8 .and. btran(p) > btran0) then
@@ -1323,13 +1287,13 @@ contains
                else
                   qflx_tran_veg(p) = 0._r8
                end if
-               ecidif = max(0._r8, qflx_evap_veg(p)-qflx_tran_veg(p)-h2ocan/dtime)
-               qflx_evap_veg(p) = min(qflx_evap_veg(p),qflx_tran_veg(p)+h2ocan/dtime)
+               ecidif = max(0._r8, qflx_evap_veg(p)-qflx_tran_veg(p)-h2ocan(p)/dtime)
+               qflx_evap_veg(p) = min(qflx_evap_veg(p),qflx_tran_veg(p)+h2ocan(p)/dtime)
             end if
 
             ! The energy loss due to above two limits is added to
             ! the sensible heat flux.
-            ! absorb the longwabe imbalance as well
+            ! absorb the longwave imbalance as well
             eflx_sh_veg(p) = efsh + (dHdTv_NR + 4._r8*em_tree_urb(l)*sb*t_veg(p)**3)*dt_veg(l) + err(l) + erre + hvap*ecidif
 
             error_total(p)=(dHdTv_NR + 4._r8*em_tree_urb(l)*sb*t_veg(p)**3)*dt_veg(l) + err(l) + erre + hvap*ecidif
@@ -1429,8 +1393,7 @@ contains
             obuold(l) = obu(l)
          end do
 
-         iter = iter+1
-         if (iter > itmin) then
+         if (iter >= itmin) then
             fnoldl = fnl;fnl = 0
             fnoldc = fnc;fnc = 0
             fnoldp = fnp; fnp = 0
@@ -1478,6 +1441,7 @@ contains
                end if
             end do
          end if
+         iter = iter+1
       end do ITERATION   ! end iteration
       call t_stopf('urban_iter')
 
@@ -1586,7 +1550,7 @@ contains
 
          ! Use new canopy air temperature
          dth(l) = taf(l) - t_grnd(c)
-         ! flux per road area
+         ! flux per unit area of each column (surface)
          if (ctype(c) == icol_roof) then
             eflx_sh_veg(p) = 0._r8
             eflx_sh_grnd(p)  = -forc_rho(g)*cpair*wtus_roof_unscl(l)*dth(l)
@@ -1674,6 +1638,8 @@ contains
          c = patch%column(p)
          g = patch%gridcell(p)
          l = patch%landunit(p)
+
+         snocan_baseline(p) = snocan(p)
 
          if (t_veg(p) > tfrz ) then ! above freezing, update accumulation in liqcan
             if ((qflx_evap_veg(p)-qflx_tran_veg(p))*dtime > liqcan(p)) then ! all liq evap
@@ -1855,7 +1821,7 @@ contains
       ! Remove snocan that got reduced by more than a factor of rel_epsilon
       ! snocan < rel_epsilon * snocan_baseline will be set to zero
       ! See NumericsMod for rel_epsilon value
-      call truncate_small_values(num_urbanp, filter_urbanp, begp, endp, &
+      call truncate_small_values(num_exposedurbtreep, filter_exposedurbtreep, begp, endp, &
          snocan_baseline(begp:endp), snocan(begp:endp), &
          custom_rel_epsilon=1.e-10_r8)
          
@@ -1877,6 +1843,73 @@ contains
            ram       = frictionvel_inst%ram1_patch(bounds%begp:bounds%endp), &
            tlai      = canopystate_inst%tlai_patch(bounds%begp:bounds%endp),  &
            forc_o3   = atm2lnd_inst%forc_o3_grc(bounds%begg:bounds%endg))
+
+      !------
+      ! Total canopy photosynthesis (fpsn) of the urban tree, as CanopyFluxes does for
+      ! natural vegetation. TimeStepInit zeroes fpsn every step and LUNA accumulates its
+      ! daily GPP from it, so without this call LUNA sees no growth for the tree and
+      ! decays Vcmax25/Jmax25 instead of optimizing them.
+      !-----
+      call PhotosynthesisTotal(num_exposedurbtreep, filter_exposedurbtreep, &
+           atm2lnd_inst, canopystate_inst, photosyns_inst)
+
+      !------
+      ! Update Vcmax25 and Jmax25 of the urban tree with LUNA, as CanopyFluxes does for
+      ! natural vegetation. When use_luna is on, Photosynthesis takes vcmax25 from
+      ! vcmx25_z_patch, which otherwise stays at its cold-start value (30, Jmax25 60)
+      ! for the tree. The full exposed-tree filter is used, not the shrinking
+      ! not-yet-converged one, matching the filter CanopyFluxes passes to LUNA.
+      !-----
+      if (use_luna) then
+         ! Fractional humidity of the canyon air relative to saturation at the final leaf
+         ! temperature; the urban counterpart of rhaf = eah/svpts in CanopyFluxes.
+         ! el(p) is the saturation vapor pressure at the final t_veg (last QSat call).
+         do f = 1, num_exposedurbtreep
+            p = filter_exposedurbtreep(f)
+            c = patch%column(p)
+            l = patch%landunit(p)
+            eah(p)   = forc_pbot_c(c) * qaf(l) / 0.622_r8
+            svpts(p) = el(p)
+            rhaf(p)  = eah(p) / svpts(p)
+         end do
+
+         call Acc24_Climate_LUNA(bounds, num_exposedurbtreep, filter_exposedurbtreep, &
+              canopystate_inst, photosyns_inst, &
+              surfalb_inst, solarabs_inst, &
+              temperature_inst)
+
+         if (is_time_to_run_LUNA()) then
+
+            call Acc240_Climate_LUNA(bounds, num_exposedurbtreep, filter_exposedurbtreep, &
+                 o2(begp:endp), &
+                 co2(begp:endp), &
+                 rb(begp:endp), &
+                 rhaf(begp:endp), &
+                 temperature_inst, &
+                 photosyns_inst, &
+                 surfalb_inst, &
+                 solarabs_inst, &
+                 waterdiagnosticbulk_inst, &
+                 frictionvel_inst)
+
+            call Update_Photosynthesis_Capacity(bounds, num_exposedurbtreep, filter_exposedurbtreep, &
+                 dayl_factor(begp:endp), &
+                 atm2lnd_inst, &
+                 temperature_inst, &
+                 canopystate_inst, &
+                 photosyns_inst, &
+                 surfalb_inst, &
+                 solarabs_inst, &
+                 waterdiagnosticbulk_inst, &
+                 frictionvel_inst, &
+                 ozone_inst)
+
+            call Clear24_Climate_LUNA(bounds, num_exposedurbtreep, filter_exposedurbtreep, &
+                 canopystate_inst, photosyns_inst, &
+                 surfalb_inst, solarabs_inst, &
+                 temperature_inst)
+         end if
+      end if
 
     end associate
 

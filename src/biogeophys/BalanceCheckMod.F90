@@ -459,7 +459,7 @@ contains
      ! error = abs(precipitation - change of water storage - evaporation - runoff)
      !
      ! !USES:
-     use clm_varcon        , only : spval, hvap
+     use clm_varcon        , only : spval
      use clm_varctl        , only : use_soil_moisture_streams
      use clm_time_manager  , only : get_step_size_real, get_nstep
      use clm_time_manager  , only : get_nstep_since_startup_or_lastDA_restart_or_pause
@@ -585,7 +585,6 @@ contains
           errsol                  =>    energyflux_inst%errsol_patch            , & ! Output: [real(r8) (:)   ]  solar radiation conservation error (W/m**2)
           errseb                  =>    energyflux_inst%errseb_patch            , & ! Output: [real(r8) (:)   ]  surface energy conservation error (W/m**2)
           errlon                  =>    energyflux_inst%errlon_patch            , & ! Output: [real(r8) (:)   ]  longwave radiation conservation error (W/m**2)
-         lwnet_tree_perroad     => solarabs_inst%lwnet_tree_perroad_lun     , & ! Input:  [real(r8) (:) ]  net (outgoing-incoming) longwave radiation (per unit ground area), pervious road beneath the tree canopy (W/m**2)
           sabg_soil               =>    solarabs_inst%sabg_soil_patch           , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by soil (W/m**2)
           sabg_snow               =>    solarabs_inst%sabg_snow_patch           , & ! Input:  [real(r8) (:)   ]  solar radiation absorbed by snow (W/m**2)
           sabg_chk                =>    solarabs_inst%sabg_chk_patch            , & ! Input:  [real(r8) (:)   ]  sum of soil/snow using current fsno, for balance check
@@ -604,9 +603,6 @@ contains
           ftdd                    =>    surfalb_inst%ftdd_patch                 , & ! Input:  [real(r8) (:,:)]  down direct flux below canopy per unit direct flux
           ftid                    =>    surfalb_inst%ftid_patch                 , & ! Input:  [real(r8) (:,:)]  down diffuse flux below canopy per unit direct flux
           ftii                    =>    surfalb_inst%ftii_patch                 , & ! Input:  [real(r8) (:,:)]  down diffuse flux below canopy per unit diffuse flux
-         eflx_sh_veg             => energyflux_inst%eflx_sh_veg_patch       , & ! Output: [real(r8) (:)   ]  sensible heat flux from leaves (W/m**2) [+ to atm]
-         ! qflx_evap_veg           => waterfluxbulk_inst%qflx_evap_veg_patch      , & ! Output: [real(r8) (:)   ]  vegetation evaporation (mm H2O/s) (+ = to atm)
-         eflx_sh_grnd            => energyflux_inst%eflx_sh_grnd_patch      , & ! Output: [real(r8) (:)   ]  sensible heat flux from ground (W/m**2) [+ to atm]
           netrad                  =>    energyflux_inst%netrad_patch              & ! Output: [real(r8) (:)   ]  net radiation (positive downward) (W/m**2)
           )
 

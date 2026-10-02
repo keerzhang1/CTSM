@@ -101,6 +101,15 @@ module clm_driver
   ! update. See the use of do_urban_phenology in clm_drv for why this is latched
   ! rather than tested against the previous time step's month.
   integer, private :: urban_phenology_mon = -1
+  integer, private :: urban_phenology_day = -1   ! day of month of the last urban phenology update (Option D)
+
+  ! How often UrbanPhenology runs (tree LAI interpolation, then the view factor and
+  ! roughness update that depend on it). It always runs on a radiation step (doalb):
+  !   'A'  every radiation step
+  !   'B'  first radiation step of the run and of each new month
+  !   'C'  first radiation step of the run only; the tree LAI then stays fixed
+  !   'D'  first radiation step of the run and of each new day
+  character(len=1), parameter, private :: urban_phenology_option='NAN'
 
   character(len=*), parameter, private :: sourcefile = &
        __FILE__
@@ -147,7 +156,7 @@ contains
     integer              :: mon                     ! month (1, ..., 12)
     integer              :: day                     ! day of month (1, ..., 31)
     integer              :: sec                     ! seconds of the day
-    logical              :: do_urban_phenology      ! true on the first radiation step of the run and of each month
+    logical              :: do_urban_phenology      ! true when UrbanPhenology runs this step (see urban_phenology_option)
     character(len=256)   :: filer                   ! restart file name
     integer              :: ier                     ! error code
     logical              :: need_glacier_initialization ! true if we need to initialize glacier areas in this time step
@@ -498,8 +507,8 @@ contains
     ! snow accumulation exceeds 10 mm.
     ! ============================================================================
 
-    ! Update urban tree phenology on the first radiation step of the run and on the
-    ! first radiation step of each new month.
+    ! Update urban tree phenology on radiation steps, as often as urban_phenology_option
+    ! says (every step, monthly, once, or daily).
     !
     ! The doalb gate matters: UrbanPhenology sets elai/esai and frac_veg_nosno_alb for
     ! the tree patch, while SurfaceAlbedo - which sets nrad and tlai_z for the same
@@ -515,8 +524,27 @@ contains
     !
     ! Computed here in the serial section so the flag is shared read-only across clumps.
     call get_curr_date(yr,  mon,  day,  sec)
-    do_urban_phenology = doalb .and. (mon /= urban_phenology_mon)
-    if (do_urban_phenology) urban_phenology_mon = mon
+
+    ! Update frequency is set by urban_phenology_option (module parameter above)
+    select case (urban_phenology_option)
+    case ('A')
+       ! every radiation step
+       do_urban_phenology = doalb
+    case ('B')
+       ! first radiation step of the run and of each new month
+       do_urban_phenology = doalb .and. (mon /= urban_phenology_mon)
+       if (do_urban_phenology) urban_phenology_mon = mon
+    case ('C')
+       ! first radiation step of the run only; the tree LAI then stays fixed
+       do_urban_phenology = doalb .and. (urban_phenology_mon == -1)
+       if (do_urban_phenology) urban_phenology_mon = mon
+    case ('D')
+       ! first radiation step of the run and of each new day
+       do_urban_phenology = doalb .and. (day /= urban_phenology_day)
+       if (do_urban_phenology) urban_phenology_day = day
+    case default
+       call endrun(msg=' ERROR: urban_phenology_option in clm_driver must be A, B, C or D')
+    end select
 
     !$OMP PARALLEL DO PRIVATE (nc,l,c, bounds_clump, downreg_patch, leafn_patch, agnpp_patch, bgnpp_patch, annsum_npp_patch, rr_patch, froot_carbon, croot_carbon)
     do nc = 1,nclumps
@@ -1120,8 +1148,10 @@ contains
 
        ! Interpolate prescribed monthly urban tree LAI (updated at the beginning of each month)
        if (do_urban_phenology) then
+          call t_startf('UrbanPhenology')
           call UrbanPhenology(bounds_clump, filter(nc)%num_urbantreep, filter(nc)%urbantreep, &
                urbanparams_inst, canopystate_inst, water_inst%waterdiagnosticbulk_inst)
+          call t_stopf('UrbanPhenology')
        end if
 
        ! Dry Deposition of chemical tracers (Wesely (1998) parameterizaion)

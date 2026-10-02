@@ -619,12 +619,12 @@ contains
 
          ! Ozone stress for shaded leaves
          call CalcOzoneStressLombardozzi2015OnePoint( &
-              pft_type=5, o3uptake=o3uptakesha(p), &
+              pft_type=patch%itype(p), o3uptake=o3uptakesha(p), &
               o3coefv=o3coefvsha(p), o3coefg=o3coefgsha(p))
 
          ! Ozone stress for sunlit leaves
          call CalcOzoneStressLombardozzi2015OnePoint( &
-              pft_type=5, o3uptake=o3uptakesun(p), &
+              pft_type=patch%itype(p), o3uptake=o3uptakesun(p), &
               o3coefv=o3coefvsun(p), o3coefg=o3coefgsun(p))
       end do
       
@@ -762,12 +762,12 @@ contains
          
          ! Ozone stress for shaded leaves
           call CalcOzoneStressFalkOnePoint( &
-            pft_type=7, o3uptake=o3uptakesha(p), &
+            pft_type=patch%itype(p), o3uptake=o3uptakesha(p), &
             o3coefjmax=o3coefjmaxsha(p))
 
          ! Ozone stress for sunlit leaves
          call CalcOzoneStressFalkOnePoint( &
-            pft_type=7, o3uptake=o3uptakesun(p), &
+            pft_type=patch%itype(p), o3uptake=o3uptakesun(p), &
             o3coefjmax=o3coefjmaxsun(p))
 
       end do
