@@ -476,7 +476,6 @@ contains
     !------------------------------------------------------------------------------
 
     !define normalized rootfraction for unfrozen soil
-    !define normalized rootfraction for unfrozen soil
     rootfr_unf(bounds%begp:bounds%endp,1:nlevgrnd) = 0._r8
 
     call normalize_unfrozen_rootfr(bounds,  &

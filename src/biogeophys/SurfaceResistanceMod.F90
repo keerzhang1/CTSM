@@ -285,7 +285,8 @@ contains
           c = filter_nolakec(fc)
           l = col%landunit(c)   
           if (lun%itype(l)/=istwet .AND. lun%itype(l)/=istice) then
-             if (lun%itype(l) == istsoil .or. lun%itype(l) == istcrop) then
+            ! calculate soilbeta for urban tree patches
+             if (lun%itype(l) == istsoil .or. lun%itype(l) == istcrop .or. col%itype(c) == icol_road_tree) then
                 wx   = (h2osoi_liq(c,1)/denh2o+h2osoi_ice(c,1)/denice)/col%dz(c,1)
                 fac  = min(1._r8, wx/watsat(c,1))
                 fac  = max( fac, 0.01_r8 )
@@ -300,7 +301,7 @@ contains
                 else   !when water content of ths top layer is more than that at F.C.
                    soilbeta(c) = 1._r8
                 end if
-             else if (col%itype(c) == icol_road_perv .or. col%itype(c) == icol_road_tree) then
+             else if (col%itype(c) == icol_road_perv) then
                 soilbeta(c) = 0._r8
              else if (col%itype(c) == icol_sunwall .or. col%itype(c) == icol_shadewall) then
                 soilbeta(c) = 0._r8          

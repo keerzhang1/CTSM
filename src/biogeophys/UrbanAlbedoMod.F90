@@ -84,6 +84,7 @@ contains
     ! !USES:
     use shr_orb_mod   , only : shr_orb_decl, shr_orb_cosz
     use clm_varcon    , only : sb
+    use pftconMod     , only : pftcon
     use column_varcon , only : icol_roof, icol_sunwall, icol_shadewall
     use column_varcon , only : icol_road_perv, icol_road_imperv, icol_road_tree
     use SurfaceAlbedoMod , only : TwoStream
@@ -113,6 +114,7 @@ contains
     integer  :: fl,fp,fc,g,l,p,c,ib,iv                               ! indices
     integer  :: ic                                                   ! 0=unit incoming direct; 1=unit incoming diffuse
     integer  :: num_solar                                            ! counter
+    real(r8), parameter :: mpe = 1.e-06_r8                           ! prevents overflow for division by zero
     real(r8) :: coszen             (bounds%begl:bounds%endl)         ! cosine solar zenith angle for next time step (landunit)
     real(r8) :: zen                (bounds%begl:bounds%endl)         ! solar zenith angle (radians)
     real(r8) :: sdir               (bounds%begl:bounds%endl, numrad) ! direct beam solar radiation on horizontal surface
@@ -159,14 +161,23 @@ contains
     real(r8) :: coszen_patch    (bounds%begp:bounds%endp)             
     real(r8) :: cgrnds_perv(bounds%begl:bounds%endl, numrad) ! land unit level cgrnds for pervious road
     real(r8) :: cgrndl_perv(bounds%begl:bounds%endl, numrad) ! land unit level cgrnds for pervious road    
-    
-    ! Timekeeping variables can be deleted in the final version.
+    real(r8) :: alb_br_tree_dir(bounds%begl:bounds%endl, numrad) ! direct below-roof tree albedo  
+    real(r8) :: alb_br_tree_dif(bounds%begl:bounds%endl, numrad) ! diffuse below-roof tree albedo  
+    real(r8) :: alb_ar_tree_dir(bounds%begl:bounds%endl, numrad) ! direct above-roof tree albedo  
+    real(r8) :: alb_ar_tree_dif(bounds%begl:bounds%endl, numrad) ! diffuse above-roof tree albedo  
+    real(r8) :: tran_br_tree_dir(bounds%begl:bounds%endl, numrad) ! direct below-roof tree transmittance
+    real(r8) :: tran_br_tree_dif(bounds%begl:bounds%endl, numrad) ! diffuse below-roof tree transmittance
+    real(r8) :: tran_ar_tree_dir(bounds%begl:bounds%endl, numrad) ! direct above-roof tree transmittance
+    real(r8) :: tran_ar_tree_dif(bounds%begl:bounds%endl, numrad) ! diffuse above-roof tree transmittance
+
     integer              :: start_time, end_time, clock_rate    ! Timekeeping variables
     real(r8)            :: elapsed_time                        ! Elapsed time   
     real(r8)           :: extkn        ! nitrogen allocation coefficient
-    integer  :: num_urbtreesol                                                                ! number of vegetated patches where coszen>0
+    real(r8)           :: wl           ! fraction of tree LAI+SAI that is LAI
+    real(r8)           :: ws           ! fraction of tree LAI+SAI that is SAI
+    integer  :: num_urbtreesol                                                                ! number of patches with urban trees where coszen>0
     integer  :: num_nourbtreesol                                                              ! number of unvegetated patches where coszen>0
-    integer  :: filter_urbtreesol   (bounds%endp-bounds%begp+1)                               ! patch filter where vegetated and coszen>0
+    integer  :: filter_urbtreesol   (bounds%endp-bounds%begp+1)                               ! patch filter where there are urban trees and coszen>0
     integer  :: filter_nourbtreesol (bounds%endp-bounds%begp+1)                               ! patch filter where unvegetated and coszen>0                                                   
     !-----------------------------------------------------------------------
 
@@ -198,16 +209,22 @@ contains
          alb_wall_dif       => urbanparams_inst%alb_wall_dif        , & ! Input: [real(r8) (:,:) ]  diffuse wall albedo 
          tree_elaisai_per_uroad       => urbanparams_inst%tree_elaisai_per_uroad        , & ! Input: [real(r8) (:,:) ]
          elai                   => canopystate_inst%elai_patch                  , & ! Input:  [real(r8) (:)   ]  one-sided leaf area index with burying by snow
-         esai                   => canopystate_inst%esai_patch                  , & ! Input:  [real(r8) (:)   ]  one-sided stem area index with burying by snow   
-         ! For now, the above-roof and below-roof tree albedo & transmittance are the same                            
-         alb_br_tree_dir       => urbanparams_inst%alb_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct below-roof tree albedo  
-         alb_br_tree_dif       => urbanparams_inst%alb_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse below-roof tree albedo  
-         alb_ar_tree_dir       => urbanparams_inst%alb_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct above-roof tree albedo  
-         alb_ar_tree_dif       => urbanparams_inst%alb_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse above-roof tree albedo  
-         tran_br_tree_dir       => urbanparams_inst%tran_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct below-roof tree transmittance
-         tran_br_tree_dif       => urbanparams_inst%tran_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse below-roof tree transmittance
-         tran_ar_tree_dir       => urbanparams_inst%tran_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct above-roof tree transmittance
-         tran_ar_tree_dif       => urbanparams_inst%tran_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse above-roof tree transmittance            
+         esai                   => canopystate_inst%esai_patch                  , & ! Input:  [real(r8) (:)   ]  one-sided stem area index with burying by snow
+         rhol                   => pftcon%rhol                                  , & ! Input:  [real(r8) (:,:) ]  leaf reflectance: 1=vis, 2=nir
+         rhos                   => pftcon%rhos                                  , & ! Input:  [real(r8) (:,:) ]  stem reflectance: 1=vis, 2=nir
+         taul                   => pftcon%taul                                  , & ! Input:  [real(r8) (:,:) ]  leaf transmittance: 1=vis, 2=nir
+         taus                   => pftcon%taus                                  , & ! Input:  [real(r8) (:,:) ]  stem transmittance: 1=vis, 2=nir
+      
+         ! ! For now, the above-roof and below-roof tree albedo & transmittance are the same                            
+         ! alb_br_tree_dir       => urbanparams_inst%alb_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct below-roof tree albedo  
+         ! alb_br_tree_dif       => urbanparams_inst%alb_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse below-roof tree albedo  
+         ! alb_ar_tree_dir       => urbanparams_inst%alb_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct above-roof tree albedo  
+         ! alb_ar_tree_dif       => urbanparams_inst%alb_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse above-roof tree albedo  
+         ! tran_br_tree_dir       => urbanparams_inst%tran_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct below-roof tree transmittance
+         ! tran_br_tree_dif       => urbanparams_inst%tran_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse below-roof tree transmittance
+         ! tran_ar_tree_dir       => urbanparams_inst%tran_tree_urb_dir        , & ! Input: [real(r8) (:,:) ]  direct above-roof tree transmittance
+         ! tran_ar_tree_dif       => urbanparams_inst%tran_tree_urb_dif        , & ! Input: [real(r8) (:,:) ]  diffuse above-roof tree transmittance            
+
          sabs_roof_dir      =>    solarabs_inst%sabs_roof_dir_lun      , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by roof per unit roof area per unit incident flux
          sabs_sunwall_dir   =>    solarabs_inst%sabs_sunwall_dir_lun   , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by sunwall per unit wall area per unit incident flux
          sabs_shadewall_dir =>    solarabs_inst%sabs_shadewall_dir_lun , & ! Output: [real(r8) (:,:) ]  direct  solar absorbed  by shadewall per unit wall area per unit incident flux
@@ -320,15 +337,39 @@ contains
          zen(l)    = acos(coszen(l))
       end do
 
-      ! Assign urban tree LAI, albedo, and transmittance to patches in filter_urbantreep, and compute the effective albedo of below-roof and above-roof tree canopy (albedo + transmittance)
+      ! Assign urban tree albedo and transmittance to patches in filter_urbantreep, and compute the effective albedo of below-roof and above-roof tree canopy (albedo + transmittance)
+      ! Canopy reflectance and transmittance are the leaf and stem values of the tree PFT weighted
+      ! by exposed leaf and stem area, as for natural vegetation in SurfaceAlbedo. They differ
+      ! between VIS and NIR but are the same for direct and diffuse solar, and for the
+      ! below-roof and above-roof canopy.
+      ! Every urban landunit has one road tree patch (zero weight if it has no trees), so this
+      ! sets the landunit arrays for all landunits in filter_urbanl.
       do fp = 1,num_urbantreep
          p = filter_urbantreep(fp)
          l = patch%landunit(p)
-         ! leaf albedo for VIS and NIR are difference, but are the same for diffuse and direct solar 
 
-         ! TODO: calculate rho by mirroring the calculation of rho in TwoStream module
-         rho_urbtree(p,:) = alb_br_tree_dir(l,:)
-         tau_urbtree(p,:) = tran_br_tree_dir(l,:)
+         if (elai(p) + esai(p) > 0._r8) then
+            wl = elai(p) / (elai(p) + esai(p))
+            ws = esai(p) / (elai(p) + esai(p))
+         else
+            ! No exposed leaf or stem area: use the leaf values so the albedo stays defined
+            wl = 1._r8
+            ws = 0._r8
+         end if
+
+         do ib = 1, numrad
+            rho_urbtree(p,ib) = max( rhol(patch%itype(p),ib)*wl + rhos(patch%itype(p),ib)*ws, mpe )
+            tau_urbtree(p,ib) = max( taul(patch%itype(p),ib)*wl + taus(patch%itype(p),ib)*ws, mpe )
+         end do
+
+         alb_br_tree_dir(l,:)  = rho_urbtree(p,:)
+         alb_br_tree_dif(l,:)  = rho_urbtree(p,:)
+         alb_ar_tree_dir(l,:)  = rho_urbtree(p,:)
+         alb_ar_tree_dif(l,:)  = rho_urbtree(p,:)
+         tran_br_tree_dir(l,:) = tau_urbtree(p,:)
+         tran_br_tree_dif(l,:) = tau_urbtree(p,:)
+         tran_ar_tree_dir(l,:) = tau_urbtree(p,:)
+         tran_ar_tree_dif(l,:) = tau_urbtree(p,:)
 
          ! the effective "albedo" of below-roof and above-roof tree is the sum of the tree albedo and transmittance (used for multiple reflection) for shortwave radiation
          alb_br_tree_dir_eff(l,:) =     alb_br_tree_dir(l,:) + tran_br_tree_dir(l,:)
@@ -382,8 +423,13 @@ contains
             end if
       end do
       !------------------------------------------------------------------------
-      ! Compute default leaf to canopy scaling coefficients vcmaxcintsun, vcmaxcintsha, used when coszen <= 0.
-      ! The vcmaxcintsun, vcmaxcintsha are also computed in TwoStream later
+      ! Default leaf to canopy scaling coefficients vcmaxcintsun, vcmaxcintsha for all
+      ! urban tree patches, as in SurfaceAlbedoMod for natural vegetation. With no direct
+      ! beam there are no sunlit leaves, so vcmaxcintsun = 0 and the whole canopy is
+      ! shaded
+      ! TwoStream below overwrites both for the patches in filter_urbtreesol
+      ! (coszen > 0 and elai+esai > 0), so these values are kept at night and for
+      ! trees with no exposed leaf or stem area.
       !------------------------------------------------------------------------
       extkn = 0.30_r8
       do fp = 1,num_urbantreep
@@ -747,16 +793,13 @@ contains
          end do
    
          !------------------------------------------------------------------------
-         ! I modified the filter to be filter_urbantreep
-         ! The required input canopystate_inst%elai_patch/esai_patch is replanced by lai
-         ! The required input temperature_inst%t_veg_patch is replaced by t_grnd
-         ! The required input waterdiagnosticbulk_inst%fwet_patch/fcansno_patch is set as 0 --> ignore hydrology for now
+         ! For filter, use filter_urbantreep
+         ! The required input waterdiagnosticbulk_inst%fwet_patch/fcansno_patch are computed for urban tree at BulkDiag_FracWet
          ! The required input surfalb_inst%tlai_z_patch/tsai_z_patch/nrad_patch/albgrd_col/albgri_col all exist for urban tree
-         ! The required input temperature_inst%t_veg_patch is replaced by t_grnd
          !------------------------------------------------------------------------
          ! TwoStream is run for the road tree only for the sunlit/shaded partition
-         ! (fabd/fabi and their _sun/_sha/_z parts, ftdd/ftid/ftii, fsun_z) that
-         ! CanopySunShadeFracs uses to split sabs_tree into parsun_z/parsha_z.
+         ! (fabd/fabi and their _sun/_sha/_z parts, ftdd/ftid/ftii, fsun_z), which is used by
+         ! CanopySunShadeFracs to split sabs_tree into parsun_z/parsha_z.
          ! use filter_urbtreesol, num_urbtreesol instead of filter_urbantreep, num_urbantreep
          call TwoStream (bounds, filter_urbtreesol, num_urbtreesol, &
               coszen_patch(bounds%begp:bounds%endp), &
@@ -764,10 +807,8 @@ contains
               tau_urbtree(bounds%begp:bounds%endp, :), &
               canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst,solarabs_inst)
 
-         ! TwoStream also overwrites albd/albi with the albedo of a 1-D canopy over the
-         ! pervious road. The road tree column's albedo must stay the canyon value set
-         ! above (sref_tree + sref_perroad), since albd/albi give its reflected solar (fsr)
-         ! and the albedo sent to the atmosphere, and must match the canyon-model sabv/sabg.
+         ! TwoStream also overwrites albd/albi with the albedo of a 1-D canopy over the pervious road. 
+         ! The road tree column's albedo must be set back to albgrd and albgri, which is the correct reflected solar for the road tree
          do ib = 1,numrad
             do fp = 1,num_urbtreesol
                p = filter_urbtreesol(fp)
@@ -777,7 +818,7 @@ contains
             end do
          end do
 
-              ! Determine values for non-vegetated patches where coszen > 0
+              ! Determine values for non-vegetated urban tree patches where coszen > 0
          do ib = 1,numrad
             do fp = 1,num_nourbtreesol
                p = filter_nourbtreesol(fp)
@@ -801,11 +842,6 @@ contains
       
     end associate
     call system_clock(end_time)        
-    ! Calculate elapsed time in seconds
-    ! elapsed_time = real(end_time - start_time,r8) / real(clock_rate,r8)
-    
-    ! write the elapsed time for each iteration  
-    ! write(*, '(A, I0, A, F6.3)') 'Finished urban albedo calculation: ', elapsed_time, ' seconds'
 
   end subroutine UrbanAlbedo
 
@@ -1208,8 +1244,7 @@ contains
                sdir_roof(l,ib) = 1.0_r8 
                sdir_ar_tree(l,ib) = 0._r8 
                sdir_br_tree(l,ib) = 0._r8 
-               
-                                 
+                       
                if (ca_order(l)==0) then !tree below roof
                   ! roof is not shaded and sdir_roof(l,ib) = 1.0_r8
                   ! calculate sdir_sunwall(l,ib) and sdir_road(l,ib)

@@ -1402,9 +1402,8 @@ contains
        leafn_patch(bounds%begp:bounds%endp) = &
             this%cnveg_nitrogenstate_inst%leafn_patch(bounds%begp:bounds%endp)
 
-       ! The urban road tree patch is not carried by the CN vegetation state, so its
-       ! leafn is never advanced and would otherwise return a meaningless cold-start
-       ! value. Return NaN instead, matching the .not. use_cn branch below
+      ! The urban road tree patch is not carried by the CN vegetation state
+      ! Here simply return NaN, matching the .not. use_cn branch below
        do p = bounds%begp, bounds%endp
           if (col%itype(patch%column(p)) == icol_road_tree) then
              leafn_patch(p) = nan
@@ -1584,12 +1583,11 @@ contains
        froot_carbon_patch(bounds%begp:bounds%endp) = &
             this%cnveg_carbonstate_inst%frootc_patch(bounds%begp:bounds%endp)
 
-      ! The urban road tree is not carried by the CN vegetation state, so frootc_patch
-      ! is meaningless for it. Use the same SLA-based allometry as the SP branch below.
+      ! The urban road tree is not carried by the CN vegetation state. Use the same SLA-based allometry as the SP branch below.
       do p = bounds%begp, bounds%endp
          c = patch%column(p)
          if (col%itype(c) == icol_road_tree) then
-            ! should use urban tree LAI per tree area
+            ! In the clm50_params file, as long as PFT is not "not_vegetated", the slatop >0.
             if (pftcon%slatop(patch%itype(p)) > 0._r8) then 
                froot_carbon_patch(p) = tlai(p) &
                      / pftcon%slatop(patch%itype(p)) &
@@ -1652,6 +1650,7 @@ contains
       do p=bounds%begp, bounds%endp
          c = patch%column(p)
          if (col%itype(c) == icol_road_tree) then
+            ! In the clm50_params file, as long as PFT is not "not_vegetated", the slatop >0.
             if (pftcon%slatop(patch%itype(p)) > 0._r8) then 
                croot_carbon_patch(p) = tlai(p) &
                   / pftcon%slatop(patch%itype(p)) &

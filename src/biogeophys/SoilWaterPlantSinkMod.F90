@@ -87,7 +87,6 @@ contains
                num_filterc,filterc, soilstate_inst, waterfluxbulk_inst)
       end if
 
-
       ! 2) urban road trees
       !
       ! Unlike the pervious road, the road tree runs the full canopy solve in

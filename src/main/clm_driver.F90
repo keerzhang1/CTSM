@@ -102,6 +102,7 @@ module clm_driver
   ! rather than tested against the previous time step's month.
   integer, private :: urban_phenology_mon = -1
   integer, private :: urban_phenology_day = -1   ! day of month of the last urban phenology update (Option D)
+  integer, private :: urban_phenology_week = -1  ! week index (whole days since reference date / 7) of the last urban phenology update (Option F)
 
   ! How often UrbanPhenology runs (tree LAI interpolation, then the view factor and
   ! roughness update that depend on it). It always runs on a radiation step (doalb):
@@ -109,7 +110,10 @@ module clm_driver
   !   'B'  first radiation step of the run and of each new month
   !   'C'  first radiation step of the run only; the tree LAI then stays fixed
   !   'D'  first radiation step of the run and of each new day
+  !   'F'  first radiation step of the run and of each new week (7-day blocks counted
+  !        from the reference date, so weeks run on across year boundaries and restarts)
   character(len=1), parameter, private :: urban_phenology_option='NAN'
+!   character(len=1), parameter, private :: urban_phenology_option='D'
 
   character(len=*), parameter, private :: sourcefile = &
        __FILE__
@@ -126,7 +130,7 @@ contains
     ! the calling tree is given in the description of this module.
     !
     ! !USES:
-    use clm_time_manager      , only : get_curr_date
+    use clm_time_manager      , only : get_curr_date, get_curr_time
     use clm_varctl            , only : use_lai_streams, fates_spitfire_mode
     use clm_varctl            , only : fates_seeddisp_cadence
     use laiStreamMod          , only : lai_advance
@@ -156,6 +160,8 @@ contains
     integer              :: mon                     ! month (1, ..., 12)
     integer              :: day                     ! day of month (1, ..., 31)
     integer              :: sec                     ! seconds of the day
+    integer              :: elapsed_days            ! whole days since the reference date (Option F)
+    integer              :: elapsed_secs            ! remaining seconds since the reference date (Option F)
     logical              :: do_urban_phenology      ! true when UrbanPhenology runs this step (see urban_phenology_option)
     character(len=256)   :: filer                   ! restart file name
     integer              :: ier                     ! error code
@@ -304,7 +310,7 @@ contains
        ! are valid over inactive as well as active points.
 
        call t_startf("decomp_vert")
-       call active_layer_inst%alt_calc(filter_inactive_and_active(nc)%num_soil_urbtreec, filter_inactive_and_active(nc)%soil_urbtreec, &
+       call active_layer_inst%alt_calc(filter_inactive_and_active(nc)%num_soil_urbtreepervc, filter_inactive_and_active(nc)%soil_urbtreepervc, &
             temperature_inst)
 
        ! Filter bgc_soilc operates on all non-sp soil columns
@@ -508,7 +514,7 @@ contains
     ! ============================================================================
 
     ! Update urban tree phenology on radiation steps, as often as urban_phenology_option
-    ! says (every step, monthly, once, or daily).
+    ! says (every step, monthly, once, daily, or weekly).
     !
     ! The doalb gate matters: UrbanPhenology sets elai/esai and frac_veg_nosno_alb for
     ! the tree patch, while SurfaceAlbedo - which sets nrad and tlai_z for the same
@@ -542,8 +548,13 @@ contains
        ! first radiation step of the run and of each new day
        do_urban_phenology = doalb .and. (day /= urban_phenology_day)
        if (do_urban_phenology) urban_phenology_day = day
+    case ('F')
+       ! first radiation step of the run and of each new week
+       call get_curr_time(elapsed_days, elapsed_secs)
+       do_urban_phenology = doalb .and. (elapsed_days/7 /= urban_phenology_week)
+       if (do_urban_phenology) urban_phenology_week = elapsed_days/7
     case default
-       call endrun(msg=' ERROR: urban_phenology_option in clm_driver must be A, B, C or D')
+       call endrun(msg=' ERROR: urban_phenology_option in clm_driver must be A, B, C, D or F')
     end select
 
     !$OMP PARALLEL DO PRIVATE (nc,l,c, bounds_clump, downreg_patch, leafn_patch, agnpp_patch, bgnpp_patch, annsum_npp_patch, rr_patch, froot_carbon, croot_carbon)
@@ -726,7 +737,8 @@ contains
        call ozone_inst%CalcOzoneStress(bounds_clump, &
             filter(nc)%num_exposedvegp, filter(nc)%exposedvegp, &
             filter(nc)%num_noexposedvegp, filter(nc)%noexposedvegp, &
-            filter(nc)%num_urbantreep, filter(nc)%urbantreep)
+            filter(nc)%num_exposedurbtreep, filter(nc)%exposedurbtreep, &
+            filter(nc)%num_noexposedurbtreep, filter(nc)%noexposedurbtreep)
 
        ! TODO(wjs, 2019-10-02) I'd like to keep moving this down until it is below
        ! LakeFluxes... I'll probably leave it in place there.

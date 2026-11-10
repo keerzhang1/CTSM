@@ -86,7 +86,9 @@ module OzoneBaseMod
      subroutine CalcOzoneStress_interface(this, bounds, &
           num_exposedvegp, filter_exposedvegp, &
           num_noexposedvegp, filter_noexposedvegp, &
-          num_urbantreep, filter_urbantreep)
+          num_exposedurbtreep, filter_exposedurbtreep, &
+          num_noexposedurbtreep, filter_noexposedurbtreep)
+
        use decompMod, only : bounds_type
        import :: ozone_base_type
 
@@ -96,8 +98,10 @@ module OzoneBaseMod
        integer                , intent(in)    :: filter_exposedvegp(:)   ! patch filter for non-snow-covered veg
        integer                , intent(in)    :: num_noexposedvegp       ! number of points in filter_noexposedvegp
        integer                , intent(in)    :: filter_noexposedvegp(:) ! patch filter for veg where frac_veg_nosno is 0
-       integer                , intent(in)    :: num_urbantreep       ! number of points in filter_noexposedvegp
-       integer                , intent(in)    :: filter_urbantreep(:) ! patch filter for veg where frac_veg_nosno is 0
+       integer                , intent(in)    :: num_exposedurbtreep       ! number of points in filter_exposedurbtreep
+       integer                , intent(in)    :: filter_exposedurbtreep(:) ! patch filter for veg where frac_veg_nosno is 0
+       integer                , intent(in)    :: num_noexposedurbtreep       ! number of points in filter_noexposedurbtreep
+       integer                , intent(in)    :: filter_noexposedurbtreep(:) ! patch filter for veg where frac_veg_nosno is 0
      end subroutine CalcOzoneStress_interface
   end interface
 

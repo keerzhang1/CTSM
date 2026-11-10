@@ -259,7 +259,8 @@ contains
     ! Currently pervious road has same properties as soil
     do c = begc,endc
        l = col%landunit(c)
-
+      ! The pervious road has no explict patch-level vegetation and it needs the
+      ! column-level rootfr_road_perv_col. For urban road tree is a column with a real PFT, so its root profile comes from init_vegrootfr below (soilstate_inst%rootfr_patch), like any other vegetated
        if (lun%urbpoi(l) .and. col%itype(c) == icol_road_perv) then 
           do lev = 1, nlevgrnd
              soilstate_inst%rootfr_road_perv_col(c,lev) = 0._r8
@@ -274,10 +275,6 @@ contains
                /real(col%nbedrock(c))
           soilstate_inst%rootfr_road_perv_col(c,col%nbedrock(c)+1:nlevsoi) = 0._r8
        end if
-      ! The urban road tree is a normal patch with a real PFT, so its root profile comes
-      ! from init_vegrootfr below (soilstate_inst%rootfr_patch), like any other vegetated
-      ! patch. Only the pervious road, which has no patch-level vegetation, needs the
-      ! column-level rootfr_road_perv_col above.
     end do
 
     do c = bounds%begc,bounds%endc
@@ -301,7 +298,7 @@ contains
              soilstate_inst%rootfr_patch(begp:endp,1:nlevgrnd),'water')
         call init_vegrootfr(bounds, nlevsoi, nlevgrnd, &
              soilstate_inst%crootfr_patch(begp:endp,1:nlevgrnd),'carbon')
-     end if
+    end if
 
     ! --------------------------------------------------------------------
     ! dynamic memory allocation
@@ -612,10 +609,14 @@ contains
                 soilstate_inst%watdry_col(c,lev) = spval 
                 soilstate_inst%watopt_col(c,lev) = spval 
              end do
-          else if (col%itype(c) == icol_road_perv) then 
-             ! pervious road layers  - set in UrbanInitTimeConst
-          else if (col%itype(c) == icol_road_tree) then 
-             ! road tree layers  - set in UrbanInitTimeConst        
+
+         ! confirm with Keith: the code below is outdated, the watdry_col and watopt_col for perv road and road tree are set in lines above
+         !  - remove them
+
+         !  else if (col%itype(c) == icol_road_perv) then 
+         !     ! pervious road layers  - set in UrbanInitTimeConst
+         !  else if (col%itype(c) == icol_road_tree) then 
+         !     ! road tree layers  - set in UrbanInitTimeConst        
           end if
 
        end if

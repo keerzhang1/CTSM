@@ -62,8 +62,8 @@ module filterMod
      integer, pointer :: soilc(:)        ! soil filter (columns)
      integer :: num_soilc                ! number of columns in soil filter
      
-     integer, pointer :: soil_urbtreec(:)        ! soil+urban tree filter (columns)
-     integer :: num_soil_urbtreec                ! number of columns in soil+urban tree filter
+     integer, pointer :: soil_urbtreepervc(:)        ! soil+urban tree filter (columns)
+     integer :: num_soil_urbtreepervc                ! number of columns in soil+urban tree filter
 
      integer, pointer :: soilp(:)        ! soil filter (patches)
      integer :: num_soilp                ! number of patches in soil filter
@@ -242,7 +242,7 @@ contains
        allocate(this_filter(nc)%nolakec(bounds%endc-bounds%begc+1))
 
        allocate(this_filter(nc)%soilc(bounds%endc-bounds%begc+1))
-       allocate(this_filter(nc)%soil_urbtreec(bounds%endc-bounds%begc+1))
+       allocate(this_filter(nc)%soil_urbtreepervc(bounds%endc-bounds%begc+1))
        allocate(this_filter(nc)%soilp(bounds%endp-bounds%begp+1))
 
        allocate(this_filter(nc)%bgc_soilc(bounds%endc-bounds%begc+1))
@@ -474,12 +474,12 @@ contains
           end if
           if (lun%itype(l) == istsoil .or. lun%itype(l) == istcrop .or. col%itype(c) == icol_road_tree .or. col%itype(c) == icol_road_perv) then
              ft = ft + 1
-             this_filter(nc)%soil_urbtreec(ft) = c
+             this_filter(nc)%soil_urbtreepervc(ft) = c
           end if
        end if
     end do
     this_filter(nc)%num_soilc = fs
-    this_filter(nc)%num_soil_urbtreec = ft
+    this_filter(nc)%num_soil_urbtreepervc = ft
 
 
     

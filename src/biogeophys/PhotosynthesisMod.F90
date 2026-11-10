@@ -1398,9 +1398,6 @@ contains
          t_veg      => temperature_inst%t_veg_patch          , & ! Input:  [real(r8) (:)   ]  vegetation temperature (Kelvin)
          t10        => temperature_inst%t_a10_patch          , & ! Input:  [real(r8) (:)   ]  10-day running mean of the 2 m temperature (K)
          tgcm       => temperature_inst%thm_patch            , & ! Input:  [real(r8) (:)   ]  air temperature at agcm reference height (kelvin)
-
-         t_grnd              =>   temperature_inst%t_grnd_col               , & ! Input:  [real(r8) (:)   ]  ground surface temperature (K)                    
-
          nrad       => surfalb_inst%nrad_patch               , & ! Input:  [integer  (:)   ]  pft number of canopy layers, above snow for radiative transfer
          tlai_z     => surfalb_inst%tlai_z_patch             , & ! Input:  [real(r8) (:,:) ]  pft total leaf area index for canopy layer
          tlai       => canopystate_inst%tlai_patch           , & ! Input:  [real(r8) (:)   ]  one-sided leaf area index, no burying by snow
@@ -1439,9 +1436,7 @@ contains
          par_z     =>    solarabs_inst%parsun_z_patch        ! Input:  [real(r8) (:,:) ]  par absorbed per unit lai for canopy layer (w/m**2)
          lai_z     =>    canopystate_inst%laisun_z_patch     ! Input:  [real(r8) (:,:) ]  leaf area index for canopy layer, sunlit or shaded
          vcmaxcint =>    surfalb_inst%vcmaxcintsun_patch     ! Input:  [real(r8) (:)   ]  leaf to canopy scaling coefficient
-         ! alphapsn is an output?
-         alphapsn  =>    photosyns_inst%alphapsnsun_patch    ! Input:  [real(r8) (:)   ]  13C fractionation factor for PSN ()
-         ! here
+         alphapsn  =>    photosyns_inst%alphapsnsun_patch    ! Output:  [real(r8) (:)   ]  13C fractionation factor for PSN ()
          o3coefv   =>    ozone_inst%o3coefvsun_patch         ! Input:  [real(r8) (:)   ]  O3 coefficient used in photosynthesis calculation
          o3coefg   =>    ozone_inst%o3coefgsun_patch         ! Input:  [real(r8) (:)   ]  O3 coefficient used in rs calculation
          ci_z      =>    photosyns_inst%cisun_z_patch        ! Output: [real(r8) (:,:) ]  intracellular leaf CO2 (Pa)
@@ -1458,7 +1453,7 @@ contains
          par_z     =>    solarabs_inst%parsha_z_patch        ! Input:  [real(r8) (:,:) ]  par absorbed per unit lai for canopy layer (w/m**2)
          lai_z     =>    canopystate_inst%laisha_z_patch     ! Input:  [real(r8) (:,:) ]  leaf area index for canopy layer, sunlit or shaded
          vcmaxcint =>    surfalb_inst%vcmaxcintsha_patch     ! Input:  [real(r8) (:)   ]  leaf to canopy scaling coefficient
-         alphapsn  =>    photosyns_inst%alphapsnsha_patch    ! Input:  [real(r8) (:)   ]  13C fractionation factor for PSN ()
+         alphapsn  =>    photosyns_inst%alphapsnsha_patch    ! Output: [real(r8) (:)   ]  13C fractionation factor for PSN ()
          o3coefv   =>    ozone_inst%o3coefvsha_patch         ! Input:  [real(r8) (:)   ]  O3 coefficient used in photosynthesis calculation
          o3coefg   =>    ozone_inst%o3coefgsha_patch         ! Input:  [real(r8) (:)   ]  O3 coefficient used in rs calculation
          ci_z      =>    photosyns_inst%cisha_z_patch        ! Output: [real(r8) (:,:) ]  intracellular leaf CO2 (Pa)
@@ -1501,8 +1496,6 @@ contains
          p = filterp(f)
          c = patch%column(p)
 
-         !write (6,'(A,I5)') '-------------------(p):par_z(p,iv)------------------- ', p
-         !write (6,'(A,1X,*(F10.5,1X))') 'par_z(p,:)', par_z(p,:)
 
          ! C3 or C4 photosynthesis logical variable
 
@@ -1749,9 +1742,6 @@ contains
                lmr_z(p,iv) = lmr_z(p,iv) / (1._r8 + exp( 1.3_r8*(t_veg(p)-(tfrz+55._r8)) ))
             end if
             
-            ! write (6,'(A,I5)') '-------------------(p):par_z(p,iv)------------------- ', p
-            ! write (6,'(A,I5)') '-------------------iv---------------- ', iv
-            ! write (6,'(A,1X,*(F10.5,1X))') 'par_z(p,iv)', par_z(p,iv)
 
             if (par_z(p,iv) <= 0._r8) then           ! night time
 
@@ -1785,7 +1775,7 @@ contains
                kp25 = kp25top * nscaler
 
                ! Adjust for temperature
-
+               ! Eq. 9.15
                vcmaxse = (668.39_r8 - 1.07_r8 * min(max((t10(p)-tfrz),11._r8),35._r8)) * params_inst%vcmaxse_sf
                jmaxse  = (659.70_r8 - 0.75_r8 * min(max((t10(p)-tfrz),11._r8),35._r8)) * params_inst%jmaxse_sf
                tpuse   = (668.39_r8 - 1.07_r8 * min(max((t10(p)-tfrz),11._r8),35._r8)) * params_inst%tpuse_sf
@@ -1803,7 +1793,7 @@ contains
                   vcmax_z(p,iv) = vcmax_z(p,iv) / (1._r8 + exp( 0.2_r8*((tfrz+15._r8)-t_veg(p)) ))
                   vcmax_z(p,iv) = vcmax_z(p,iv) / (1._r8 + exp( 0.3_r8*(t_veg(p)-(tfrz+40._r8)) ))
                end if
-
+               ! Eq. 9.14
                kp_z(p,iv) = kp25 * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
             end if
 
@@ -2924,7 +2914,7 @@ contains
     !------------------------------------------------------------------------------
 
     ! Temperature and soil water response functions
-
+    ! Eq. 9.10-11
     ft(tl,ha) = exp( ha / (rgas*1.e-3_r8*(tfrz+25._r8)) * (1._r8 - (tfrz+25._r8)/tl) )
     fth(tl,hd,se,scaleFactor) = scaleFactor / ( 1._r8 + exp( (-hd+se*tl) / (rgas*1.e-3_r8*tl) ) )
     fth25(hd,se) = 1._r8 + exp( (-hd+se*(tfrz+25._r8)) / (rgas*1.e-3_r8*(tfrz+25._r8)) )
@@ -2944,7 +2934,7 @@ contains
     SHR_ASSERT_ALL_FL((ubound(qaf)         == (/bounds%endp/)), sourcefile, __LINE__)
 
     associate(                                                 &
-         k_soil_root  => soilstate_inst%k_soil_root_patch    , & ! Input:  [real(r8) (:,:) ]  soil-root interface conductance (mm/s)
+         k_soil_root  => soilstate_inst%k_soil_root_patch    , & ! Output:  [real(r8) (:,:) ]  soil-root interface conductance (mm/s)
          hk_l         =>    soilstate_inst%hk_l_col          , & ! Input:  [real(r8) (:,:) ]  hydraulic conductivity (mm/s) 
          hksat        => soilstate_inst%hksat_col            , & ! Input:  [real(r8) (:,:) ]  hydraulic conductivity at saturation (mm H2O /s)
          smp          => soilstate_inst%smp_l_col            , & ! Input:  [real(r8) (:,:) ]  soil matrix potential [mm]
@@ -2978,7 +2968,7 @@ contains
          t_veg      => temperature_inst%t_veg_patch          , & ! Input:  [real(r8) (:)   ]  vegetation temperature (Kelvin)
          t10        => temperature_inst%t_a10_patch          , & ! Input:  [real(r8) (:)   ]  10-day running mean of the 2 m temperature (K)
          tgcm       => temperature_inst%thm_patch            , & ! Input:  [real(r8) (:)   ]  air temperature at agcm reference height (kelvin)
-         nrad       => surfalb_inst%nrad_patch               , & ! Input:  [integer  (:)   ]  pft number of canopy layers, above snow for radiative transfer
+         nrad       => surfalb_inst%nrad_patch               , & ! Input:  [integer  (:)   ]  number of canopy layers, above snow for radiative transfer
          tlai_z     => surfalb_inst%tlai_z_patch             , & ! Input:  [real(r8) (:,:) ]  pft total leaf area index for canopy layer
          tlai       => canopystate_inst%tlai_patch           , & ! Input:  [real(r8)(:)    ]  one-sided leaf area index, no burying by snow
          c3flag     => photosyns_inst%c3flag_patch           , & ! Output: [logical  (:)   ]  true if C3 and false if C4
@@ -3020,7 +3010,7 @@ contains
       par_z_sun     =>    solarabs_inst%parsun_z_patch        ! Input:  [real(r8) (:,:) ]  par absorbed per unit lai for canopy layer (w/m**2)
       lai_z_sun     =>    canopystate_inst%laisun_z_patch     ! Input:  [real(r8) (:,:) ]  leaf area index for canopy layer, sunlit or shaded
       vcmaxcint_sun =>    surfalb_inst%vcmaxcintsun_patch     ! Input:  [real(r8) (:)   ]  leaf to canopy scaling coefficient
-      alphapsn_sun  =>    photosyns_inst%alphapsnsun_patch    ! Input:  [real(r8) (:)   ]  13C fractionation factor for PSN ()
+      alphapsn_sun  =>    photosyns_inst%alphapsnsun_patch    ! Output:  [real(r8) (:)   ]  13C fractionation factor for PSN ()
       o3coefv_sun   =>    ozone_inst%o3coefvsun_patch         ! Input:  [real(r8) (:)   ]  O3 coefficient used in photosynthesis calculation
       o3coefg_sun   =>    ozone_inst%o3coefgsun_patch         ! Input:  [real(r8) (:)   ]  O3 coefficient used in rs calculation
       ci_z_sun      =>    photosyns_inst%cisun_z_patch        ! Output: [real(r8) (:,:) ]  intracellular leaf CO2 (Pa)
@@ -3036,7 +3026,7 @@ contains
       par_z_sha     =>    solarabs_inst%parsha_z_patch        ! Input:  [real(r8) (:,:) ]  par absorbed per unit lai for canopy layer (w/m**2)
       lai_z_sha     =>    canopystate_inst%laisha_z_patch     ! Input:  [real(r8) (:,:) ]  leaf area index for canopy layer, sunlit or shaded
       vcmaxcint_sha =>    surfalb_inst%vcmaxcintsha_patch     ! Input:  [real(r8) (:)   ]  leaf to canopy scaling coefficient
-      alphapsn_sha  =>    photosyns_inst%alphapsnsha_patch    ! Input:  [real(r8) (:)   ]  13C fractionation factor for PSN ()
+      alphapsn_sha  =>    photosyns_inst%alphapsnsha_patch    ! Output:  [real(r8) (:)   ]  13C fractionation factor for PSN ()
       o3coefv_sha   =>    ozone_inst%o3coefvsha_patch         ! Input:  [real(r8) (:)   ]  O3 coefficient used in photosynthesis calculation
       o3coefg_sha   =>    ozone_inst%o3coefgsha_patch         ! Input:  [real(r8) (:)   ]  O3 coefficient used in rs calculation
       ci_z_sha      =>    photosyns_inst%cisha_z_patch        ! Output: [real(r8) (:,:) ]  intracellular leaf CO2 (Pa)
@@ -3077,15 +3067,18 @@ contains
          do j = 1,nlevsoi
 
 ! calculate conversion from conductivity to conductance
+            ! Eq. 11.4
             root_biomass_density = c_to_b * froot_carbon(p) * rootfr(p,j) / dz(c,j)
 ! ensure minimum root biomass (using 1gC/m2)
             root_biomass_density = max(c_to_b*1._r8,root_biomass_density)
 
           ! Root length density: m root per m3 soil
+            ! Eq. 11.5
             root_cross_sec_area = rpi*root_radius(patch%itype(p))**2
+            ! Eq. 11.3
             root_length_density = root_biomass_density / (root_density(patch%itype(p)) * root_cross_sec_area)
 
-            ! Root-area index (RAI)
+            ! Root-area index (RAI) Eq. 11.15
             rai(j) = (tsai(p)+tlai(p)) * froot_leaf(patch%itype(p)) * rootfr(p,j)
 
 ! fix coarse root_average_length to specified length
@@ -3109,7 +3102,8 @@ contains
             root_conductance_patch(p,j) = root_conductance
             soil_conductance_patch(p,j) = soil_conductance
 
-! sum resistances in soil and root
+! sum resistances in soil and root 
+            !Eq. 11.16
             rs_resis = 1._r8/soil_conductance + 1._r8/root_conductance
 
 ! conductance is inverse resistance
@@ -3161,12 +3155,12 @@ contains
          ! Derive sco from cp and O2 using present-day O2 (0.209 mol/mol) and re-calculate
          ! cp to account for variation in O2 using cp = 0.5 O2 / sco
          !
-
+         ! paragraph after Eq. 9.8
          kc25 = params_inst%kc25_coef * forc_pbot(c)
          ko25 = params_inst%ko25_coef * forc_pbot(c)
          sco  = 0.5_r8 * 0.209_r8 / params_inst%cp25_yr2000
          cp25 = 0.5_r8 * oair(p) / sco
-
+         ! Eq. 9.9
          kc(p) = kc25 * ft(t_veg(p), params_inst%kcha)
          ko(p) = ko25 * ft(t_veg(p), params_inst%koha)
          cp(p) = cp25 * ft(t_veg(p), params_inst%cpha)
@@ -3267,7 +3261,7 @@ contains
 
          ! Parameters derived from vcmax25top. Bonan et al (2011) JGR, 116, doi:10.1029/2010JG001593
          ! used jmax25 = 1.97 vcmax25, from Wullschleger (1993) Journal of Experimental Botany 44:907-920.
-
+         ! Eq. 9.16
          jmax25top = ((2.59_r8 - 0.035_r8*min(max((t10(p)-tfrz),11._r8),35._r8)) * vcmax25top) * &
                           params_inst%jmax25top_sf
          tpu25top  = params_inst%tpu25ratio * vcmax25top
@@ -3321,7 +3315,7 @@ contains
 
          else
             ! Leaf maintenance respiration in proportion to vcmax25top
-
+            ! text after Eq. 9.8
             if (c3flag(p)) then
                lmr25top = vcmax25top * leaf_mr_vcm
             else
@@ -3367,11 +3361,13 @@ contains
             endif
           
             if (c3flag(p)) then
+               ! Eq 9.9
                lmr_z_sun(p,iv) = lmr25_sun * ft(t_veg(p), params_inst%lmrha) * fth(t_veg(p), params_inst%lmrhd, &
                     params_inst%lmrse, lmrc)
                lmr_z_sha(p,iv) = lmr25_sha * ft(t_veg(p), params_inst%lmrha) * fth(t_veg(p), params_inst%lmrhd, &
                     params_inst%lmrse, lmrc)
             else
+               ! Eq 9.13
                lmr_z_sun(p,iv) = lmr25_sun * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
                lmr_z_sun(p,iv) = lmr_z_sun(p,iv) / (1._r8 + exp( 1.3_r8*(t_veg(p)-(tfrz+55._r8)) ))
                lmr_z_sha(p,iv) = lmr25_sha * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
@@ -3437,6 +3433,7 @@ contains
                vcmaxc = fth25 (params_inst%vcmaxhd, vcmaxse)
                jmaxc  = fth25 (params_inst%jmaxhd, jmaxse)
                tpuc   = fth25 (params_inst%tpuhd, tpuse)
+               ! Eq. 9.9
                vcmax_z(p,sun,iv) = vcmax25_sun * ft(t_veg(p), params_inst%vcmaxha) * fth(t_veg(p), &
                     params_inst%vcmaxhd, vcmaxse, vcmaxc)
                jmax_z(p,sun,iv) = jmax25_sun * ft(t_veg(p), params_inst%jmaxha) * fth(t_veg(p), &
@@ -3451,6 +3448,7 @@ contains
                     params_inst%tpuhd, tpuse, tpuc)
 
                if (.not. c3flag(p)) then
+                  ! Eq. 9.12
                   vcmax_z(p,sun,iv) = vcmax25_sun * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
                   vcmax_z(p,sun,iv) = vcmax_z(p,sun,iv) / (1._r8 + exp( 0.2_r8*((tfrz+15._r8)-t_veg(p)) ))
                   vcmax_z(p,sun,iv) = vcmax_z(p,sun,iv) / (1._r8 + exp( 0.3_r8*(t_veg(p)-(tfrz+40._r8)) ))
@@ -3459,6 +3457,7 @@ contains
                   vcmax_z(p,sha,iv) = vcmax_z(p,sha,iv) / (1._r8 + exp( 0.3_r8*(t_veg(p)-(tfrz+40._r8)) ))
                end if
 
+               ! Eq. 9.14
                kp_z(p,sun,iv) = kp25_sun * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
                kp_z(p,sha,iv) = kp25_sha * 2._r8**((t_veg(p)-(tfrz+25._r8))/10._r8)
 
@@ -3517,7 +3516,7 @@ contains
                call calcstress(p,c,vegwp(p,:),bsun(p),bsha(p),gb_mol(p),gsminsun, gsminsha, &
                     qsatl(p),qaf(p), atm2lnd_inst,canopystate_inst,waterdiagnosticbulk_inst, &
                     soilstate_inst,temperature_inst, waterfluxbulk_inst)
-
+               ! Eq. 9.3, 9.4, 9.5, 9.8
                ac(p,sun,iv) = 0._r8
                aj(p,sun,iv) = 0._r8
                ap(p,sun,iv) = 0._r8
@@ -3568,6 +3567,7 @@ contains
                ! umol photons/m**2/s using the factor 4.6
 
                ! sun
+               ! Eq. 9.7 and 9.6
                qabs  = 0.5_r8 * (1._r8 - params_inst%fnps) * par_z_sun(p,iv) * 4.6_r8
                aquad = params_inst%theta_psii
                bquad = -(qabs + jmax_z(p,sun,iv))
@@ -4840,7 +4840,7 @@ contains
           flag = .true.  !tells calling function that the matrix is not invertible
           return
        else
-          flag = .false.
+          flag = .false. 
        end if       
     
        leading = 1._r8/determ

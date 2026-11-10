@@ -38,7 +38,8 @@ module UrbanParamsType
   ! !PRIVATE TYPE
   type urbinp_type
      real(r8), pointer :: canyon_hwr      (:,:)  
-     real(r8), pointer :: tree_lai_urb    (:,:,:)  
+     real(r8), pointer :: tree_lai_urb    (:,:,:)
+     real(r8), pointer :: tree_sai_urb    (:,:,:)
      integer, pointer :: tree_pft_urb    (:,:) 
      real(r8), pointer :: wtroad_tree    (:,:)      
      real(r8), pointer :: tree_bht_urb     (:,:)  
@@ -204,6 +205,7 @@ module UrbanParamsType
 
      real(r8), allocatable :: tree_elaisai_per_uroad        (:) ! lun road tree exposed leaf + stem area index (elai+esai, snow-adjusted) per unit total road area (m^2/m^2)
      real(r8), allocatable :: tree_lai_per_vega        (:) ! lun road tree LAI per unit tree-covered area, interpolated from monthly surfdata TREE_LAI_URB (m^2/m^2)
+     real(r8), allocatable :: tree_sai_per_vega        (:) ! lun road tree SAI per unit tree-covered area, interpolated from monthly surfdata TREE_SAI_URB (m^2/m^2)
      integer, allocatable :: tree_pft_urb        (:) ! lun PFT index of the road tree patch, from surfdata TREE_PFT_URB (-)
 
      integer , pointer     :: nlev_improad        (:)   ! lun number of impervious road layers (-)
@@ -306,6 +308,7 @@ contains
     allocate(this%tree_elaisai_per_uroad          (begl:endl))          ; this%tree_elaisai_per_uroad         (:)   = nan
     allocate(this%tree_pft_urb          (begl:endl))          ; this%tree_pft_urb         (:)   = ispval
     allocate(this%tree_lai_per_vega          (begl:endl))          ; this%tree_lai_per_vega         (:)   = nan
+    allocate(this%tree_sai_per_vega          (begl:endl))          ; this%tree_sai_per_vega         (:)   = nan
     allocate(this%em_tree_urb          (begl:endl))          ; this%em_tree_urb          (:)   = nan
     allocate(this%em_wall             (begl:endl))          ; this%em_wall             (:)   = nan
     allocate(this%alb_roof_dir        (begl:endl,numrad))   ; this%alb_roof_dir        (:,:) = nan
@@ -453,14 +456,17 @@ contains
 
          this%tree_lai_per_vega(l) = timwt(1)*urbinp%tree_lai_urb(g,dindx,months(1)) &
                                    + timwt(2)*urbinp%tree_lai_urb(g,dindx,months(2))
+         this%tree_sai_per_vega(l) = timwt(1)*urbinp%tree_sai_urb(g,dindx,months(1)) &
+                                   + timwt(2)*urbinp%tree_sai_urb(g,dindx,months(2))
 
-         ! initialize tree_elaisai_per_uroad using the tree LAI with no snow effect. This will be updated in the urban phenology module to account for snow effect on tree LAI.
-         this%tree_elaisai_per_uroad(l) = this%tree_lai_per_vega(l)*urbinp%wtroad_tree(g,dindx)
+         ! initialize tree_elaisai_per_uroad using the tree LAI + SAI with no snow effect. This will be updated in the urban phenology module to account for snow effect on tree LAI and SAI.
+         this%tree_elaisai_per_uroad(l) = (this%tree_lai_per_vega(l) + this%tree_sai_per_vega(l))*urbinp%wtroad_tree(g,dindx)
          this%tree_pft_urb(l) = urbinp%tree_pft_urb(g,dindx)
 
           ! Landunit level initialization for urban wall and roof layers and interfaces
           lun%canyon_hwr(l)   = urbinp%canyon_hwr(g,dindx)
           lun%tree_lai_urb_monthly(l,:)          = urbinp%tree_lai_urb(g,dindx,:)
+          lun%tree_sai_urb_monthly(l,:)          = urbinp%tree_sai_urb(g,dindx,:)
           lun%wtroad_tree(l)     = urbinp%wtroad_tree(g,dindx)       
           lun%tree_bht_urb(l)          = urbinp%tree_bht_urb(g,dindx)
           lun%tree_tht_urb(l)     = urbinp%tree_tht_urb(g,dindx)       
@@ -488,22 +494,26 @@ contains
           if ((lun%wtroad_tree(l)  < 1.e-3_r8) .or. (lun%tree_bht_urb(l) < 0.1_r8) .or. (lun%tree_tht_urb(l) < 0.01_r8)) then 
                lun%wtroad_tree(l)  = 0.0_r8
                lun%tree_lai_urb_monthly(l,:) = 0.0_r8
+               lun%tree_sai_urb_monthly(l,:) = 0.0_r8
                this%tree_lai_per_vega(l) = 0._r8
+               this%tree_sai_per_vega(l) = 0._r8
                this%tree_elaisai_per_uroad(l) = 0._r8
          end if
 
-         if (this%tree_lai_per_vega(l) < 0.05_r8) then 
+         ! LAI below the threshold means no tree, so the SAI is dropped as well
+         if ((this%tree_lai_per_vega(l)+this%tree_sai_per_vega(l)) < 0.05_r8) then
                this%tree_lai_per_vega(l) = 0._r8
+               this%tree_sai_per_vega(l) = 0._r8
                this%tree_elaisai_per_uroad(l) = 0._r8
          end if
 
-          if ((this%tree_lai_per_vega(l) > 0.0_r8) .and. (lun%tree_bht_urb(l) < 0.1_r8)) then
+          if ((this%tree_lai_per_vega(l)+this%tree_sai_per_vega(l)) > 0.0_r8 .and. (lun%tree_bht_urb(l) < 0.1_r8)) then
               write (iulog,*) 'The bottom of tree crown should be higher than 0.1 when tree exist. tree crown bottom height, tree LAI =',lun%tree_bht_urb(l),this%tree_lai_per_vega(l)
               write (iulog,*) 'clm model is stopping'
               call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
           end if
 
-          if ((this%tree_lai_per_vega(l) > 0.0_r8) .and. (lun%tree_tht_urb(l) < 0.01_r8)) then
+          if ((this%tree_lai_per_vega(l)+this%tree_sai_per_vega(l)) > 0.0_r8 .and. (lun%tree_tht_urb(l) < 0.01_r8)) then
               write (iulog,*) 'The tree crown depth should be larger than 0.01 when tree exist. tree crown depth, tree LAI =',lun%tree_tht_urb(l),this%tree_lai_per_vega(l)
               write (iulog,*) 'clm model is stopping'
               call endrun(subgrid_index=l, subgrid_level=subgrid_level_landunit, msg=errmsg(sourcefile, __LINE__))
@@ -835,8 +845,6 @@ contains
     ss_in(2)=1._r8 ! 100% of roofs at z = dzcan
     pb_in(1)=1._r8
     pb_in(2)=1._r8
-
-   
     
     ! Could change these values if view factors from sky are not accurate, especially nsky
     nsky=1
@@ -861,8 +869,12 @@ contains
    ! nrays=50000
    ! dray=0.05_r8*min(min(dzcan,wcan),wbui)/dzcan
    nrays=NAN
-   dray=NAN*min(min(dzcan,wcan),wbui)/dzcan
+   ! dray=NAN*min(min(dzcan,wcan),wbui)/dzcan
+   ! Now also add tree crown depth to scale dray
+   dray=NAN*min(min(min(dzcan,wcan),wbui),lun%tree_tht_urb(l))/dzcan
 
+   ! nrays=5000
+   ! dray=0.05_r8*min(min(dzcan,wcan),wbui)/dzcan
    if (this%tree_elaisai_per_uroad(l) > 1e-6_r8) then
       if ((lun%tree_bht_urb(l)+lun%tree_tht_urb(l))<= lun%ht_roof(l)) then
          lad(1)=max(this%tree_elaisai_per_uroad(l)/lun%tree_tht_urb(l), 1e-6_r8)
@@ -1047,7 +1059,10 @@ contains
       ht_tree=lun%tree_bht_urb(l)+lun%tree_tht_urb(l)
       k_opt=0.5_r8
       ! doublechek: it is wrong to use tree_elaisai_per_uroad (LAI per road area); for tree porosity, it should be tree_lai_per_vega (LAI per vegetation area)
-      p_2d=exp(-k_opt*this%tree_lai_per_vega(l))
+
+      ! think: should we use LAI or LAI+SAI?
+      p_2d=exp(-k_opt*(this%tree_lai_per_vega(l)+this%tree_sai_per_vega(l)))
+      ! p_2d=exp(-k_opt*(this%tree_lai_per_vega(l)))
       p_3d=p_2d**0.4_r8
       A_pv=4.0_r8*r_tree ! essentially it is lun%wtroad_tree(l)*lun%ht_roof(l)/lun%canyon_hwr(l)
       A_pb=lun%ht_roof(l)/lun%canyon_hwr(l)*lun%wtlunit_roof(l)/(1-lun%wtlunit_roof(l))
@@ -1089,10 +1104,10 @@ contains
        canopystate_inst, waterdiagnosticbulk_inst)
     !
     ! !DESCRIPTION:
-    ! Time-interpolate the prescribed monthly urban road-tree LAI
-    ! (lun%tree_lai_urb_monthly) to the current date and update the
-    ! per-vegetation-area and per-road-area tree LAI (tree_lai_per_vega,
-    ! tree_elaisai_per_uroad). Intended to be called every month or every week (decide later) so the urban
+    ! Time-interpolate the prescribed monthly urban road-tree LAI and SAI
+    ! (lun%tree_lai_urb_monthly, lun%tree_sai_urb_monthly) to the current date
+    ! and update the per-vegetation-area tree LAI and SAI (tree_lai_per_vega,
+    ! tree_sai_per_vega) and the per-road-area tree LAI+SAI (tree_elaisai_per_uroad). Intended to be called every month or every week (decide later) so the urban
     ! tree LAI follows its seasonal cycle, analogous to SatellitePhenology for
     ! natural vegetation. Monthly values are treated as valid at mid-month.
     !
@@ -1117,14 +1132,16 @@ contains
     integer  :: months(2)             ! the two months to interpolate between (1-12)
     real(r8) :: timwt(2)              ! interpolation weights (sum to 1)
     real(r8) :: ol                    ! thickness of canopy layer covered by snow (m)
-    real(r8) :: fb                    ! fraction of canopy layer covered by snow
+    real(r8) :: fb                    ! fraction of canopy layer remaining exposed above snow
     !-----------------------------------------------------------------------
 
     associate(                                             &
          tree_lai_urb_monthly => lun%tree_lai_urb_monthly, & ! Input:  [real(r8) (:,:)] monthly LAI of road tree (m2/m2)
+         tree_sai_urb_monthly => lun%tree_sai_urb_monthly, & ! Input:  [real(r8) (:,:)] monthly SAI of road tree (m2/m2)
          wtroad_tree          => lun%wtroad_tree         , & ! Input:  [real(r8) (:)  ] weight of road tree column to total road
          tree_lai_per_vega    => urbanparams_inst%tree_lai_per_vega  , & ! Output: [real(r8) (:)  ] interpolated LAI per vegetation area
-         tree_elaisai_per_uroad   => urbanparams_inst%tree_elaisai_per_uroad   ,& ! Output: [real(r8) (:)  ] interpolated LAI per road area
+         tree_sai_per_vega    => urbanparams_inst%tree_sai_per_vega  , & ! Output: [real(r8) (:)  ] interpolated SAI per vegetation area
+         tree_elaisai_per_uroad   => urbanparams_inst%tree_elaisai_per_uroad   ,& ! Output: [real(r8) (:)  ] interpolated LAI+SAI per road area
          h1            => lun%tree_bht_urb                      , & ! Input:  [real(r8) (:)   ]  the height of tree crown base
          h2            => lun%tree_tht_urb                       , & ! Input:  [real(r8) (:)   ]  the depth of tree crown    
          frac_sno           => waterdiagnosticbulk_inst%frac_sno_col   , & ! Input:  [real(r8) (:) ] fraction of ground covered by snow (0 to 1)
@@ -1142,27 +1159,30 @@ contains
       ! These depend only on the date, so compute them once for all landunits.
       call GetMonthlyInterpWeights(next_time_step=.true., months=months, timwt=timwt)
 
-
-
-      ! another thing worthing doing: call UrbanPhenology once during initialization like ATES-SP already calls SatellitePhenology at init
-      ! Restart: elai/esai come back from the restart file with SAI and snow burial included. Init recomputes tree_elaisai_per_uroad as LAI only, so the two disagree until the first radiation step.
+      ! another thing worthing doing: call UrbanPhenology once during urbanparamater initialization like ATES-SP already calls SatellitePhenology at init
+      ! Think about restart: elai/esai come back from the restart file with SAI and snow burial included. Init recomputes tree_elaisai_per_uroad as LAI only, so the two disagree until the first radiation step.
       ! it is okay to solve this later
       do f = 1, num_urbantreep
          p = filter_urbantreep(f)
          c = patch%column(p)
          l = patch%landunit(p)
 
-         ! urbanparams has a guardian statement to make sure the tree_lai_urb_monthly=0 when wtroad_tree(l)/h1(l) is too small
+         ! urbanparams has a guardian statement to make sure the tree_lai_urb_monthly=0 and
+         ! tree_sai_urb_monthly=0 when wtroad_tree(l)/h1(l) is too small
          tree_lai_per_vega(l)  = timwt(1)*tree_lai_urb_monthly(l,months(1)) &
                                  + timwt(2)*tree_lai_urb_monthly(l,months(2))
+         tree_sai_per_vega(l)  = timwt(1)*tree_sai_urb_monthly(l,months(1)) &
+                                 + timwt(2)*tree_sai_urb_monthly(l,months(2))
 
          ! Discuss this threshold; whether to apply it for urban trees
-         if (tree_lai_per_vega(l) < 0.05_r8) then
+         ! LAI below the threshold means no tree, so the SAI is dropped as well
+         if ((tree_lai_per_vega(l)+tree_sai_per_vega(l)) < 0.05_r8) then
             tree_lai_per_vega(l) = 0._r8
+            tree_sai_per_vega(l) = 0._r8
             tlai(p) = 0.0_r8
             tsai(p) = 0.0_r8
          else
-            tsai(p) = 0.1_r8
+            tsai(p) = tree_sai_per_vega(l) ! SAI per tree area (vegetated area)
             tlai(p) = tree_lai_per_vega(l) ! LAI per tree area (vegetated area)
          end if
 
@@ -1303,6 +1323,7 @@ contains
     integer :: dimid                 ! netCDF id
     integer :: nw,n,k,i,j,ni,nj,ns   ! indices
     real(r8), pointer :: tree_lai_urb_1mon(:,:) ! single-month slice of TREE_LAI_URB [gridcell, numurbl]
+    real(r8), pointer :: tree_sai_urb_1mon(:,:) ! single-month slice of TREE_SAI_URB [gridcell, numurbl]
                                                 ! (pointer, not allocatable: ncd_io's 2d dummy is a pointer)
     integer :: nlevurb_i             ! input grid: number of urban vertical levels
     integer :: numrad_i              ! input grid: number of solar bands (VIS/NIR)
@@ -1347,6 +1368,7 @@ contains
 !-------------------[kz.7]Ray tracing test-------------------------     
        allocate(urbinp%canyon_hwr(begg:endg, numurbl), &  
                 urbinp%tree_lai_urb(begg:endg, numurbl, nmonth), &
+                urbinp%tree_sai_urb(begg:endg, numurbl, nmonth), &
                 urbinp%tree_pft_urb(begg:endg, numurbl), &
                 urbinp%wtroad_tree(begg:endg, numurbl), &     
                 urbinp%tree_bht_urb(begg:endg, numurbl), &     
@@ -1390,10 +1412,11 @@ contains
           call endrun(msg="Allocation error "//errmsg(sourcefile, __LINE__))
        endif
 
-       ! TREE_LAI_URB is read one month at a time below (it has a record dimension on
-       ! the fsurdat file). Initialize to nan so that a month that never gets filled
-       ! shows up immediately rather than being silently used as whatever was in memory.
+       ! TREE_LAI_URB and TREE_SAI_URB are read one month at a time below (they have a
+       ! record dimension on the fsurdat file). Initialize to nan so that a month that never
+       ! gets filled shows up immediately rather than being silently used as whatever was in memory.
        urbinp%tree_lai_urb(:,:,:) = nan
+       urbinp%tree_sai_urb(:,:,:) = nan
 
        call ncd_inqfdims (ncid, isgrid2d, ni, nj, ns)
        if (ldomain%ns /= ns .or. ldomain%ni /= ni .or. ldomain%nj /= nj) then
@@ -1427,12 +1450,13 @@ contains
           call endrun(msg=errmsg(sourcefile, __LINE__))
        endif
 !-------------------[kz.8]Ray tracing test-------------------------
-       ! TREE_LAI_URB is dimensioned (time, numurbl, lat, lon) on the fsurdat file, with
-       ! time as the record dimension. Record variables must be read one slice at a time
-       ! with an explicit nt index - a single call without nt fills only the first month
-       ! and leaves the rest untouched. This follows the MONTHLY_LAI read in
-       ! SatellitePhenologyMod.
-       allocate(tree_lai_urb_1mon(begg:endg, numurbl), stat=ier)
+       ! TREE_LAI_URB and TREE_SAI_URB are dimensioned (time, numurbl, lat, lon) on the
+       ! fsurdat file, with time as the record dimension. Record variables must be read one
+       ! slice at a time with an explicit nt index - a single call without nt fills only the
+       ! first month and leaves the rest untouched. This follows the MONTHLY_LAI and
+       ! MONTHLY_SAI reads in SatellitePhenologyMod.
+       allocate(tree_lai_urb_1mon(begg:endg, numurbl), &
+                tree_sai_urb_1mon(begg:endg, numurbl), stat=ier)
        if (ier /= 0) then
           call endrun(msg="Allocation error "//errmsg(sourcefile, __LINE__))
        endif
@@ -1444,9 +1468,16 @@ contains
             call endrun( msg='ERROR: TREE_LAI_URB NOT on fsurdat file '//errmsg(sourcefile, __LINE__))
           end if
           urbinp%tree_lai_urb(begg:endg, :, k) = tree_lai_urb_1mon(begg:endg, :)
+
+          call ncd_io(ncid=ncid, varname='TREE_SAI_URB', flag='read', data=tree_sai_urb_1mon,&
+              dim1name=grlnd, nt=k, readvar=readvar)
+          if (.not. readvar) then
+            call endrun( msg='ERROR: TREE_SAI_URB NOT on fsurdat file '//errmsg(sourcefile, __LINE__))
+          end if
+          urbinp%tree_sai_urb(begg:endg, :, k) = tree_sai_urb_1mon(begg:endg, :)
        end do
 
-       deallocate(tree_lai_urb_1mon)
+       deallocate(tree_lai_urb_1mon, tree_sai_urb_1mon)
 
        call ncd_io(ncid=ncid, varname='TREE_PFT_URB', flag='read', data=urbinp%tree_pft_urb,&
            dim1name=grlnd, readvar=readvar)
@@ -1681,8 +1712,9 @@ contains
        if ( nlevurb == 0 ) return       
        deallocate(urbinp%canyon_hwr, &
 !-------------------[kz.9]Ray tracing test-------------------------        
-                  urbinp%tree_lai_urb, &     
-                  urbinp%tree_pft_urb, &    
+                  urbinp%tree_lai_urb, &
+                  urbinp%tree_sai_urb, &
+                  urbinp%tree_pft_urb, &
                   urbinp%wtroad_tree, & 
                   urbinp%tree_bht_urb, &    
                   urbinp%tree_tht_urb, &     
@@ -1766,6 +1798,7 @@ contains
                   urbinp%canyon_hwr(nl,n)            <= 0._r8 .or. &
 !-------------------[kz.10]Ray tracing test-------------------------                    
                   any(urbinp%tree_lai_urb(nl,n,:)             < 0._r8) .or. &
+                  any(urbinp%tree_sai_urb(nl,n,:)             < 0._r8) .or. &
                   ! note that urban tree pft cannot be 0
                   urbinp%tree_pft_urb(nl,n)              <= 0 .or. &   
                   urbinp%wtroad_tree(nl,n)              < 0._r8 .or. &   
@@ -1827,6 +1860,7 @@ contains
        write(iulog,*)'canyon_hwr:      ',urbinp%canyon_hwr(nindx,dindx)
 !-------------------[kz.11]Ray tracing test-------------------------         
        write(iulog,*)'tree_lai_urb:             ',urbinp%tree_lai_urb(nindx,dindx,:)
+       write(iulog,*)'tree_sai_urb:             ',urbinp%tree_sai_urb(nindx,dindx,:)
         write(iulog,*)'tree_pft_urb:             ',urbinp%tree_pft_urb(nindx,dindx)
        write(iulog,*)'wtroad_tree:        ',urbinp%wtroad_tree(nindx,dindx)   
        write(iulog,*)'tree_bht_urb:        ',urbinp%tree_bht_urb(nindx,dindx)   

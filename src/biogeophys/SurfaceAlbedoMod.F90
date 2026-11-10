@@ -1088,6 +1088,7 @@ contains
             tau(bounds%begp:bounds%endp, :), &
             canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, surfalb_inst,solarabs_inst)
        ! Run TwoStream again just to calculate the Snow Free (SF) albedo's
+            ! this diagnostic is not set for urban tree patches
        if (use_SSRE) then
           if ( nlevcan > 1 )then
              call endrun( 'ERROR: use_ssre option was NOT developed with allowance for multi-layer canopy: '// &
@@ -1384,9 +1385,7 @@ contains
   associate(&
          xl           =>    pftcon%xl                           , & ! Input:  ecophys const - leaf/stem orientation index
 
-         t_veg        =>    temperature_inst%t_veg_patch        , & ! Input:  [real(r8) (:)   ]  vegetation temperature (Kelvin)         
-         t_grnd              =>   temperature_inst%t_grnd_col               , & ! Input:  [real(r8) (:)   ]  ground surface temperature (K)                    
-
+         t_veg        =>    temperature_inst%t_veg_patch        , & ! Input:  [real(r8) (:)   ]  vegetation temperature (Kelvin)                            
          fwet         =>    waterdiagnosticbulk_inst%fwet_patch          , & ! Input:  [real(r8) (:)   ]  fraction of canopy that is wet (0 to 1) 
          fcansno      =>    waterdiagnosticbulk_inst%fcansno_patch       , & ! Input:  [real(r8) (:)   ]  fraction of canopy that is snow-covered (0 to 1) 
 
@@ -1441,12 +1440,15 @@ contains
       ! 0.001, not on values cosz = 0, since these zero have already been filtered
       ! out in filter
       cosz = max(0.001_r8, coszen(p))
-      chil(p) = min( max(xl(patch%itype(p)), -0.4_r8), 0.6_r8 )
-      if (abs(chil(p)) <= 0.01_r8) chil(p) = 0.01_r8
 
       !chil is the departure of leaf angles from a random distribution and equals +1 
       ! for horizontal leaves, 0 for random leaves, and –1 for vertical leaves.
-      ! Eq. 3.3
+      ! chil is used in Eq. 3.3 of Tech note
+      chil(p) = min( max(xl(patch%itype(p)), -0.4_r8), 0.6_r8 )
+      if (abs(chil(p)) <= 0.01_r8) chil(p) = 0.01_r8
+
+      ! for urban tree patches, the pervious ground albedo is used instead of the patch-level ground albedo 
+      ! should we used area weighted albedo for pervious+impervious ground? 
       if (col%itype(c) == icol_road_tree) then
           ! use perv ground albedo
           temp_albgrd(c,:)=albd_perroad_s(l,:)
@@ -1463,7 +1465,7 @@ contains
       ! gdir is relative projected area of leaf and stem elements in the direction cos−1 𝜇
       gdir(p) = phi1 + phi2*cosz
       
-      ! below Eq. 3.2 K=gdir(p)/cosz
+      ! the equation below Eq. 3.2 K=gdir(p)/cosz in tech note
       ! optical depth of direct beam per unit leaf and stem area
       twostext(p) = gdir(p)/cosz
       
@@ -1515,7 +1517,6 @@ contains
          p = filter(fp)
          c = patch%column(p)
          
-
          ! Calculate two-stream parameters omega, betad, and betai.
          ! Omega, betad, betai are adjusted for snow. Values for omega*betad
          ! and omega*betai are calculated and then divided by the new omega
@@ -1609,7 +1610,8 @@ contains
          h5 = - ( tmp8*tmp4/s1 + tmp9 ) / d2 !Eq. 3.52
          h6 = ( tmp8*tmp5*s1 + tmp9 ) / d2 !Eq. 3.53
          if ( .not. lSFonly )then
-           albd(p,ib) = h1/sigma + h2 + h3 !surface albedo (direct)
+         ! Eq. 3.17, 3.19, 3.41, 3.21
+           albd(p,ib) = h1/sigma + h2 + h3 !surface albedo (direct)  upward diffuse fluxes per unit incident direct beam
            ftid(p,ib) = h4*s2/sigma + h5*s1 + h6/s1 !down diffuse flux below canopy per unit direct flx
            ftdd(p,ib) = s2 !down direct flux below canopy per unit direct flx
            !flux absorbed by canopy per unit direct flux
@@ -1628,9 +1630,9 @@ contains
             + h5         * (1._r8 - s2*s1) / (twostext(p) + h) &
             + h6         * (1._r8 - s2/s1) / (twostext(p) - h)
          if ( .not. lSFonly )then
-           !flux absorbed by sunlit canopy per unit direct flux
-           !flux absorbed by shaded canopy per unit direct flux
+           !flux absorbed by sunlit canopy per unit direct flux  Eq. 3.23
            fabd_sun(p,ib) = (1._r8 - omega(p,ib)) * ( 1._r8 - s2 + 1._r8 / avmu(p) * (a1 + a2) )
+           !flux absorbed by shaded canopy per unit direct flux Eq. 3.24
            fabd_sha(p,ib) = fabd(p,ib) - fabd_sun(p,ib)
          end if
 
@@ -1655,20 +1657,21 @@ contains
          h9 = tmp4 / (d2*s1) !Eq 3.56
          h10 = (-tmp5*s1) / d2 !Eq 3.57
 
- 
          ! Final Snow Free albedo
          if ( lSFonly )then
            albiSF(p,ib) = h7 + h8
          else
            ! For non snow Free case, adjustments continue
-           albi(p,ib) = h7 + h8
-           ftii(p,ib) = h9*s1 + h10/s1
-           fabi(p,ib) = 1._r8 - albi(p,ib) - (1._r8-temp_albgri(c,ib))*ftii(p,ib)
+           albi(p,ib) = h7 + h8 ! upward diffuse fluxes per unit incident diffuse flux Eq. 3.18
+           ftii(p,ib) = h9*s1 + h10/s1 ! downward diffuse fluxes per unit incident  diffuse radiation Eq. 3.20
+           fabi(p,ib) = 1._r8 - albi(p,ib) - (1._r8-temp_albgri(c,ib))*ftii(p,ib) ! diffuse fluxes absorbed by the vegetation, per unit incident flux Eq. 22
+
            !Eq 3.29 3.30
            a1 = h7 * (1._r8 - s2*s1) / (twostext(p) + h) +  h8 * (1._r8 - s2/s1) / (twostext(p) - h)
            a2 = h9 * (1._r8 - s2*s1) / (twostext(p) + h) + h10 * (1._r8 - s2/s1) / (twostext(p) - h)
-
+            ! absorbed diffuse radiation for sunlit leaves Eq. 3.27
            fabi_sun(p,ib) = (1._r8 - omega(p,ib)) / avmu(p) * (a1 + a2)
+           ! absorbed diffuse radiation for shaded leaves Eq. 3.28
            fabi_sha(p,ib) = fabi(p,ib) - fabi_sun(p,ib)
  
            ! Repeat two-stream calculations for each canopy layer to calculate derivatives.
@@ -1685,7 +1688,7 @@ contains
               if (nlevcan == 1) then
  
                  ! sunlit fraction of canopy
-                 fsun_z(p,1) = (1._r8 - s2) / t1
+                 fsun_z(p,1) = (1._r8 - s2) / t1 ! this is Eq. 4.7 divided by total plant area index (lai+sai) 
  
                  ! absorbed PAR (per unit sun/shade lai+sai)
                  laisum = elai(p)+esai(p)
@@ -1694,7 +1697,9 @@ contains
                  fabd_sha_z(p,1) = fabd_sha(p,ib) / ((1._r8 - fsun_z(p,1))*laisum)
                  fabi_sha_z(p,1) = fabi_sha(p,ib) / ((1._r8 - fsun_z(p,1))*laisum)
  
-                 ! leaf to canopy scaling coefficients
+                 ! leaf to canopy scaling coefficients; Eq. 9.18
+                 ! twostext(p) only depend on PFT, and  extkb only depend on PFT
+                 ! vcmaxcintsun and vcmaxcintsha also only depend on PFT, lai+sai, ans solar zenith angle
                  extkn = 0.30_r8
                  extkb = twostext(p)
                  vcmaxcintsun(p) = (1._r8 - exp(-(extkn+extkb)*elai(p))) / (extkn + extkb)

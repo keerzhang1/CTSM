@@ -344,6 +344,7 @@ contains
   end subroutine InitCold
 
   !------------------------------------------------------------------------
+  ! Notes for urban tree scheme:
   ! The required input surfalb_inst%tlai_z_patch was set in SurfaceAlbedoMod
   ! The required input surfalb_inst%fsun_z_patch was computed by TwoStream in SurfaceAlbedoMod
   ! solarabs_inst%sabs_tree_dif_lun/sabs_tree_dir_lun was computed by UrbanAlbedoMod
@@ -395,22 +396,19 @@ contains
     integer           :: l                          ! landunit index
     integer           :: iv                         ! canopy layer index
     integer,parameter :: ipar = 1                   ! The band index for PAR
-    real(r8)          :: fd                         ! leaf-area-weighted mean direct  absorption per unit lai in a layer
-    real(r8)          :: fi                         ! leaf-area-weighted mean diffuse absorption per unit lai in a layer
-    real(r8)          :: wd_sun, wd_sha             ! sunlit/shaded direct  intensity relative to the layer mean
-    real(r8)          :: wi_sun, wi_sha             ! sunlit/shaded diffuse intensity relative to the layer mean
-    real(r8)          :: i_dir, i_dif               ! absorbed direct/diffuse PAR per unit one-sided leaf area (W/m**2)
-    real(r8)          :: f_perleaf                  ! road-tree column area -> one-sided leaf+stem area conversion (= 1/laisum)
+    real(r8)          :: tot_abs_dir, tot_abs_dif   ! direct/diffuse PAR absorbed by the road-tree canopy (W/m**2 road-tree column area)
+    real(r8)          :: fabd_sun_plai, fabd_sha_plai ! two-stream direct  absorption by sunlit/shaded leaves per unit total lai+sai
+    real(r8)          :: fabi_sun_plai, fabi_sha_plai ! two-stream diffuse absorption by sunlit/shaded leaves per unit total lai+sai
+    real(r8)          :: shr_dir_sun, shr_dif_sun   ! share of the canopy direct/diffuse absorption going to sunlit leaves
     real(r8)          :: laisum                     ! elai + esai (one-sided, per unit road-tree column area)
-    real(r8),parameter :: fab_min = 1.e-6_r8        ! min mean absorption for a usable sunlit/shaded partition
+    real(r8),parameter :: fab_min = 1.e-6_r8        ! min two-stream absorption for a usable sunlit/shaded partition
 
     associate( tlai_z  => surfalb_inst%tlai_z_patch, &    ! Input: [real(r8) (:)   ] tlai increment for canopy layer
           fsun_z      => surfalb_inst%fsun_z_patch, &     ! Input: [real(r8) (:)   ]sunlit fraction of canopy layer
           elai        => canopystate_inst%elai_patch, &   ! Input: [real(r8) (:)   ]one-sided leaf area index
           esai        => canopystate_inst%esai_patch, &   ! Input: [real(r8) (:)   ]one-sided stem area index
-          sabs_tree_dif      =>    solarabs_inst%sabs_tree_dif_lun      , & ! Input: [real(r8) (:,:) ]  diffuse solar absorbed by the road tree canopy per unit road-tree column area per unit incident flux
-          sabs_tree_dir      =>    solarabs_inst%sabs_tree_dir_lun      , & ! Input: [real(r8) (:,:) ]  direct  solar absorbed by the road tree canopy per unit road-tree column area per unit incident flux
-
+          sabs_tree_dif      =>    solarabs_inst%sabs_tree_dif_lun      , & ! Input: [real(r8) (:,:) ]  diffuse solar absorbed by road tree canopy per unit road-tree column area per unit incident fluxcolumn area per unit incident flux
+          sabs_tree_dir      =>    solarabs_inst%sabs_tree_dir_lun      , & ! Input: [real(r8) (:,:) ]  direct solar absorbed by road tree canopy per unit road-tree column area per unit incident fluxcolumn area per unit incident flux
           forc_solad_col  => atm2lnd_inst%forc_solad_downscaled_col, &   ! Input: [real(r8) (:)   ]direct beam radiation, column (W/m**2)
           forc_solai  => atm2lnd_inst%forc_solai_grc, &   ! Input: [real(r8) (:)   ]diffuse radiation (W/m**2)
           fabd_sun_z  => surfalb_inst%fabd_sun_z_patch, & ! Input: [real(r8) (:)   ]absorbed sunlit leaf direct PAR
@@ -464,54 +462,50 @@ contains
         ! are canopy integrated so that layer values equal big leaf values.
 
         ! UrbanAlbedoMod gives sabs_tree_dir/dif as the whole canopy's absorption per unit
-        ! road-tree column area, i.e. per unit area of the ground the crowns cover (the same
-        ! basis as sabv and the column weights), while parsun_z/parsha_z are per unit
-        ! one-sided leaf+stem area. elai and esai are per unit road-tree column area too,
-        ! so dividing by laisum = elai+esai spreads the canopy absorption over its
-        ! one-sided leaf+stem area.
-        f_perleaf = 0._r8
+        ! road-tree column area, while parsun_z/parsha_z are absorbed solar radiation per unit
+        ! one-sided leaf+stem area. 
+        laisum = 0._r8
         if (col%itype(c) == icol_road_tree) then
            laisum = elai(p) + esai(p)
-           if (laisum > 0._r8) then
-              f_perleaf = 1._r8 / laisum
-           end if
         end if
 
         do iv = 1, nrad(p)
            if (col%itype(c) == icol_road_tree) then
-              ! Mean absorbed PAR per unit one-sided leaf area, before the sunlit/shaded split
-              i_dir = forc_solad_col(c,ipar)*sabs_tree_dir(l,ipar)*f_perleaf
-              i_dif = forc_solai(g,ipar)    *sabs_tree_dif(l,ipar)*f_perleaf
+              ! Total direct/diffuse PAR absorbed by the tree canopy from the canyon model
+              ! (W/m2 road-tree column area); includes building shading and wall/road reflection
+              tot_abs_dir = forc_solad_col(c,ipar)*sabs_tree_dir(l,ipar)
+              tot_abs_dif = forc_solai(g,ipar)    *sabs_tree_dif(l,ipar)
 
-              ! Split by the two-stream sunlit/shaded intensity ratio. fabd_sun_z is per unit
-              ! sunlit lai+sai and fabd_sha_z per unit shaded lai+sai, so the normalizer is
-              ! the leaf-area-weighted mean, not the plain sum - that keeps the weights
-              ! dimensionless and makes fsun_z*parsun_z + (1-fsun_z)*parsha_z equal the layer
-              ! mean intensity. Substituting the natural-veg equivalent of sabs_tree_dir
-              ! reduces this to the non-tree branch exactly. Direct and diffuse are guarded
-              ! separately since their means are independent; a degenerate mean carries no
-              ! sunlit/shaded contrast, so both leaf classes fall back to the mean (weight 1).
-              fd = fsun_z(p,iv)*fabd_sun_z(p,iv) + (1._r8 - fsun_z(p,iv))*fabd_sha_z(p,iv)
-              fi = fsun_z(p,iv)*fabi_sun_z(p,iv) + (1._r8 - fsun_z(p,iv))*fabi_sha_z(p,iv)
+              ! Two-stream absorption by sunlit and shaded leaves per unit total lai+sai
+              ! (fabd_sun_z is per unit sunlit lai+sai, so weight it by the sunlit fraction)
+              fabd_sun_plai = fabd_sun_z(p,iv)*fsun_z(p,iv)
+              fabi_sun_plai = fabi_sun_z(p,iv)*fsun_z(p,iv)
+              fabd_sha_plai = fabd_sha_z(p,iv)*(1._r8 - fsun_z(p,iv))
+              fabi_sha_plai = fabi_sha_z(p,iv)*(1._r8 - fsun_z(p,iv))
 
-              if (fd > fab_min) then
-                 wd_sun = fabd_sun_z(p,iv) / fd
-                 wd_sha = fabd_sha_z(p,iv) / fd
+              ! Share of the canyon total that goes to sunlit leaves. With no usable
+              ! two-stream absorption, fall back to the sunlit area fraction, which gives
+              ! both leaf classes the canopy mean intensity and keeps the total conserved.
+              if (fabd_sun_plai + fabd_sha_plai > fab_min) then
+                 shr_dir_sun = fabd_sun_plai / (fabd_sun_plai + fabd_sha_plai)
               else
-                 wd_sun = 1._r8
-                 wd_sha = 1._r8
+                 shr_dir_sun = fsun_z(p,iv)
+              end if
+              if (fabi_sun_plai + fabi_sha_plai > fab_min) then
+                 shr_dif_sun = fabi_sun_plai / (fabi_sun_plai + fabi_sha_plai)
+              else
+                 shr_dif_sun = fsun_z(p,iv)
               end if
 
-              if (fi > fab_min) then
-                 wi_sun = fabi_sun_z(p,iv) / fi
-                 wi_sha = fabi_sha_z(p,iv) / fi
-              else
-                 wi_sun = 1._r8
-                 wi_sha = 1._r8
+              ! Divide by sunlit/shaded lai+sai to get absorbed PAR per unit leaf area
+              if (fsun_z(p,iv)*laisum > 0._r8) then
+                 parsun_z(p,iv) = (tot_abs_dir*shr_dir_sun + tot_abs_dif*shr_dif_sun) &
+                                / (fsun_z(p,iv)*laisum)
               end if
-
-              parsun_z(p,iv) = i_dir*wd_sun + i_dif*wi_sun
-              parsha_z(p,iv) = i_dir*wd_sha + i_dif*wi_sha
+              if ((1._r8 - fsun_z(p,iv))*laisum > 0._r8) then
+                 parsha_z(p,iv) = (tot_abs_dir*(1._r8 - shr_dir_sun) + tot_abs_dif*(1._r8 - shr_dif_sun)) &
+                                / ((1._r8 - fsun_z(p,iv))*laisum)
+              end if
            else
              parsun_z(p,iv) = forc_solad_col(c,ipar)*fabd_sun_z(p,iv) +&
               forc_solai(g,ipar)*fabi_sun_z(p,iv)
